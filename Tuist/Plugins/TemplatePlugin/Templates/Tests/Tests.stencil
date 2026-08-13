@@ -1,0 +1,9 @@
+import Testing
+
+struct {{ name }}Tests {
+	@Test("Sample test")
+	func example() async throws {
+		let sut = true
+		#expect(sut)
+	}
+}

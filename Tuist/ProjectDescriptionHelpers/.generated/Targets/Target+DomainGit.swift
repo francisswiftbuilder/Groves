@@ -1,0 +1,51 @@
+import Foundation
+import ProjectDescription
+import TargetPlugin
+
+extension Target {
+  public static var domainGit: Target {
+    .domain(
+      implements: .git,
+      factory: .init(
+        destinations: .domainGitDestinations,
+        bundlePrefix: .domainGitBundlePrefix,
+        deploymentTargets: .domainGitDeploymentTargets,
+        infoPlist: .domainGitInfoPlist,
+        scripts: .domainGitTargetScripts,
+        dependencies: .domainGitDependencies,
+        settings: .domainGitSettings,
+        coreDataModels: .domainGitCoreDataModels
+      )
+    )
+  }
+
+  public static var domainGitInterface: Target {
+    .domain(
+      interface: .git,
+      factory: .init(
+        destinations: .domainGitInterfaceDestinations,
+        bundlePrefix: .domainGitInterfaceBundlePrefix,
+        deploymentTargets: .domainGitInterfaceDeploymentTargets,
+        infoPlist: .domainGitInterfaceInfoPlist,
+        scripts: .domainGitInterfaceTargetScripts,
+        dependencies: .domainGitInterfaceDependencies,
+        settings: .domainGitInterfaceSettings,
+        coreDataModels: .domainGitInterfaceCoreDataModels
+      )
+    )
+  }
+}
+
+extension TargetReference {
+  public static var domainGit: TargetReference {
+    .domain(
+      implements: .git
+    )
+  }
+
+  public static var domainGitInterface: TargetReference {
+    .domain(
+      interface: .git
+    )
+  }
+}

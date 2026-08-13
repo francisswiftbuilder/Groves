@@ -1,0 +1,51 @@
+import Foundation
+import ProjectDescription
+import TargetPlugin
+
+extension Target {
+  public static var dataGit: Target {
+    .data(
+      implements: .git,
+      factory: .init(
+        destinations: .dataGitDestinations,
+        bundlePrefix: .dataGitBundlePrefix,
+        deploymentTargets: .dataGitDeploymentTargets,
+        infoPlist: .dataGitInfoPlist,
+        scripts: .dataGitTargetScripts,
+        dependencies: .dataGitDependencies,
+        settings: .dataGitSettings,
+        coreDataModels: .dataGitCoreDataModels
+      )
+    )
+  }
+
+  public static var dataGitTests: Target {
+    .data(
+      tests: .git,
+      factory: .init(
+        destinations: .dataGitTestsDestinations,
+        bundlePrefix: .dataGitTestsBundlePrefix,
+        deploymentTargets: .dataGitTestsDeploymentTargets,
+        infoPlist: .dataGitTestsInfoPlist,
+        scripts: .dataGitTestsTargetScripts,
+        dependencies: .dataGitTestsDependencies,
+        settings: .dataGitTestsSettings,
+        coreDataModels: .dataGitTestsCoreDataModels
+      )
+    )
+  }
+}
+
+extension TargetReference {
+  public static var dataGit: TargetReference {
+    .data(
+      implements: .git
+    )
+  }
+
+  public static var dataGitTests: TargetReference {
+    .data(
+      tests: .git
+    )
+  }
+}

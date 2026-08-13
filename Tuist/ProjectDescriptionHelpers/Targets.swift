@@ -1,0 +1,168 @@
+import Foundation
+import ProjectDescription
+import TargetPlugin
+
+public let allTargets: [Target] = [
+  .app,
+  .featureRepository,
+  .featureRepositoryInterface,
+  .featureRepositoryTests,
+  .domainGit,
+  .domainGitInterface,
+  .dataGit,
+  .dataGitTests
+]
+
+public extension Destinations {
+  static var appDestinations: Destinations { environment.destinations }
+  static var featureRepositoryDestinations: Destinations { environment.destinations }
+  static var featureRepositoryInterfaceDestinations: Destinations { environment.destinations }
+  static var featureRepositoryTestsDestinations: Destinations { environment.destinations }
+  static var domainGitDestinations: Destinations { environment.destinations }
+  static var domainGitInterfaceDestinations: Destinations { environment.destinations }
+  static var dataGitDestinations: Destinations { environment.destinations }
+  static var dataGitTestsDestinations: Destinations { environment.destinations }
+}
+
+public extension DeploymentTargets {
+  static var appDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryInterfaceDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var domainGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var domainGitInterfaceDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var dataGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var dataGitTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+}
+
+public protocol TargetDependencies {
+  static var appDependencies: [TargetDependency] { get }
+  static var featureRepositoryDependencies: [TargetDependency] { get }
+  static var featureRepositoryInterfaceDependencies: [TargetDependency] { get }
+  static var featureRepositoryTestsDependencies: [TargetDependency] { get }
+  static var domainGitDependencies: [TargetDependency] { get }
+  static var domainGitInterfaceDependencies: [TargetDependency] { get }
+  static var dataGitDependencies: [TargetDependency] { get }
+  static var dataGitTestsDependencies: [TargetDependency] { get }
+}
+
+public extension TargetDependencies {
+  static var appDependencies: [TargetDependency] { [] }
+  static var featureRepositoryDependencies: [TargetDependency] { [] }
+  static var featureRepositoryInterfaceDependencies: [TargetDependency] { [] }
+  static var featureRepositoryTestsDependencies: [TargetDependency] { [] }
+  static var domainGitDependencies: [TargetDependency] { [] }
+  static var domainGitInterfaceDependencies: [TargetDependency] { [] }
+  static var dataGitDependencies: [TargetDependency] { [] }
+  static var dataGitTestsDependencies: [TargetDependency] { [] }
+}
+
+public protocol InfoPlists {
+  static var appInfoPlist: InfoPlist { get }
+  static var featureRepositoryInfoPlist: InfoPlist { get }
+  static var featureRepositoryInterfaceInfoPlist: InfoPlist { get }
+  static var featureRepositoryTestsInfoPlist: InfoPlist { get }
+  static var domainGitInfoPlist: InfoPlist { get }
+  static var domainGitInterfaceInfoPlist: InfoPlist { get }
+  static var dataGitInfoPlist: InfoPlist { get }
+  static var dataGitTestsInfoPlist: InfoPlist { get }
+}
+
+public extension InfoPlists {
+  static var appInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryInterfaceInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var domainGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var domainGitInterfaceInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var dataGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var dataGitTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+}
+
+public protocol BundlePrefixes {
+  static var appBundlePrefix: String { get }
+  static var featureRepositoryBundlePrefix: String { get }
+  static var featureRepositoryInterfaceBundlePrefix: String { get }
+  static var featureRepositoryTestsBundlePrefix: String { get }
+  static var domainGitBundlePrefix: String { get }
+  static var domainGitInterfaceBundlePrefix: String { get }
+  static var dataGitBundlePrefix: String { get }
+  static var dataGitTestsBundlePrefix: String { get }
+}
+
+public extension BundlePrefixes {
+  static var appBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryInterfaceBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryTestsBundlePrefix: String { environment.organizationName }
+  static var domainGitBundlePrefix: String { environment.organizationName }
+  static var domainGitInterfaceBundlePrefix: String { environment.organizationName }
+  static var dataGitBundlePrefix: String { environment.organizationName }
+  static var dataGitTestsBundlePrefix: String { environment.organizationName }
+}
+
+public protocol TargetSettings {
+  static var appSettings: Settings? { get }
+  static var featureRepositorySettings: Settings? { get }
+  static var featureRepositoryInterfaceSettings: Settings? { get }
+  static var featureRepositoryTestsSettings: Settings? { get }
+  static var domainGitSettings: Settings? { get }
+  static var domainGitInterfaceSettings: Settings? { get }
+  static var dataGitSettings: Settings? { get }
+  static var dataGitTestsSettings: Settings? { get }
+}
+
+public extension TargetSettings {
+  static var appSettings: Settings? { nil }
+  static var featureRepositorySettings: Settings? { nil }
+  static var featureRepositoryInterfaceSettings: Settings? { nil }
+  static var featureRepositoryTestsSettings: Settings? { nil }
+  static var domainGitSettings: Settings? { nil }
+  static var domainGitInterfaceSettings: Settings? { nil }
+  static var dataGitSettings: Settings? { nil }
+  static var dataGitTestsSettings: Settings? { nil }
+}
+
+public protocol TargetScripts {
+  static var appTargetScripts: [TargetScript] { get }
+  static var featureRepositoryTargetScripts: [TargetScript] { get }
+  static var featureRepositoryInterfaceTargetScripts: [TargetScript] { get }
+  static var featureRepositoryTestsTargetScripts: [TargetScript] { get }
+  static var domainGitTargetScripts: [TargetScript] { get }
+  static var domainGitInterfaceTargetScripts: [TargetScript] { get }
+  static var dataGitTargetScripts: [TargetScript] { get }
+  static var dataGitTestsTargetScripts: [TargetScript] { get }
+}
+
+public extension TargetScripts {
+  static var appTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryInterfaceTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryTestsTargetScripts: [TargetScript] { [] }
+  static var domainGitTargetScripts: [TargetScript] { [] }
+  static var domainGitInterfaceTargetScripts: [TargetScript] { [] }
+  static var dataGitTargetScripts: [TargetScript] { [] }
+  static var dataGitTestsTargetScripts: [TargetScript] { [] }
+}
+
+public protocol CoreDataModels {
+  static var appCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryInterfaceCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryTestsCoreDataModels: [CoreDataModel] { get }
+  static var domainGitCoreDataModels: [CoreDataModel] { get }
+  static var domainGitInterfaceCoreDataModels: [CoreDataModel] { get }
+  static var dataGitCoreDataModels: [CoreDataModel] { get }
+  static var dataGitTestsCoreDataModels: [CoreDataModel] { get }
+}
+
+public extension CoreDataModels {
+  static var appCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryInterfaceCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryTestsCoreDataModels: [CoreDataModel] { [] }
+  static var domainGitCoreDataModels: [CoreDataModel] { [] }
+  static var domainGitInterfaceCoreDataModels: [CoreDataModel] { [] }
+  static var dataGitCoreDataModels: [CoreDataModel] { [] }
+  static var dataGitTestsCoreDataModels: [CoreDataModel] { [] }
+}
