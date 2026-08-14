@@ -41,6 +41,20 @@ public struct WorkingTreeChange: Identifiable, Hashable, Sendable {
 	}
 }
 
+public struct GitAmendChange: Identifiable, Hashable, Sendable {
+	public let path: String
+	public let previousPath: String?
+	public let state: GitFileState
+
+	public var id: String { path }
+
+	public init(path: String, previousPath: String?, state: GitFileState) {
+		self.path = path
+		self.previousPath = previousPath
+		self.state = state
+	}
+}
+
 public enum GitDiffLineAction: Equatable, Sendable {
 	case stage
 	case unstage
@@ -64,6 +78,7 @@ public struct GitCommit: Identifiable, Hashable, Sendable {
 	public let date: Date
 	public let references: [String]
 	public let subject: String
+	public let body: String
 
 	public var id: String { hash }
 
@@ -74,7 +89,8 @@ public struct GitCommit: Identifiable, Hashable, Sendable {
 		author: String,
 		date: Date,
 		references: [String],
-		subject: String
+		subject: String,
+		body: String
 	) {
 		self.hash = hash
 		self.shortHash = shortHash
@@ -83,6 +99,7 @@ public struct GitCommit: Identifiable, Hashable, Sendable {
 		self.date = date
 		self.references = references
 		self.subject = subject
+		self.body = body
 	}
 }
 

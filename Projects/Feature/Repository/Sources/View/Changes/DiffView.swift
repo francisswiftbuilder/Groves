@@ -14,30 +14,63 @@ struct DiffView: View {
 				message: "Select a tracked text change to inspect its diff.",
 				systemImage: "doc.text.magnifyingglass"
 			)
+		} else if diffLines.isEmpty {
+			EmptyStateView(
+				title: "Empty File",
+				message: "This file has no content.",
+				systemImage: "doc"
+			)
 		} else {
-			ScrollView([.horizontal, .vertical]) {
-				LazyVStack(alignment: .leading, spacing: 0) {
-					ForEach(diffLines) { line in
-						DiffLineView(
-							line: line,
-							action: lineAction,
-							isLoading: isLoading,
-							onApply: onApplyLine
-						)
-					}
+			GeometryReader { geometry in
+				ScrollView([.horizontal, .vertical]) {
+					diffCard(minimumWidth: max(geometry.size.width - 32, 0))
+						.padding(16)
 				}
-				.padding(.vertical, 8)
-				.fixedSize(horizontal: true, vertical: true)
+				.defaultScrollAnchor(.topLeading)
 			}
-			.defaultScrollAnchor(.topLeading)
 			.background {
-				Color(nsColor: .textBackgroundColor)
+				Color(nsColor: .windowBackgroundColor)
 			}
 		}
 	}
 
 	private var diffLines: [DiffLine] {
-		DiffParser.parse(diff)
+		DiffParser.parseSourceLines(diff)
+	}
+
+	private var showsOldLineNumbers: Bool {
+		diffLines.contains { $0.oldLineNumber != nil }
+	}
+
+	private var showsNewLineNumbers: Bool {
+		diffLines.contains { $0.newLineNumber != nil }
+	}
+
+	private func diffCard(minimumWidth: CGFloat) -> some View {
+		VStack(alignment: .leading, spacing: 0) {
+			ForEach(diffLines) { line in
+				DiffLineView(
+					line: line,
+					showsOldLineNumbers: showsOldLineNumbers,
+					showsNewLineNumbers: showsNewLineNumbers,
+					action: lineAction,
+					isLoading: isLoading,
+					onApply: onApplyLine
+				)
+			}
+		}
+		.padding(.vertical, 6)
+		.frame(minWidth: minimumWidth, alignment: .leading)
+		.background {
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.fill(Color(nsColor: .textBackgroundColor))
+		}
+		.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+		.overlay {
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.strokeBorder(.primary.opacity(0.08))
+		}
+		.shadow(color: .black.opacity(0.06), radius: 8, y: 2)
 	}
 }
 
@@ -59,9 +92,27 @@ struct DiffLine: Identifiable {
 	var showsAction = false
 
 	var id: Int { number }
+
+	var sourceText: String {
+		guard isSourceLine else { return text }
+		return String(text.dropFirst())
+	}
+
+	var isSourceLine: Bool {
+		switch kind {
+		case .context, .addition, .deletion:
+			return true
+		case .metadata, .hunk:
+			return false
+		}
+	}
 }
 
 enum DiffParser {
+	static func parseSourceLines(_ diff: String) -> [DiffLine] {
+		parse(diff).filter(\.isSourceLine)
+	}
+
 	static func parse(_ diff: String) -> [DiffLine] {
 		let sourceLines = diff.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 		var oldLineNumber: Int?
@@ -229,27 +280,65 @@ enum DiffParser {
 
 private struct DiffLineView: View {
 	let line: DiffLine
+	let showsOldLineNumbers: Bool
+	let showsNewLineNumbers: Bool
 	let action: GitDiffLineAction?
 	let isLoading: Bool
 	let onApply: (GitDiffLineSelection, GitDiffLineAction) -> Void
 
 	var body: some View {
 		HStack(spacing: 0) {
-			lineActionButton
+			lineNumber(line.oldLineNumber, isVisible: showsOldLineNumbers)
+			lineNumber(line.newLineNumber, isVisible: showsNewLineNumbers)
+			changeMarker
 
-			lineNumber(line.oldLineNumber)
-			lineNumber(line.newLineNumber)
-
-			Text(line.text.isEmpty ? " " : line.text)
+			Text(line.sourceText.isEmpty ? " " : line.sourceText)
 				.font(.system(size: 12, design: .monospaced))
-				.foregroundStyle(foregroundColor)
+				.foregroundStyle(.primary)
 				.padding(.leading, 10)
 				.padding(.trailing, 12)
 				.padding(.vertical, 1)
+				.lineLimit(1)
+				.fixedSize(horizontal: true, vertical: false)
+				.multilineTextAlignment(.leading)
 				.textSelection(.enabled)
+
+			Spacer(minLength: 12)
+			lineActionButton
 		}
+		.frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
 		.background {
 			backgroundColor
+		}
+	}
+
+	private var changeMarker: some View {
+		Text(markerText)
+			.font(.system(.caption, design: .monospaced, weight: .semibold))
+			.foregroundStyle(markerColor)
+			.frame(width: 20)
+			.accessibilityHidden(true)
+	}
+
+	private var markerText: String {
+		switch line.kind {
+		case .addition:
+			return "+"
+		case .deletion:
+			return "−"
+		case .metadata, .hunk, .context:
+			return ""
+		}
+	}
+
+	private var markerColor: Color {
+		switch line.kind {
+		case .addition:
+			return .green
+		case .deletion:
+			return .red
+		case .metadata, .hunk, .context:
+			return .secondary
 		}
 	}
 
@@ -265,37 +354,25 @@ private struct DiffLineView: View {
 			.buttonStyle(.bordered)
 			.controlSize(.mini)
 			.tint(action.tint)
-			.frame(width: 76)
+			.frame(width: 76, height: 20)
 			.disabled(isLoading)
 			.help(action.title)
 			.accessibilityLabel(action.title)
 		} else {
 			Color.clear
-				.frame(width: 76)
+				.frame(width: 76, height: 20)
 				.accessibilityHidden(true)
 		}
 	}
 
-	private func lineNumber(_ number: Int?) -> some View {
+	private func lineNumber(_ number: Int?, isVisible: Bool) -> some View {
 		Text(number.map(String.init) ?? "")
 			.font(.system(.caption2, design: .monospaced))
 			.foregroundStyle(.tertiary)
-			.frame(width: 38, alignment: .trailing)
-			.padding(.trailing, 8)
+			.frame(width: isVisible ? 38 : 0, alignment: .trailing)
+			.padding(.trailing, isVisible ? 8 : 0)
+			.opacity(isVisible ? 1 : 0)
 			.accessibilityHidden(true)
-	}
-
-	private var foregroundColor: Color {
-		switch line.kind {
-		case .addition:
-			return .green
-		case .deletion:
-			return .red
-		case .hunk:
-			return .blue
-		case .metadata, .context:
-			return .primary
-		}
 	}
 
 	private var backgroundColor: Color {

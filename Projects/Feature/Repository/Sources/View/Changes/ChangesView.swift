@@ -20,7 +20,7 @@ struct ChangesView: View {
 			}
 		}
 		.navigationTitle("Changes")
-		.navigationSubtitle("\(viewModel.changes.count) working tree items")
+		.navigationSubtitle(navigationSubtitle)
 		.safeAreaInset(edge: .bottom) {
 			CommitBar(viewModel: viewModel)
 		}
@@ -65,9 +65,19 @@ struct ChangesView: View {
 		min(max(availableWidth * 0.4, 220), 360)
 	}
 
+	private var navigationSubtitle: String {
+		guard viewModel.isAmendingCommit else {
+			return "\(viewModel.changes.count) working tree items"
+		}
+		return
+			"\(viewModel.displayedWorkingTreeChanges.count) working tree items · \(viewModel.amendChanges.count) in amend"
+	}
+
 	private var changeList: some View {
 		Group {
-			if viewModel.changes.isEmpty {
+			if viewModel.displayedWorkingTreeChanges.isEmpty,
+				!viewModel.isAmendingCommit || viewModel.amendChanges.isEmpty
+			{
 				EmptyStateView(
 					title: "Working Tree Clean",
 					message: "There are no staged or unstaged changes.",
@@ -75,13 +85,25 @@ struct ChangesView: View {
 				)
 			} else {
 				List(selection: $viewModel.selectedChangeIDs) {
-					ForEach(viewModel.changes) { change in
-						ChangeRow(change: change)
-							.tag(change.id)
-							.listRowSeparator(.hidden)
-							.contextMenu {
-								changeContextMenu(for: change)
+					if viewModel.isAmendingCommit, !viewModel.amendChanges.isEmpty {
+						Section("Included in Amended Commit") {
+							ForEach(viewModel.amendChanges) { change in
+								AmendChangeRow(change: change)
+									.tag(WorkspaceChangeSelection.amend(change.id))
+									.listRowSeparator(.hidden)
+									.contextMenu {
+										amendContextMenu(for: change)
+									}
 							}
+						}
+					}
+
+					if viewModel.isAmendingCommit, !viewModel.displayedWorkingTreeChanges.isEmpty {
+						Section("Working Tree") {
+							workingTreeRows
+						}
+					} else {
+						workingTreeRows
 					}
 				}
 				.listStyle(.inset)
@@ -93,23 +115,43 @@ struct ChangesView: View {
 		.toolbar {
 			ToolbarItemGroup(placement: .primaryAction) {
 				Button {
-					viewModel.didRequestStage(viewModel.selectedChanges)
+					viewModel.didRequestStage(viewModel.selectedStageableChanges)
 				} label: {
 					Label("Stage", systemImage: "plus")
 				}
 				.disabled(
-					!viewModel.selectedChanges.contains(where: \.hasWorkingTreeChange)
-						|| viewModel.isLoading
+					viewModel.selectedStageableChanges.isEmpty || viewModel.isLoading
 				)
 
 				Button {
-					viewModel.didRequestUnstage(viewModel.selectedChanges)
+					if viewModel.isAmendingCommit {
+						viewModel.didRequestUnstageFromAmend(viewModel.selectedAmendChanges)
+					} else {
+						viewModel.didRequestUnstage(viewModel.selectedChanges)
+					}
 				} label: {
 					Label("Unstage", systemImage: "minus")
 				}
 				.disabled(
-					!viewModel.selectedChanges.contains(where: \.isStaged) || viewModel.isLoading
+					(viewModel.isAmendingCommit
+						? viewModel.selectedAmendChanges.isEmpty
+						: !viewModel.selectedChanges.contains(where: \.isStaged))
+						|| viewModel.isLoading
 				)
+			}
+		}
+	}
+
+	private var workingTreeRows: some View {
+		ForEach(viewModel.displayedWorkingTreeChanges) { change in
+			ChangeRow(
+				change: change,
+				showsStagedState: !viewModel.isAmendingCommit
+			)
+			.tag(WorkspaceChangeSelection.workingTree(change.id))
+			.listRowSeparator(.hidden)
+			.contextMenu {
+				changeContextMenu(for: change)
 			}
 		}
 	}
@@ -127,7 +169,7 @@ struct ChangesView: View {
 			.disabled(viewModel.isLoading)
 		}
 
-		if !stagedChanges.isEmpty {
+		if !stagedChanges.isEmpty, !viewModel.isAmendingCommit {
 			Button("Unstage Changes", systemImage: "minus.circle") {
 				viewModel.didRequestUnstage(stagedChanges)
 			}
@@ -146,14 +188,29 @@ struct ChangesView: View {
 		.disabled(viewModel.isLoading)
 	}
 
+	@ViewBuilder
+	private func amendContextMenu(for change: GitAmendChange) -> some View {
+		let changes = contextAmendChanges(for: change)
+		Button("Unstage Changes", systemImage: "minus.circle") {
+			viewModel.didRequestUnstageFromAmend(changes)
+		}
+		.disabled(viewModel.isLoading)
+	}
+
 	private func contextChanges(for change: WorkingTreeChange) -> [WorkingTreeChange] {
-		guard viewModel.selectedChangeIDs.contains(change.id) else { return [change] }
+		guard viewModel.selectedChangeIDs.contains(.workingTree(change.id)) else { return [change] }
 		return viewModel.selectedChanges
+	}
+
+	private func contextAmendChanges(for change: GitAmendChange) -> [GitAmendChange] {
+		guard viewModel.selectedChangeIDs.contains(.amend(change.id)) else { return [change] }
+		return viewModel.selectedAmendChanges
 	}
 }
 
 private struct ChangeRow: View {
 	let change: WorkingTreeChange
+	let showsStagedState: Bool
 
 	var body: some View {
 		HStack(spacing: 10) {
@@ -167,7 +224,7 @@ private struct ChangeRow: View {
 					.lineLimit(1)
 			}
 			Spacer(minLength: 8)
-			if change.isStaged {
+			if showsStagedState, change.isStaged {
 				Image(systemName: "checkmark.circle.fill")
 					.foregroundStyle(.green)
 					.accessibilityLabel("Staged")
@@ -178,25 +235,66 @@ private struct ChangeRow: View {
 	}
 }
 
+private struct AmendChangeRow: View {
+	let change: GitAmendChange
+
+	var body: some View {
+		HStack(spacing: 10) {
+			GitStatusBadge(state: change.state)
+			VStack(alignment: .leading, spacing: 2) {
+				Text(URL(fileURLWithPath: change.path).lastPathComponent)
+					.lineLimit(1)
+				Text(change.path)
+					.font(.caption)
+					.foregroundStyle(.secondary)
+					.lineLimit(1)
+			}
+			Spacer(minLength: 8)
+			Image(systemName: "checkmark.seal.fill")
+				.foregroundStyle(.secondary)
+				.accessibilityLabel("Included in Amended Commit")
+		}
+		.padding(.vertical, 5)
+		.accessibilityElement(children: .combine)
+	}
+}
+
 private struct CommitBar: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
 
 	var body: some View {
-		HStack(spacing: 12) {
-			Image(systemName: "text.bubble")
-				.foregroundStyle(.secondary)
-				.accessibilityHidden(true)
-			TextField("Commit message", text: $viewModel.commitMessage)
-				.textFieldStyle(.roundedBorder)
-				.onSubmit {
+		VStack(spacing: 8) {
+			HStack(spacing: 12) {
+				Image(systemName: "text.bubble")
+					.foregroundStyle(.secondary)
+					.accessibilityHidden(true)
+				TextField("Summary", text: $viewModel.commitSubject)
+					.textFieldStyle(.roundedBorder)
+				Toggle(
+					"Amend",
+					isOn: Binding(
+						get: { viewModel.isAmendingCommit },
+						set: { viewModel.didSetAmendingCommit($0) }
+					)
+				)
+				.toggleStyle(.checkbox)
+				.controlSize(.small)
+				.disabled(!viewModel.canAmendCommit)
+				Button(viewModel.isAmendingCommit ? "Amend" : "Commit") {
 					viewModel.didRequestCommit()
 				}
-			Button("Commit") {
-				viewModel.didRequestCommit()
+				.buttonStyle(.borderedProminent)
+				.keyboardShortcut(.return, modifiers: [.command])
+				.disabled(!viewModel.canCommit)
 			}
-			.buttonStyle(.borderedProminent)
-			.keyboardShortcut(.return, modifiers: [.command])
-			.disabled(!viewModel.canCommit)
+			TextField(
+				"Description (optional)",
+				text: $viewModel.commitBody,
+				axis: .vertical
+			)
+			.textFieldStyle(.roundedBorder)
+			.lineLimit(2...5)
+			.padding(.leading, 28)
 		}
 		.padding(.horizontal, 12)
 		.padding(.vertical, 10)

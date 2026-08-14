@@ -19,6 +19,28 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(changes.first(where: { $0.path == "new.swift" })?.workingTreeState, .untracked)
 	}
 
+	func testParseWorkingTreeChangesMergesDuplicateDeletedAndUntrackedPath() {
+		let output = "D  tracked.txt\0?? tracked.txt\0"
+
+		let changes = GitOutputParser.parseWorkingTreeChanges(output)
+
+		XCTAssertEqual(changes.count, 1)
+		XCTAssertEqual(changes.first?.path, "tracked.txt")
+		XCTAssertEqual(changes.first?.indexState, .deleted)
+		XCTAssertEqual(changes.first?.workingTreeState, .untracked)
+	}
+
+	func testParseAmendChangesPreservesRenamePaths() {
+		let output = "M\0Sources/App.swift\0R100\0Old.swift\0New.swift\0"
+
+		let changes = GitOutputParser.parseAmendChanges(output)
+
+		XCTAssertEqual(changes.count, 2)
+		XCTAssertEqual(changes.first(where: { $0.path == "Sources/App.swift" })?.state, .modified)
+		XCTAssertEqual(changes.first(where: { $0.path == "New.swift" })?.state, .renamed)
+		XCTAssertEqual(changes.first(where: { $0.path == "New.swift" })?.previousPath, "Old.swift")
+	}
+
 	func testBuildFileTreeGroupsFilesByDirectory() {
 		let nodes = GitOutputParser.buildFileTree(
 			paths: ["Sources/App.swift", "Sources/Feature/View.swift", "README.md"]
@@ -251,6 +273,102 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertTrue(workingTreeDiff.contains("+TWO"))
 		XCTAssertFalse(workingTreeDiff.contains("-four"))
 		XCTAssertFalse(workingTreeDiff.contains("+FOUR"))
+	}
+
+	func testAmendCommitUpdatesLastCommitWithoutCreatingAnotherCommit() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+
+		try await LocalGitRepository().requestCommit(
+			subject: "Updated commit",
+			body: "Explain the change.\n\nInclude verification details.",
+			amend: true,
+			at: repositoryURL
+		)
+
+		let commits = try await LocalGitRepository().requestCommitHistory(at: repositoryURL)
+		let commitCount = try requestGitOutput(["rev-list", "--count", "HEAD"], at: repositoryURL)
+		XCTAssertEqual(commits.first?.subject, "Updated commit")
+		XCTAssertEqual(
+			commits.first?.body,
+			"Explain the change.\n\nInclude verification details."
+		)
+		XCTAssertEqual(commitCount, "1\n")
+	}
+
+	func testRequestAmendChangesAndDiffReturnsIndexedChangesFromParent() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		try Data("updated".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Update tracked file"], at: repositoryURL)
+
+		let repository = LocalGitRepository()
+		let changes = try await repository.requestAmendChanges(at: repositoryURL)
+		let change = try XCTUnwrap(changes.first)
+		let diff = try await repository.requestAmendDiff(for: change, at: repositoryURL)
+
+		XCTAssertEqual(change.path, "tracked.txt")
+		XCTAssertEqual(change.state, .modified)
+		XCTAssertTrue(diff.contains("-original"))
+		XCTAssertTrue(diff.contains("+updated"))
+	}
+
+	func testUnstageFromAmendMovesChangeToWorkingTreeAndStageRestoresIt() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		try Data("updated".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Update tracked file"], at: repositoryURL)
+		let repository = LocalGitRepository()
+		let initialAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
+		let change = try XCTUnwrap(initialAmendChanges.first)
+
+		try await repository.requestUnstageFromAmend(change: change, at: repositoryURL)
+
+		let unstagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
+		let workingTreeChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		XCTAssertTrue(unstagedAmendChanges.isEmpty)
+		XCTAssertEqual(workingTreeChanges.first?.workingTreeState, .modified)
+
+		try await repository.requestStage(path: change.path, at: repositoryURL)
+
+		let restagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
+		let remainingWorkingTreeChanges = try await repository.requestWorkingTreeChanges(
+			at: repositoryURL
+		)
+		XCTAssertEqual(restagedAmendChanges.first?.path, "tracked.txt")
+		XCTAssertTrue(remainingWorkingTreeChanges.isEmpty)
+	}
+
+	func testRootCommitCanBeUnstagedAndRestagedForAmend() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let repository = LocalGitRepository()
+		let initialAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
+		let change = try XCTUnwrap(initialAmendChanges.first)
+
+		try await repository.requestUnstageFromAmend(change: change, at: repositoryURL)
+
+		let unstagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
+		let workingTreeChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		XCTAssertTrue(unstagedAmendChanges.isEmpty)
+		XCTAssertEqual(workingTreeChanges.count, 1)
+		XCTAssertEqual(workingTreeChanges.first?.indexState, .deleted)
+		XCTAssertEqual(workingTreeChanges.first?.workingTreeState, .untracked)
+
+		try await repository.requestStage(path: change.path, at: repositoryURL)
+
+		let restagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
+		XCTAssertEqual(restagedAmendChanges.first?.state, .added)
 	}
 
 	private func makeRepository() throws -> URL {

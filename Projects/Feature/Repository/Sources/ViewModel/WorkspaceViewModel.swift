@@ -5,17 +5,20 @@ import UniformTypeIdentifiers
 @MainActor
 final class WorkspaceViewModel: ObservableObject {
 	@Published var selectedSection: WorkspaceSection? = .changes
-	@Published var selectedChangeIDs: Set<String> = []
+	@Published var selectedChangeIDs: Set<WorkspaceChangeSelection> = []
 	@Published var selectedCommitID: String?
 	@Published var selectedBranchID: String?
 	@Published var selectedTagID: String?
 	@Published private(set) var selectedTreeNodeID: String?
-	@Published var commitMessage = ""
+	@Published var commitSubject = ""
+	@Published var commitBody = ""
+	@Published private(set) var isAmendingCommit = false
 	@Published var newBranchName = ""
 	@Published var newTagName = ""
 	@Published var newTagMessage = ""
 	@Published private(set) var repositoryURL: URL?
 	@Published private(set) var changes: [WorkingTreeChange] = []
+	@Published private(set) var amendChanges: [GitAmendChange] = []
 	@Published private(set) var commitGraphItems: [CommitGraphItem] = []
 	@Published private(set) var branches: [GitBranch] = []
 	@Published private(set) var tags: [GitTag] = []
@@ -30,6 +33,7 @@ final class WorkspaceViewModel: ObservableObject {
 	private var refreshTask: Task<Void, Never>?
 	private var diffTask: Task<Void, Never>?
 	private var filePreviewTask: Task<Void, Never>?
+	private var displayedDiffSelection: WorkspaceChangeSelection?
 
 	init(repository: any GitRepository, repositoryURL: URL? = nil) {
 		self.repository = repository
@@ -51,12 +55,30 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var selectedChanges: [WorkingTreeChange] {
-		changes.filter { selectedChangeIDs.contains($0.id) }
+		changes.filter { selectedChangeIDs.contains(.workingTree($0.id)) }
+	}
+
+	var selectedStageableChanges: [WorkingTreeChange] {
+		selectedChanges.filter(\.hasWorkingTreeChange)
+	}
+
+	var displayedWorkingTreeChanges: [WorkingTreeChange] {
+		guard isAmendingCommit else { return changes }
+		return changes.filter(\.hasWorkingTreeChange)
 	}
 
 	var selectedChange: WorkingTreeChange? {
 		guard selectedChangeIDs.count == 1 else { return nil }
 		return selectedChanges.first
+	}
+
+	var selectedAmendChanges: [GitAmendChange] {
+		amendChanges.filter { selectedChangeIDs.contains(.amend($0.id)) }
+	}
+
+	var selectedAmendChange: GitAmendChange? {
+		guard selectedChangeIDs.count == 1 else { return nil }
+		return selectedAmendChanges.first
 	}
 
 	var selectedDiffLineAction: GitDiffLineAction? {
@@ -83,9 +105,13 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var canCommit: Bool {
-		!commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-			&& changes.contains(where: \.isStaged)
+		!commitSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			&& (isAmendingCommit || changes.contains(where: \.isStaged))
 			&& !isLoading
+	}
+
+	var canAmendCommit: Bool {
+		commitGraphItems.isEmpty == false && !isLoading
 	}
 
 	func didSelectSection(_ section: WorkspaceSection) {
@@ -100,6 +126,11 @@ final class WorkspaceViewModel: ObservableObject {
 
 			do {
 				let root = try await repository.requestRepositoryRoot(at: url)
+				if repositoryURL != root {
+					diffTask?.cancel()
+					selectedChangeIDs = []
+					clearDisplayedDiff()
+				}
 				repositoryURL = root
 				try await requestAllContent(at: root)
 			} catch is CancellationError {
@@ -158,18 +189,53 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didChangeSelectedChanges() {
 		diffTask?.cancel()
-		diff = ""
 
-		guard let repositoryURL, let change = selectedChange else { return }
-		diffTask = Task {
-			do {
-				let requestedDiff = try await repository.requestDiff(for: change, at: repositoryURL)
-				guard selectedChangeIDs == Set([change.id]) else { return }
-				diff = requestedDiff
-			} catch is CancellationError {
+		guard
+			let repositoryURL,
+			selectedChangeIDs.count == 1,
+			let selection = selectedChangeIDs.first
+		else {
+			clearDisplayedDiff()
+			return
+		}
+
+		if displayedDiffSelection != selection {
+			clearDisplayedDiff()
+		}
+
+		switch selection {
+		case .workingTree(let id):
+			guard let change = changes.first(where: { $0.id == id }) else {
+				clearDisplayedDiff()
 				return
-			} catch {
-				alertMessage = error.localizedDescription
+			}
+			diffTask = Task {
+				do {
+					let requestedDiff = try await repository.requestDiff(for: change, at: repositoryURL)
+					updateDisplayedDiff(requestedDiff, for: selection)
+				} catch is CancellationError {
+					return
+				} catch {
+					alertMessage = error.localizedDescription
+				}
+			}
+		case .amend(let id):
+			guard isAmendingCommit, let change = amendChanges.first(where: { $0.id == id }) else {
+				clearDisplayedDiff()
+				return
+			}
+			diffTask = Task {
+				do {
+					let requestedDiff = try await repository.requestAmendDiff(
+						for: change,
+						at: repositoryURL
+					)
+					updateDisplayedDiff(requestedDiff, for: selection)
+				} catch is CancellationError {
+					return
+				} catch {
+					alertMessage = error.localizedDescription
+				}
 			}
 		}
 	}
@@ -225,6 +291,20 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	func didRequestUnstageFromAmend(_ requestedChanges: [GitAmendChange]) {
+		let requestedIDs = Set(requestedChanges.map(\.id))
+		let amendChanges = amendChanges.filter { requestedIDs.contains($0.id) }
+		guard let repositoryURL, !amendChanges.isEmpty else { return }
+		requestMutation {
+			for change in amendChanges {
+				try await self.repository.requestUnstageFromAmend(
+					change: change,
+					at: repositoryURL
+				)
+			}
+		}
+	}
+
 	func didRequestApplyDiffLine(
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction
@@ -258,11 +338,40 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didRequestCommit() {
 		guard let repositoryURL, canCommit else { return }
-		let message = commitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+		let subject = commitSubject.trimmingCharacters(in: .whitespacesAndNewlines)
+		let trimmedBody = commitBody.trimmingCharacters(in: .newlines)
+		let body =
+			trimmedBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			? ""
+			: trimmedBody
+		let amend = isAmendingCommit
 		requestMutation {
-			try await self.repository.requestCommit(message: message, at: repositoryURL)
-			self.commitMessage = ""
+			try await self.repository.requestCommit(
+				subject: subject,
+				body: body,
+				amend: amend,
+				at: repositoryURL
+			)
+			self.commitSubject = ""
+			self.commitBody = ""
+			self.isAmendingCommit = false
 		}
+	}
+
+	func didSetAmendingCommit(_ isAmending: Bool) {
+		guard !isAmending || canAmendCommit else { return }
+		isAmendingCommit = isAmending
+		if isAmending,
+			commitSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		{
+			commitSubject = currentCommit?.subject ?? ""
+		}
+		if isAmending,
+			commitBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		{
+			commitBody = currentCommit?.body ?? ""
+		}
+		preserveChangeSelection()
 	}
 
 	func didRequestSwitchBranch() {
@@ -359,15 +468,19 @@ final class WorkspaceViewModel: ObservableObject {
 				)
 				try Task.checkCancellation()
 
-				let availableChangeIDs = Set(refreshedChanges.map(\.id))
-				var refreshedSelection = selectedChangeIDs.intersection(availableChangeIDs)
+				let availableSelections = Set(
+					refreshedChanges.map { WorkspaceChangeSelection.workingTree($0.id) }
+				)
+				var refreshedSelection = selectedChangeIDs.intersection(availableSelections)
 				if refreshedSelection.isEmpty, let firstChangeID = refreshedChanges.first?.id {
-					refreshedSelection = [firstChangeID]
+					refreshedSelection = [.workingTree(firstChangeID)]
 				}
 
 				let refreshedChange =
 					refreshedSelection.count == 1
-					? refreshedChanges.first { refreshedSelection.contains($0.id) }
+					? refreshedChanges.first {
+						refreshedSelection.contains(.workingTree($0.id))
+					}
 					: nil
 				let refreshedDiff: String
 				if let refreshedChange {
@@ -382,7 +495,12 @@ final class WorkspaceViewModel: ObservableObject {
 
 				changes = refreshedChanges
 				selectedChangeIDs = refreshedSelection
-				diff = refreshedDiff
+				if diff != refreshedDiff {
+					diff = refreshedDiff
+				}
+				displayedDiffSelection = refreshedChange.map {
+					.workingTree($0.id)
+				}
 			} catch is CancellationError {
 				return
 			} catch {
@@ -393,17 +511,19 @@ final class WorkspaceViewModel: ObservableObject {
 
 	private func requestAllContent(at repositoryURL: URL) async throws {
 		async let changes = repository.requestWorkingTreeChanges(at: repositoryURL)
+		async let amendChanges = repository.requestAmendChanges(at: repositoryURL)
 		async let commits = repository.requestCommitHistory(at: repositoryURL)
 		async let branches = repository.requestBranches(at: repositoryURL)
 		async let tags = repository.requestTags(at: repositoryURL)
 		async let fileTree = repository.requestFileTree(at: repositoryURL)
 
-		let content = try await (changes, commits, branches, tags, fileTree)
+		let content = try await (changes, amendChanges, commits, branches, tags, fileTree)
 		self.changes = content.0
-		commitGraphItems = CommitGraphLayoutBuilder.build(commits: content.1)
-		self.branches = content.2
-		self.tags = content.3
-		self.fileTree = content.4
+		self.amendChanges = content.1
+		commitGraphItems = CommitGraphLayoutBuilder.build(commits: content.2)
+		self.branches = content.3
+		self.tags = content.4
+		self.fileTree = content.5
 		preserveSelections()
 	}
 
@@ -411,15 +531,23 @@ final class WorkspaceViewModel: ObservableObject {
 		guard let repositoryURL, !isLoading, !isApplyingDiffLine else { return }
 
 		let refreshedChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		let refreshedAmendChanges =
+			isAmendingCommit
+			? try await repository.requestAmendChanges(at: repositoryURL)
+			: amendChanges
 		try Task.checkCancellation()
-		guard refreshedChanges != changes else { return }
+		guard refreshedChanges != changes || refreshedAmendChanges != amendChanges else { return }
 
 		changes = refreshedChanges
+		amendChanges = refreshedAmendChanges
 		preserveChangeSelection()
 	}
 
 	private func preserveSelections() {
 		preserveChangeSelection()
+		if commitGraphItems.isEmpty {
+			isAmendingCommit = false
+		}
 		if commitGraphItems.contains(where: { $0.id == selectedCommitID }) == false {
 			selectedCommitID = commitGraphItems.first?.id
 		}
@@ -435,12 +563,50 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	private func preserveChangeSelection() {
-		let availableChangeIDs = Set(changes.map(\.id))
-		selectedChangeIDs.formIntersection(availableChangeIDs)
-		if selectedChangeIDs.isEmpty, let firstChangeID = changes.first?.id {
-			selectedChangeIDs = [firstChangeID]
+		var availableSelections = Set(
+			displayedWorkingTreeChanges.map { WorkspaceChangeSelection.workingTree($0.id) }
+		)
+		if isAmendingCommit {
+			availableSelections.formUnion(
+				amendChanges.map { WorkspaceChangeSelection.amend($0.id) }
+			)
+		}
+		selectedChangeIDs.formIntersection(availableSelections)
+		if selectedChangeIDs.isEmpty, let firstChangeID = displayedWorkingTreeChanges.first?.id {
+			selectedChangeIDs = [.workingTree(firstChangeID)]
+		} else if selectedChangeIDs.isEmpty,
+			isAmendingCommit,
+			let firstChangeID = amendChanges.first?.id
+		{
+			selectedChangeIDs = [.amend(firstChangeID)]
 		}
 		didChangeSelectedChanges()
+	}
+
+	private func updateDisplayedDiff(
+		_ requestedDiff: String,
+		for selection: WorkspaceChangeSelection
+	) {
+		guard selectedChangeIDs == Set([selection]) else { return }
+		if diff != requestedDiff {
+			diff = requestedDiff
+		}
+		displayedDiffSelection = selection
+	}
+
+	private func clearDisplayedDiff() {
+		if !diff.isEmpty {
+			diff = ""
+		}
+		displayedDiffSelection = nil
+	}
+
+	private var currentCommit: GitCommit? {
+		commitGraphItems.first {
+			$0.commit.references.contains { reference in
+				reference == "HEAD" || reference.hasPrefix("HEAD -> ")
+			}
+		}?.commit ?? commitGraphItems.first?.commit
 	}
 
 	private func requestTreeNode(
@@ -460,6 +626,11 @@ final class WorkspaceViewModel: ObservableObject {
 
 		return nil
 	}
+}
+
+enum WorkspaceChangeSelection: Hashable {
+	case workingTree(String)
+	case amend(String)
 }
 
 enum RepositoryFilePreview: Equatable, Sendable {

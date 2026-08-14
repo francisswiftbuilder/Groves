@@ -40,11 +40,43 @@ public struct LocalGitRepository: GitRepository {
 			],
 			at: repositoryURL
 		)
-		return GitOutputParser.parseWorkingTreeChanges(result.standardOutput)
+		return GitOutputParser.parseWorkingTreeChanges(result.standardOutput).map { change in
+			guard
+				change.indexState == .deleted,
+				change.workingTreeState == .unchanged,
+				FileManager.default.fileExists(
+					atPath: repositoryURL.appending(path: change.path).path
+				)
+			else { return change }
+
+			return WorkingTreeChange(
+				path: change.path,
+				previousPath: change.previousPath,
+				indexState: change.indexState,
+				workingTreeState: .untracked
+			)
+		}
+	}
+
+	public func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] {
+		guard let base = try await requestAmendBase(at: repositoryURL) else { return [] }
+		let result = try await runner.requestRun(
+			arguments: [
+				"diff",
+				"--cached",
+				"--name-status",
+				"--find-renames",
+				"-z",
+				base,
+				"--",
+			],
+			at: repositoryURL
+		)
+		return GitOutputParser.parseAmendChanges(result.standardOutput)
 	}
 
 	public func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] {
-		let format = "%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1e"
+		let format = "%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1f%b%x1e"
 		do {
 			let result = try await runner.requestRun(
 				arguments: ["log", "--all", "--topo-order", "-n", "500", "--pretty=format:\(format)"],
@@ -168,6 +200,17 @@ public struct LocalGitRepository: GitRepository {
 		).standardOutput
 	}
 
+	public func requestAmendDiff(for change: GitAmendChange, at repositoryURL: URL) async throws
+		-> String
+	{
+		guard let base = try await requestAmendBase(at: repositoryURL) else { return "" }
+		let paths = [change.path, change.previousPath].compactMap { $0 }
+		return try await runner.requestRun(
+			arguments: ["diff", "--cached", "--no-color", "--find-renames", base, "--"] + paths,
+			at: repositoryURL
+		).standardOutput
+	}
+
 	public func requestStage(path: String, at repositoryURL: URL) async throws {
 		_ = try await runner.requestRun(arguments: ["add", "--", path], at: repositoryURL)
 	}
@@ -247,8 +290,37 @@ public struct LocalGitRepository: GitRepository {
 		}
 	}
 
-	public func requestCommit(message: String, at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(arguments: ["commit", "-m", message], at: repositoryURL)
+	public func requestUnstageFromAmend(
+		change: GitAmendChange,
+		at repositoryURL: URL
+	) async throws {
+		guard let base = try await requestAmendBase(at: repositoryURL) else {
+			throw GitRepositoryError.invalidOutput
+		}
+		let paths = [change.path, change.previousPath].compactMap { $0 }
+		_ = try await runner.requestRun(
+			arguments: ["reset", base, "--"] + paths,
+			at: repositoryURL
+		)
+	}
+
+	public func requestCommit(
+		subject: String,
+		body: String,
+		amend: Bool,
+		at repositoryURL: URL
+	) async throws {
+		var arguments = ["commit"]
+		if amend {
+			arguments.append("--amend")
+		}
+		arguments.append(contentsOf: ["--file", "-"])
+		let message = body.isEmpty ? subject : "\(subject)\n\n\(body)"
+		_ = try await runner.requestRun(
+			arguments: arguments,
+			at: repositoryURL,
+			standardInput: message
+		)
 	}
 
 	public func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws {
@@ -282,5 +354,31 @@ public struct LocalGitRepository: GitRepository {
 
 	public func requestPush(at repositoryURL: URL) async throws {
 		_ = try await runner.requestRun(arguments: ["push"], at: repositoryURL)
+	}
+
+	private func requestAmendBase(at repositoryURL: URL) async throws -> String? {
+		let head = try await runner.requestRun(
+			arguments: ["rev-parse", "--verify", "--quiet", "HEAD"],
+			at: repositoryURL,
+			acceptedTerminationStatuses: [0, 1]
+		)
+		guard !head.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			return nil
+		}
+
+		let parent = try await runner.requestRun(
+			arguments: ["rev-parse", "--verify", "--quiet", "HEAD^"],
+			at: repositoryURL,
+			acceptedTerminationStatuses: [0, 1]
+		)
+		let parentHash = parent.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard parentHash.isEmpty else { return parentHash }
+
+		let emptyTree = try await runner.requestRun(
+			arguments: ["hash-object", "-t", "tree", "-w", "--stdin"],
+			at: repositoryURL,
+			standardInput: ""
+		)
+		return emptyTree.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
 	}
 }

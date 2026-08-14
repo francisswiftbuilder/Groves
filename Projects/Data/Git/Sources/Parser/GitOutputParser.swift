@@ -38,6 +38,39 @@ enum GitOutputParser {
 			index += 1
 		}
 
+		return mergeWorkingTreeChanges(changes)
+	}
+
+	static func parseAmendChanges(_ output: String) -> [GitAmendChange] {
+		let records = output.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
+		var changes: [GitAmendChange] = []
+		var index = 0
+
+		while index < records.count {
+			let status = records[index]
+			index += 1
+			guard let statusCharacter = status.first, index < records.count else { continue }
+
+			let state = parseFileState(statusCharacter)
+			let isRenameOrCopy = statusCharacter == "R" || statusCharacter == "C"
+			let previousPath: String?
+			let path: String
+
+			if isRenameOrCopy, index + 1 < records.count {
+				previousPath = records[index]
+				path = records[index + 1]
+				index += 2
+			} else {
+				previousPath = nil
+				path = records[index]
+				index += 1
+			}
+
+			changes.append(
+				GitAmendChange(path: path, previousPath: previousPath, state: state)
+			)
+		}
+
 		return changes.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
 	}
 
@@ -50,9 +83,12 @@ enum GitOutputParser {
 			output
 			.split(separator: "\u{1e}", omittingEmptySubsequences: true)
 			.compactMap { record in
-				let fields = record.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(
-					String.init)
-				guard fields.count >= 7 else { return nil }
+				let fields = record.split(
+					separator: "\u{1f}",
+					maxSplits: 7,
+					omittingEmptySubsequences: false
+				).map(String.init)
+				guard fields.count >= 8 else { return nil }
 				guard let date = formatter.date(from: fields[4]) ?? fallbackFormatter.date(from: fields[4])
 				else {
 					return nil
@@ -70,7 +106,8 @@ enum GitOutputParser {
 					author: fields[3],
 					date: date,
 					references: references,
-					subject: fields[6].trimmingCharacters(in: .newlines)
+					subject: fields[6].trimmingCharacters(in: .newlines),
+					body: fields[7].trimmingCharacters(in: .newlines)
 				)
 			}
 	}
@@ -141,6 +178,43 @@ enum GitOutputParser {
 		default:
 			return .unchanged
 		}
+	}
+
+	private static func mergeWorkingTreeChanges(
+		_ changes: [WorkingTreeChange]
+	) -> [WorkingTreeChange] {
+		var changesByPath: [String: WorkingTreeChange] = [:]
+
+		for change in changes {
+			guard let existingChange = changesByPath[change.path] else {
+				changesByPath[change.path] = change
+				continue
+			}
+
+			changesByPath[change.path] = WorkingTreeChange(
+				path: change.path,
+				previousPath: existingChange.previousPath ?? change.previousPath,
+				indexState: mergeFileState(existingChange.indexState, change.indexState),
+				workingTreeState: mergeFileState(
+					existingChange.workingTreeState,
+					change.workingTreeState
+				)
+			)
+		}
+
+		return changesByPath.values.sorted {
+			$0.path.localizedStandardCompare($1.path) == .orderedAscending
+		}
+	}
+
+	private static func mergeFileState(
+		_ lhs: GitFileState,
+		_ rhs: GitFileState
+	) -> GitFileState {
+		let states = [lhs, rhs]
+		return states.first { $0 != .unchanged && $0 != .untracked }
+			?? states.first { $0 == .untracked }
+			?? .unchanged
 	}
 
 	private static func treeSort(

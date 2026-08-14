@@ -84,6 +84,24 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 		XCTAssertEqual(lines.filter { $0.kind == .addition }.count, 1)
 	}
 
+	func testDiffParserReturnsOnlySourceLinesForPresentation() {
+		let diff = """
+			diff --git a/tracked.txt b/tracked.txt
+			index 1111111..2222222 100644
+			--- a/tracked.txt
+			+++ b/tracked.txt
+			@@ -1,2 +1,2 @@
+			-old
+			+new
+			 context
+			"""
+
+		let lines = DiffParser.parseSourceLines(diff)
+
+		XCTAssertEqual(lines.map(\.kind), [.deletion, .addition, .context])
+		XCTAssertEqual(lines.map(\.sourceText), ["old", "new", "context"])
+	}
+
 	private func makeCommit(hash: String, parents: [String]) -> GitCommit {
 		GitCommit(
 			hash: hash,
@@ -92,7 +110,8 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 			author: "Author",
 			date: Date(timeIntervalSince1970: 0),
 			references: [],
-			subject: hash
+			subject: hash,
+			body: ""
 		)
 	}
 }
