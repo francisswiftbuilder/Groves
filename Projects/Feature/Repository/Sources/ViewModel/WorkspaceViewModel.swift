@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class WorkspaceViewModel: ObservableObject {
 	@Published var selectedSection: WorkspaceSection? = .changes
-	@Published var selectedChangeID: String?
+	@Published var selectedChangeIDs: Set<String> = []
 	@Published var selectedCommitID: String?
 	@Published var selectedBranchID: String?
 	@Published var selectedTagID: String?
@@ -23,6 +23,7 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var diff = ""
 	@Published private(set) var filePreview: RepositoryFilePreview = .none
 	@Published private(set) var isLoading = false
+	@Published private(set) var isApplyingDiffLine = false
 	@Published var alertMessage: String?
 
 	private let repository: any GitRepository
@@ -49,8 +50,28 @@ final class WorkspaceViewModel: ObservableObject {
 		branches.first(where: \.isCurrent)?.name ?? "No Branch"
 	}
 
+	var selectedChanges: [WorkingTreeChange] {
+		changes.filter { selectedChangeIDs.contains($0.id) }
+	}
+
 	var selectedChange: WorkingTreeChange? {
-		changes.first { $0.id == selectedChangeID }
+		guard selectedChangeIDs.count == 1 else { return nil }
+		return selectedChanges.first
+	}
+
+	var selectedDiffLineAction: GitDiffLineAction? {
+		guard let selectedChange else { return nil }
+		if selectedChange.hasWorkingTreeChange,
+			selectedChange.workingTreeState == .modified
+		{
+			return .stage
+		}
+		if !selectedChange.hasWorkingTreeChange,
+			selectedChange.indexState == .modified
+		{
+			return .unstage
+		}
+		return nil
 	}
 
 	var selectedBranch: GitBranch? {
@@ -106,15 +127,45 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func didSelectChange(_ id: String?) {
-		selectedChangeID = id
+	func monitorWorkingTreeChanges() async {
+		guard let repositoryURL else { return }
+
+		let events = RepositoryFileSystemMonitor.events(at: repositoryURL)
+		do {
+			try await refreshWorkingTreeChangesIfNeeded()
+		} catch is CancellationError {
+			return
+		} catch {}
+
+		var automaticRefreshTask: Task<Void, Never>?
+		defer {
+			automaticRefreshTask?.cancel()
+		}
+
+		for await _ in events {
+			guard !Task.isCancelled else { return }
+			automaticRefreshTask?.cancel()
+			automaticRefreshTask = Task { @MainActor [weak self] in
+				do {
+					try await Task.sleep(for: .milliseconds(350))
+					try await self?.refreshWorkingTreeChangesIfNeeded()
+				} catch is CancellationError {
+					return
+				} catch {}
+			}
+		}
+	}
+
+	func didChangeSelectedChanges() {
 		diffTask?.cancel()
 		diff = ""
 
 		guard let repositoryURL, let change = selectedChange else { return }
 		diffTask = Task {
 			do {
-				diff = try await repository.requestDiff(for: change, at: repositoryURL)
+				let requestedDiff = try await repository.requestDiff(for: change, at: repositoryURL)
+				guard selectedChangeIDs == Set([change.id]) else { return }
+				diff = requestedDiff
 			} catch is CancellationError {
 				return
 			} catch {
@@ -148,17 +199,60 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func didRequestStageSelectedChange() {
-		guard let repositoryURL, let change = selectedChange else { return }
+	func didRequestStage(_ requestedChanges: [WorkingTreeChange]) {
+		let requestedIDs = Set(requestedChanges.map(\.id))
+		let stageableChanges = changes.filter {
+			requestedIDs.contains($0.id) && $0.hasWorkingTreeChange
+		}
+		guard let repositoryURL, !stageableChanges.isEmpty else { return }
 		requestMutation {
-			try await self.repository.requestStage(path: change.path, at: repositoryURL)
+			for change in stageableChanges {
+				try await self.repository.requestStage(path: change.path, at: repositoryURL)
+			}
 		}
 	}
 
-	func didRequestUnstageSelectedChange() {
-		guard let repositoryURL, let change = selectedChange else { return }
+	func didRequestUnstage(_ requestedChanges: [WorkingTreeChange]) {
+		let requestedIDs = Set(requestedChanges.map(\.id))
+		let stagedChanges = changes.filter {
+			requestedIDs.contains($0.id) && $0.isStaged
+		}
+		guard let repositoryURL, !stagedChanges.isEmpty else { return }
 		requestMutation {
-			try await self.repository.requestUnstage(path: change.path, at: repositoryURL)
+			for change in stagedChanges {
+				try await self.repository.requestUnstage(path: change.path, at: repositoryURL)
+			}
+		}
+	}
+
+	func didRequestApplyDiffLine(
+		_ selection: GitDiffLineSelection,
+		action: GitDiffLineAction
+	) {
+		guard
+			let repositoryURL,
+			let change = selectedChange,
+			selectedDiffLineAction == action,
+			!isApplyingDiffLine
+		else { return }
+		requestDiffLineMutation {
+			try await self.repository.requestApplyDiffLine(
+				selection,
+				action: action,
+				for: change,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didRequestDiscard(_ requestedChanges: [WorkingTreeChange]) {
+		let requestedIDs = Set(requestedChanges.map(\.id))
+		let discardableChanges = changes.filter { requestedIDs.contains($0.id) }
+		guard let repositoryURL, !discardableChanges.isEmpty else { return }
+		requestMutation {
+			for change in discardableChanges {
+				try await self.repository.requestDiscard(change: change, at: repositoryURL)
+			}
 		}
 	}
 
@@ -247,6 +341,56 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	private func requestDiffLineMutation(
+		_ operation: @escaping @MainActor () async throws -> Void
+	) {
+		refreshTask?.cancel()
+		diffTask?.cancel()
+		refreshTask = Task {
+			isApplyingDiffLine = true
+			defer { isApplyingDiffLine = false }
+
+			do {
+				try await operation()
+				guard let repositoryURL else { return }
+
+				let refreshedChanges = try await repository.requestWorkingTreeChanges(
+					at: repositoryURL
+				)
+				try Task.checkCancellation()
+
+				let availableChangeIDs = Set(refreshedChanges.map(\.id))
+				var refreshedSelection = selectedChangeIDs.intersection(availableChangeIDs)
+				if refreshedSelection.isEmpty, let firstChangeID = refreshedChanges.first?.id {
+					refreshedSelection = [firstChangeID]
+				}
+
+				let refreshedChange =
+					refreshedSelection.count == 1
+					? refreshedChanges.first { refreshedSelection.contains($0.id) }
+					: nil
+				let refreshedDiff: String
+				if let refreshedChange {
+					refreshedDiff = try await repository.requestDiff(
+						for: refreshedChange,
+						at: repositoryURL
+					)
+				} else {
+					refreshedDiff = ""
+				}
+				try Task.checkCancellation()
+
+				changes = refreshedChanges
+				selectedChangeIDs = refreshedSelection
+				diff = refreshedDiff
+			} catch is CancellationError {
+				return
+			} catch {
+				alertMessage = error.localizedDescription
+			}
+		}
+	}
+
 	private func requestAllContent(at repositoryURL: URL) async throws {
 		async let changes = repository.requestWorkingTreeChanges(at: repositoryURL)
 		async let commits = repository.requestCommitHistory(at: repositoryURL)
@@ -263,10 +407,19 @@ final class WorkspaceViewModel: ObservableObject {
 		preserveSelections()
 	}
 
+	private func refreshWorkingTreeChangesIfNeeded() async throws {
+		guard let repositoryURL, !isLoading, !isApplyingDiffLine else { return }
+
+		let refreshedChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		try Task.checkCancellation()
+		guard refreshedChanges != changes else { return }
+
+		changes = refreshedChanges
+		preserveChangeSelection()
+	}
+
 	private func preserveSelections() {
-		if changes.contains(where: { $0.id == selectedChangeID }) == false {
-			selectedChangeID = changes.first?.id
-		}
+		preserveChangeSelection()
 		if commitGraphItems.contains(where: { $0.id == selectedCommitID }) == false {
 			selectedCommitID = commitGraphItems.first?.id
 		}
@@ -279,7 +432,15 @@ final class WorkspaceViewModel: ObservableObject {
 		if selectedTreeNodeID != nil {
 			didSelectTreeNode(requestTreeNode(id: selectedTreeNodeID, in: fileTree))
 		}
-		didSelectChange(selectedChangeID)
+	}
+
+	private func preserveChangeSelection() {
+		let availableChangeIDs = Set(changes.map(\.id))
+		selectedChangeIDs.formIntersection(availableChangeIDs)
+		if selectedChangeIDs.isEmpty, let firstChangeID = changes.first?.id {
+			selectedChangeIDs = [firstChangeID]
+		}
+		didChangeSelectedChanges()
 	}
 
 	private func requestTreeNode(

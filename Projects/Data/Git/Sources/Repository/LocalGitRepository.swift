@@ -31,7 +31,13 @@ public struct LocalGitRepository: GitRepository {
 
 	public func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] {
 		let result = try await runner.requestRun(
-			arguments: ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+			arguments: [
+				"--no-optional-locks",
+				"status",
+				"--porcelain=v1",
+				"-z",
+				"--untracked-files=all",
+			],
 			at: repositoryURL
 		)
 		return GitOutputParser.parseWorkingTreeChanges(result.standardOutput)
@@ -141,6 +147,14 @@ public struct LocalGitRepository: GitRepository {
 	public func requestDiff(for change: WorkingTreeChange, at repositoryURL: URL) async throws
 		-> String
 	{
+		if change.workingTreeState == .untracked {
+			return try await runner.requestRun(
+				arguments: ["diff", "--no-index", "--no-color", "--", "/dev/null", change.path],
+				at: repositoryURL,
+				acceptedTerminationStatuses: [0, 1]
+			).standardOutput
+		}
+
 		if change.isStaged && !change.hasWorkingTreeChange {
 			return try await runner.requestRun(
 				arguments: ["diff", "--cached", "--no-color", "--", change.path],
@@ -161,6 +175,76 @@ public struct LocalGitRepository: GitRepository {
 	public func requestUnstage(path: String, at repositoryURL: URL) async throws {
 		_ = try await runner.requestRun(
 			arguments: ["restore", "--staged", "--", path], at: repositoryURL)
+	}
+
+	public func requestApplyDiffLine(
+		_ selection: GitDiffLineSelection,
+		action: GitDiffLineAction,
+		for change: WorkingTreeChange,
+		at repositoryURL: URL
+	) async throws {
+		let diffArguments: [String]
+		let applyArguments: [String]
+		switch action {
+		case .stage:
+			diffArguments = ["diff", "--no-color", "--unified=0", "--", change.path]
+			applyArguments = ["apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "-"]
+		case .unstage:
+			diffArguments = ["diff", "--cached", "--no-color", "--unified=0", "--", change.path]
+			applyArguments = [
+				"apply",
+				"--cached",
+				"--reverse",
+				"--unidiff-zero",
+				"--whitespace=nowarn",
+				"-",
+			]
+		}
+
+		let diff = try await runner.requestRun(
+			arguments: diffArguments,
+			at: repositoryURL
+		).standardOutput
+		let patch = try GitLinePatchBuilder.makePatch(from: diff, selection: selection)
+		_ = try await runner.requestRun(
+			arguments: applyArguments,
+			at: repositoryURL,
+			standardInput: patch
+		)
+	}
+
+	public func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws {
+		let affectedPaths = [change.path, change.previousPath].compactMap { $0 }
+
+		if change.isStaged {
+			_ = try await runner.requestRun(
+				arguments: ["restore", "--staged", "--"] + affectedPaths,
+				at: repositoryURL
+			)
+		}
+
+		let trackedPathsResult = try await runner.requestRun(
+			arguments: ["ls-files", "-z", "--"] + affectedPaths,
+			at: repositoryURL
+		)
+		let trackedPaths = trackedPathsResult.standardOutput
+			.split(separator: "\0")
+			.map(String.init)
+		let untrackedPaths = affectedPaths.filter { !trackedPaths.contains($0) }
+
+		if !trackedPaths.isEmpty {
+			_ = try await runner.requestRun(
+				arguments: ["restore", "--worktree", "--"] + trackedPaths,
+				at: repositoryURL
+			)
+		}
+
+		if !untrackedPaths.isEmpty {
+			_ = try await runner.requestRun(
+				arguments: ["clean", "-f", "--"] + untrackedPaths,
+				at: repositoryURL
+			)
+		}
 	}
 
 	public func requestCommit(message: String, at repositoryURL: URL) async throws {

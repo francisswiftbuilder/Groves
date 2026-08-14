@@ -41,6 +41,21 @@ public struct WorkingTreeChange: Identifiable, Hashable, Sendable {
 	}
 }
 
+public enum GitDiffLineAction: Equatable, Sendable {
+	case stage
+	case unstage
+}
+
+public struct GitDiffLineSelection: Hashable, Sendable {
+	public let oldLineNumber: Int?
+	public let newLineNumber: Int?
+
+	public init(oldLineNumber: Int?, newLineNumber: Int?) {
+		self.oldLineNumber = oldLineNumber
+		self.newLineNumber = newLineNumber
+	}
+}
+
 public struct GitCommit: Identifiable, Hashable, Sendable {
 	public let hash: String
 	public let shortHash: String

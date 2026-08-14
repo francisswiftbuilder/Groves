@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct TreesApp: App {
 	var body: some Scene {
-		WindowGroup {
+		Window("Trees", id: "main") {
 			AppDIContainer.shared.makeRepositoryRootView()
 				.frame(minWidth: 760, minHeight: 520)
 		}
@@ -13,6 +13,7 @@ struct TreesApp: App {
 		.windowStyle(.titleBar)
 		.windowToolbarStyle(.unified)
 		.commands {
+			CommandGroup(replacing: .newItem) {}
 			SidebarCommands()
 			ToolbarCommands()
 			FindCommands()

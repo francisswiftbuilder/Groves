@@ -7,12 +7,18 @@ struct GitCommandResult: Sendable {
 }
 
 actor GitProcessRunner {
-	func requestRun(arguments: [String], at repositoryURL: URL) async throws -> GitCommandResult {
+	func requestRun(
+		arguments: [String],
+		at repositoryURL: URL,
+		standardInput: String? = nil,
+		acceptedTerminationStatuses: Set<Int32> = [0]
+	) async throws -> GitCommandResult {
 		let fileManager = FileManager.default
 		let temporaryDirectory = fileManager.temporaryDirectory
 			.appendingPathComponent("Trees-\(UUID().uuidString)", isDirectory: true)
 		let standardOutputURL = temporaryDirectory.appendingPathComponent("stdout")
 		let standardErrorURL = temporaryDirectory.appendingPathComponent("stderr")
+		let standardInputURL = temporaryDirectory.appendingPathComponent("stdin")
 
 		try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
 		fileManager.createFile(atPath: standardOutputURL.path, contents: nil)
@@ -24,14 +30,23 @@ actor GitProcessRunner {
 
 		let standardOutputHandle = try FileHandle(forWritingTo: standardOutputURL)
 		let standardErrorHandle = try FileHandle(forWritingTo: standardErrorURL)
+		let standardInputHandle: FileHandle?
+		if let standardInput {
+			try Data(standardInput.utf8).write(to: standardInputURL)
+			standardInputHandle = try FileHandle(forReadingFrom: standardInputURL)
+		} else {
+			standardInputHandle = nil
+		}
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
 		process.arguments = ["git", "-C", repositoryURL.path] + arguments
 		process.standardOutput = standardOutputHandle
 		process.standardError = standardErrorHandle
+		process.standardInput = standardInputHandle
 
 		let terminationStatus = try await requestTerminationStatus(
 			for: process,
+			standardInputHandle: standardInputHandle,
 			standardOutputHandle: standardOutputHandle,
 			standardErrorHandle: standardErrorHandle
 		)
@@ -40,7 +55,7 @@ actor GitProcessRunner {
 		let standardOutput = String(decoding: standardOutputData, as: UTF8.self)
 		let standardError = String(decoding: standardErrorData, as: UTF8.self)
 
-		guard terminationStatus == 0 else {
+		guard acceptedTerminationStatuses.contains(terminationStatus) else {
 			if Task.isCancelled {
 				throw CancellationError()
 			}
@@ -54,6 +69,7 @@ actor GitProcessRunner {
 
 	private func requestTerminationStatus(
 		for process: Process,
+		standardInputHandle: FileHandle?,
 		standardOutputHandle: FileHandle,
 		standardErrorHandle: FileHandle
 	) async throws -> Int32 {
@@ -65,9 +81,11 @@ actor GitProcessRunner {
 
 				do {
 					try process.run()
+					standardInputHandle?.closeFile()
 					standardOutputHandle.closeFile()
 					standardErrorHandle.closeFile()
 				} catch {
+					standardInputHandle?.closeFile()
 					standardOutputHandle.closeFile()
 					standardErrorHandle.closeFile()
 					continuation.resume(throwing: error)

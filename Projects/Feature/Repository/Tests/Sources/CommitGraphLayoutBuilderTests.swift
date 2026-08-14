@@ -39,6 +39,51 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 		XCTAssertEqual(items[1].ancestorHasFollowingSibling, [true])
 	}
 
+	func testDiffParserPairsReplacementLinesWithSourceCoordinates() throws {
+		let diff = """
+			diff --git a/tracked.txt b/tracked.txt
+			--- a/tracked.txt
+			+++ b/tracked.txt
+			@@ -1,4 +1,4 @@
+			 one
+			-two
+			+TWO
+			 three
+			"""
+
+		let lines = DiffParser.parse(diff)
+		let deletion = try XCTUnwrap(lines.first { $0.kind == .deletion })
+		let addition = try XCTUnwrap(lines.first { $0.kind == .addition })
+
+		XCTAssertEqual(deletion.oldLineNumber, 2)
+		XCTAssertNil(deletion.newLineNumber)
+		XCTAssertNil(addition.oldLineNumber)
+		XCTAssertEqual(addition.newLineNumber, 2)
+		XCTAssertEqual(
+			deletion.selection,
+			GitDiffLineSelection(oldLineNumber: 2, newLineNumber: 2)
+		)
+		XCTAssertEqual(addition.selection, deletion.selection)
+		XCTAssertTrue(deletion.showsAction)
+		XCTAssertFalse(addition.showsAction)
+	}
+
+	func testDiffParserTreatsTriplePrefixInsideHunkAsChangedContent() {
+		let diff = """
+			diff --git a/tracked.txt b/tracked.txt
+			--- a/tracked.txt
+			+++ b/tracked.txt
+			@@ -1 +1 @@
+			---old
+			+++new
+			"""
+
+		let lines = DiffParser.parse(diff)
+
+		XCTAssertEqual(lines.filter { $0.kind == .deletion }.count, 1)
+		XCTAssertEqual(lines.filter { $0.kind == .addition }.count, 1)
+	}
+
 	private func makeCommit(hash: String, parents: [String]) -> GitCommit {
 		GitCommit(
 			hash: hash,

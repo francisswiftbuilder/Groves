@@ -18,21 +18,10 @@ struct RepositorySidebar: View {
 					DisclosureGroup(
 						isExpanded: expansionBinding(for: repository.id)
 					) {
-						ForEach(WorkspaceSection.allCases) { section in
-							SidebarSectionRow(
-								section: section,
-								badgeCount: badgeCount(
-									for: section,
-									in: repository.workspace
-								)
-							)
-							.tag(
-								RepositorySidebarSelection(
-									repositoryID: repository.id,
-									section: section
-								)
-							)
-						}
+						RepositorySectionRows(
+							workspace: repository.workspace,
+							repositoryID: repository.id
+						)
 					} label: {
 						Button {
 							selectRepository(repository.id)
@@ -149,22 +138,24 @@ struct RepositorySidebar: View {
 			_ = expandedRepositoryIDs.insert(repositoryID)
 		}
 	}
+}
 
-	private func badgeCount(
-		for section: WorkspaceSection,
-		in workspace: WorkspaceViewModel
-	) -> Int {
-		switch section {
-		case .changes:
-			return workspace.changes.count
-		case .history:
-			return workspace.commitGraphItems.count
-		case .branches:
-			return workspace.branches.count
-		case .tags:
-			return workspace.tags.count
-		case .tree:
-			return 0
+private struct RepositorySectionRows: View {
+	@ObservedObject var workspace: WorkspaceViewModel
+	let repositoryID: RepositoryTab.ID
+
+	var body: some View {
+		ForEach(WorkspaceSection.allCases) { section in
+			SidebarSectionRow(
+				section: section,
+				badgeCount: section == .changes ? workspace.changes.count : nil
+			)
+			.tag(
+				RepositorySidebarSelection(
+					repositoryID: repositoryID,
+					section: section
+				)
+			)
 		}
 	}
 }
@@ -245,7 +236,7 @@ private struct RepositoryRow: View {
 
 private struct SidebarSectionRow: View {
 	let section: WorkspaceSection
-	let badgeCount: Int
+	let badgeCount: Int?
 
 	var body: some View {
 		HStack(spacing: 8) {
@@ -260,7 +251,7 @@ private struct SidebarSectionRow: View {
 
 			Spacer(minLength: 8)
 
-			if badgeCount > 0 {
+			if let badgeCount, badgeCount > 0 {
 				Text(badgeCount, format: .number)
 					.font(.caption)
 					.foregroundStyle(.secondary)
@@ -271,6 +262,6 @@ private struct SidebarSectionRow: View {
 		.contentShape(.rect)
 		.accessibilityElement(children: .combine)
 		.accessibilityLabel(section.title)
-		.accessibilityValue(badgeCount > 0 ? "\(badgeCount)" : "")
+		.accessibilityValue(badgeCount.flatMap { $0 > 0 ? String($0) : nil } ?? "")
 	}
 }

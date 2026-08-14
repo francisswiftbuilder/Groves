@@ -11,6 +11,13 @@ public protocol GitRepository: Sendable {
 	func requestDiff(for change: WorkingTreeChange, at repositoryURL: URL) async throws -> String
 	func requestStage(path: String, at repositoryURL: URL) async throws
 	func requestUnstage(path: String, at repositoryURL: URL) async throws
+	func requestApplyDiffLine(
+		_ selection: GitDiffLineSelection,
+		action: GitDiffLineAction,
+		for change: WorkingTreeChange,
+		at repositoryURL: URL
+	) async throws
+	func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws
 	func requestCommit(message: String, at repositoryURL: URL) async throws
 	func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateBranch(named name: String, at repositoryURL: URL) async throws

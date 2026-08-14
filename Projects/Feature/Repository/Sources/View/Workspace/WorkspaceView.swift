@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct WorkspaceView: View {
+	@Environment(\.scenePhase) private var scenePhase
 	@ObservedObject var viewModel: WorkspaceViewModel
 	let repositories: [RepositoryTab]
 	let selectedRepositoryID: RepositoryTab.ID?
@@ -41,7 +42,23 @@ struct WorkspaceView: View {
 				Text(viewModel.alertMessage ?? "")
 			}
 		)
+		.task(id: workingTreeMonitorID) {
+			guard scenePhase == .active else { return }
+			await viewModel.monitorWorkingTreeChanges()
+		}
 	}
+
+	private var workingTreeMonitorID: WorkingTreeMonitorID {
+		WorkingTreeMonitorID(
+			repositoryURL: viewModel.repositoryURL,
+			scenePhase: scenePhase
+		)
+	}
+}
+
+private struct WorkingTreeMonitorID: Equatable {
+	let repositoryURL: URL?
+	let scenePhase: ScenePhase
 }
 
 private struct WorkspaceDetail: View {

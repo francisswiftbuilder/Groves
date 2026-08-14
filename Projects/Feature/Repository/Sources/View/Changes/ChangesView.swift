@@ -3,14 +3,20 @@ import SwiftUI
 
 struct ChangesView: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
+	@State private var pendingDiscardChanges: [WorkingTreeChange]?
 
 	var body: some View {
 		GeometryReader { geometry in
 			HSplitView {
 				changeList
 					.frame(width: changeListWidth(for: geometry.size.width))
-				DiffView(diff: viewModel.diff)
-					.frame(minWidth: 320, maxWidth: .infinity)
+				DiffView(
+					diff: viewModel.diff,
+					lineAction: viewModel.selectedDiffLineAction,
+					isLoading: viewModel.isApplyingDiffLine,
+					onApplyLine: viewModel.didRequestApplyDiffLine
+				)
+				.frame(minWidth: 320, maxWidth: .infinity)
 			}
 		}
 		.navigationTitle("Changes")
@@ -18,6 +24,41 @@ struct ChangesView: View {
 		.safeAreaInset(edge: .bottom) {
 			CommitBar(viewModel: viewModel)
 		}
+		.confirmationDialog(
+			discardConfirmationTitle,
+			isPresented: discardConfirmationBinding,
+			presenting: pendingDiscardChanges
+		) { changes in
+			Button("Discard Changes", role: .destructive) {
+				pendingDiscardChanges = nil
+				viewModel.didRequestDiscard(changes)
+			}
+			Button("Cancel", role: .cancel) {
+				pendingDiscardChanges = nil
+			}
+		} message: { _ in
+			Text("This action cannot be undone.")
+		}
+	}
+
+	private var discardConfirmationTitle: String {
+		guard let pendingDiscardChanges else { return "Discard Changes?" }
+		guard pendingDiscardChanges.count == 1, let change = pendingDiscardChanges.first else {
+			return "Discard Changes to \(pendingDiscardChanges.count) Files?"
+		}
+		let fileName = URL(fileURLWithPath: change.path).lastPathComponent
+		return "Discard Changes to “\(fileName)”?"
+	}
+
+	private var discardConfirmationBinding: Binding<Bool> {
+		Binding(
+			get: { pendingDiscardChanges != nil },
+			set: { isPresented in
+				if !isPresented {
+					pendingDiscardChanges = nil
+				}
+			}
+		)
 	}
 
 	private func changeListWidth(for availableWidth: CGFloat) -> CGFloat {
@@ -33,38 +74,81 @@ struct ChangesView: View {
 					systemImage: "checkmark.circle"
 				)
 			} else {
-				List(selection: $viewModel.selectedChangeID) {
+				List(selection: $viewModel.selectedChangeIDs) {
 					ForEach(viewModel.changes) { change in
 						ChangeRow(change: change)
 							.tag(change.id)
 							.listRowSeparator(.hidden)
+							.contextMenu {
+								changeContextMenu(for: change)
+							}
 					}
 				}
 				.listStyle(.inset)
 			}
 		}
-		.onChange(of: viewModel.selectedChangeID) { _, selectedChangeID in
-			viewModel.didSelectChange(selectedChangeID)
+		.onChange(of: viewModel.selectedChangeIDs) {
+			viewModel.didChangeSelectedChanges()
 		}
 		.toolbar {
 			ToolbarItemGroup(placement: .primaryAction) {
 				Button {
-					viewModel.didRequestStageSelectedChange()
+					viewModel.didRequestStage(viewModel.selectedChanges)
 				} label: {
 					Label("Stage", systemImage: "plus")
 				}
 				.disabled(
-					viewModel.selectedChange?.hasWorkingTreeChange != true || viewModel.isLoading
+					!viewModel.selectedChanges.contains(where: \.hasWorkingTreeChange)
+						|| viewModel.isLoading
 				)
-				
+
 				Button {
-					viewModel.didRequestUnstageSelectedChange()
+					viewModel.didRequestUnstage(viewModel.selectedChanges)
 				} label: {
 					Label("Unstage", systemImage: "minus")
 				}
-				.disabled(viewModel.selectedChange?.isStaged != true || viewModel.isLoading)
+				.disabled(
+					!viewModel.selectedChanges.contains(where: \.isStaged) || viewModel.isLoading
+				)
 			}
 		}
+	}
+
+	@ViewBuilder
+	private func changeContextMenu(for change: WorkingTreeChange) -> some View {
+		let changes = contextChanges(for: change)
+		let stageableChanges = changes.filter(\.hasWorkingTreeChange)
+		let stagedChanges = changes.filter(\.isStaged)
+
+		if !stageableChanges.isEmpty {
+			Button("Stage Changes", systemImage: "plus.circle") {
+				viewModel.didRequestStage(stageableChanges)
+			}
+			.disabled(viewModel.isLoading)
+		}
+
+		if !stagedChanges.isEmpty {
+			Button("Unstage Changes", systemImage: "minus.circle") {
+				viewModel.didRequestUnstage(stagedChanges)
+			}
+			.disabled(viewModel.isLoading)
+		}
+
+		Divider()
+
+		Button(
+			"Discard Changes…",
+			systemImage: "trash",
+			role: .destructive
+		) {
+			pendingDiscardChanges = changes
+		}
+		.disabled(viewModel.isLoading)
+	}
+
+	private func contextChanges(for change: WorkingTreeChange) -> [WorkingTreeChange] {
+		guard viewModel.selectedChangeIDs.contains(change.id) else { return [change] }
+		return viewModel.selectedChanges
 	}
 }
 
