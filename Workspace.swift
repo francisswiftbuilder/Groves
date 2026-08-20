@@ -1,7 +1,8 @@
 import ProjectDescription
+import ProjectDescriptionHelpers
 
 let workspace = Workspace(
-	name: "Trees",
+	name: environment.name,
 	projects: [
 		"Projects/**"
 	],

@@ -91,6 +91,21 @@ public struct LocalGitRepository: GitRepository {
 		}
 	}
 
+	public func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String
+	{
+		try await runner.requestRun(
+			arguments: [
+				"show",
+				"--format=",
+				"--no-color",
+				"--find-renames",
+				"--unified=3",
+				commit.hash,
+			],
+			at: repositoryURL
+		).standardOutput
+	}
+
 	public func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] {
 		let format = "%(refname:short)\t%(objectname:short)\t%(HEAD)\t%(upstream:short)"
 		let result = try await runner.requestRun(

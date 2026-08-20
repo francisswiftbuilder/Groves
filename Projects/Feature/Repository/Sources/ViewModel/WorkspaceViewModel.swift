@@ -24,6 +24,7 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var tags: [GitTag] = []
 	@Published private(set) var fileTree: [RepositoryTreeNode] = []
 	@Published private(set) var diff = ""
+	@Published private(set) var selectedCommitDiff = ""
 	@Published private(set) var filePreview: RepositoryFilePreview = .none
 	@Published private(set) var isLoading = false
 	@Published private(set) var isApplyingDiffLine = false
@@ -32,8 +33,10 @@ final class WorkspaceViewModel: ObservableObject {
 	private let repository: any GitRepository
 	private var refreshTask: Task<Void, Never>?
 	private var diffTask: Task<Void, Never>?
+	private var commitDiffTask: Task<Void, Never>?
 	private var filePreviewTask: Task<Void, Never>?
 	private var displayedDiffSelection: WorkspaceChangeSelection?
+	private var displayedCommitDiffID: String?
 
 	init(repository: any GitRepository, repositoryURL: URL? = nil) {
 		self.repository = repository
@@ -43,6 +46,7 @@ final class WorkspaceViewModel: ObservableObject {
 	deinit {
 		refreshTask?.cancel()
 		diffTask?.cancel()
+		commitDiffTask?.cancel()
 		filePreviewTask?.cancel()
 	}
 
@@ -100,6 +104,10 @@ final class WorkspaceViewModel: ObservableObject {
 		branches.first { $0.id == selectedBranchID }
 	}
 
+	var selectedCommit: GitCommit? {
+		commitGraphItems.first { $0.id == selectedCommitID }?.commit
+	}
+
 	var selectedTag: GitTag? {
 		tags.first { $0.id == selectedTagID }
 	}
@@ -128,8 +136,11 @@ final class WorkspaceViewModel: ObservableObject {
 				let root = try await repository.requestRepositoryRoot(at: url)
 				if repositoryURL != root {
 					diffTask?.cancel()
+					commitDiffTask?.cancel()
 					selectedChangeIDs = []
+					selectedCommitID = nil
 					clearDisplayedDiff()
+					clearDisplayedCommitDiff()
 				}
 				repositoryURL = root
 				try await requestAllContent(at: root)
@@ -236,6 +247,37 @@ final class WorkspaceViewModel: ObservableObject {
 				} catch {
 					alertMessage = error.localizedDescription
 				}
+			}
+		}
+	}
+
+	func didChangeSelectedCommit() {
+		commitDiffTask?.cancel()
+
+		guard let repositoryURL, let commit = selectedCommit else {
+			clearDisplayedCommitDiff()
+			return
+		}
+
+		if displayedCommitDiffID != commit.id {
+			clearDisplayedCommitDiff()
+		}
+
+		commitDiffTask = Task {
+			do {
+				let requestedDiff = try await repository.requestCommitDiff(
+					for: commit,
+					at: repositoryURL
+				)
+				guard selectedCommitID == commit.id else { return }
+				if selectedCommitDiff != requestedDiff {
+					selectedCommitDiff = requestedDiff
+				}
+				displayedCommitDiffID = commit.id
+			} catch is CancellationError {
+				return
+			} catch {
+				alertMessage = error.localizedDescription
 			}
 		}
 	}
@@ -551,6 +593,7 @@ final class WorkspaceViewModel: ObservableObject {
 		if commitGraphItems.contains(where: { $0.id == selectedCommitID }) == false {
 			selectedCommitID = commitGraphItems.first?.id
 		}
+		didChangeSelectedCommit()
 		if branches.contains(where: { $0.id == selectedBranchID }) == false {
 			selectedBranchID = branches.first(where: \.isCurrent)?.id ?? branches.first?.id
 		}
@@ -599,6 +642,13 @@ final class WorkspaceViewModel: ObservableObject {
 			diff = ""
 		}
 		displayedDiffSelection = nil
+	}
+
+	private func clearDisplayedCommitDiff() {
+		if !selectedCommitDiff.isEmpty {
+			selectedCommitDiff = ""
+		}
+		displayedCommitDiffID = nil
 	}
 
 	private var currentCommit: GitCommit? {

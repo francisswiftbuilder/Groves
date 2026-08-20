@@ -123,6 +123,7 @@ private struct GitRepositoryStub: GitRepository {
 	func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] { [] }
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] { [] }
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { [] }
+	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String { "" }
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] { [] }
 	func requestTags(at repositoryURL: URL) async throws -> [GitTag] { [] }
 	func requestFileTree(at repositoryURL: URL) async throws -> [RepositoryTreeNode] { [] }

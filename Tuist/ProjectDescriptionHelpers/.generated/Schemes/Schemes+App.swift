@@ -1,3 +1,5 @@
+// AUTO-GENERATED. DO NOT EDIT.
+// Scheme for the App target
 import ProjectDescription
 
 extension Scheme {

@@ -119,6 +119,8 @@ private func buildExtensionLayerResult(groups: [(name: String, modules: [String]
 
 private func emitHeader() -> String {
 	[
+		"// AUTO-GENERATED. DO NOT EDIT.",
+		"// Source of truth: directory structure under Projects/<Layer>/<Module>/Sources",
 		"import Foundation",
 		"import ProjectDescription",
 		"import TargetPlugin",
@@ -316,17 +318,17 @@ private func run() {
 	do {
 		try normalized.write(toFile: outputFile, atomically: true, encoding: .utf8)
 		fputs("✅ Generated `\(outputFile)`\n", stderr)
-		scanned.forEach {
-			if $0.layer == .appExtension {
-				if !$0.groups.isEmpty {
+		for module in scanned {
+			if module.layer == .appExtension {
+				if !module.groups.isEmpty {
 					fputs(
-						"  - AppExtension groups: \($0.groups.map { "\($0.name): \($0.cases.count)" }.joined(separator: ", "))\n",
+						"  - AppExtension groups: \(module.groups.map { "\($0.name): \($0.cases.count)" }.joined(separator: ", "))\n",
 						stderr)
 				} else {
-					fputs("  - AppExtension: \($0.cases.count) modules\n", stderr)
+					fputs("  - AppExtension: \(module.cases.count) modules\n", stderr)
 				}
 			} else {
-				fputs("  - \($0.layer.rawValue): \($0.cases.count) modules\n", stderr)
+				fputs("  - \(module.layer.rawValue): \(module.cases.count) modules\n", stderr)
 			}
 		}
 		if hasAppSources {

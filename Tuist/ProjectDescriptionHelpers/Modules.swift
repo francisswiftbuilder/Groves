@@ -1,3 +1,5 @@
+// AUTO-GENERATED. DO NOT EDIT.
+// Source of truth: directory structure under Projects/<Layer>/<Module>/Sources
 import Foundation
 import ProjectDescription
 import TargetPlugin
