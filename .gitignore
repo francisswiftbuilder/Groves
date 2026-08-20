@@ -43,3 +43,6 @@ fastlane/test_output/
 # Editor / OS noise
 *.swp
 *.lock
+
+# Local signing configuration
+.env.local

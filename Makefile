@@ -1,3 +1,8 @@
+-include .env.local
+
+export TUIST_CODE_SIGN_IDENTITY
+export TUIST_DEVELOPMENT_TEAM
+
 generate:
 	tuist install
 	make sync

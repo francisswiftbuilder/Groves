@@ -1,6 +1,23 @@
 import ConfigurationPlugin
 import ProjectDescription
 
+private var appTargetSettings: SettingsDictionary {
+	var settings: SettingsDictionary = [
+		"PRODUCT_NAME": "Trees"
+	]
+	let codeSignIdentity = Environment.codeSignIdentity.getString(default: "")
+	let developmentTeam = Environment.developmentTeam.getString(default: "")
+
+	guard codeSignIdentity.isEmpty == false, developmentTeam.isEmpty == false else {
+		return settings
+	}
+
+	settings["CODE_SIGN_IDENTITY"] = .string(codeSignIdentity)
+	settings["CODE_SIGN_STYLE"] = "Manual"
+	settings["DEVELOPMENT_TEAM"] = .string(developmentTeam)
+	return settings
+}
+
 public let baseSettings: SettingsDictionary = [
 	"CODE_SIGN_STYLE": "Automatic",
 	"CLANG_ENABLE_MODULES": "YES",
@@ -14,10 +31,6 @@ public let baseSettings: SettingsDictionary = [
 
 extension Settings: TargetSettings {
 	public static var appSettings: Settings? {
-		.settings(
-			base: [
-				"PRODUCT_NAME": "Trees"
-			]
-		)
+		.settings(base: appTargetSettings)
 	}
 }
