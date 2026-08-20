@@ -34,8 +34,8 @@ public struct TargetPermissionConfiguration: Sendable {
 
 	public var plist: [String: Plist.Value] {
 		var entries: [String: Plist.Value] = [:]
-		(required + optional).forEach { permission in
-			permission.usageDescriptions.forEach { key, value in
+		for permission in required + optional {
+			for (key, value) in permission.usageDescriptions {
 				entries[key] = .string(value)
 			}
 		}

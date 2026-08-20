@@ -1,21 +1,31 @@
 import Foundation
 
 enum LayerType: String, CaseIterable {
-	case Feature, Domain, Data, Core, Shared
+	case feature = "Feature"
+	case domain = "Domain"
+	case data = "Data"
+	case core = "Core"
+	case shared = "Shared"
 
 	init?(number: Int) {
 		switch number {
-		case 1: self = .Feature
-		case 2: self = .Domain
-		case 3: self = .Data
-		case 4: self = .Core
-		case 5: self = .Shared
+		case 1: self = .feature
+		case 2: self = .domain
+		case 3: self = .data
+		case 4: self = .core
+		case 5: self = .shared
 		default: return nil
 		}
 	}
 }
 
-enum MicroTargetType: String { case Interface, Sources, Testing, Tests, Example }
+enum MicroTargetType: String {
+	case interface = "Interface"
+	case sources = "Sources"
+	case testing = "Testing"
+	case tests = "Tests"
+	case example = "Example"
+}
 
 let fileManager = FileManager.default
 let currentPath = fileManager.currentDirectoryPath + "/"
@@ -58,47 +68,78 @@ func makeProjectFile(layer: LayerType, module: String, hasTests: Bool, hasExampl
 			".\(targetPrefix)\(module)Testing",
 		])
 	}
-	if layer == .Feature && hasExample {
+	if layer == .feature && hasExample {
 		targets.append(".\(targetPrefix)\(module)Example")
 	}
 
 	let targetsBlock =
 		targets
-		.map { "    \($0)," }
+		.map { "\t\t\($0)," }
 		.joined(separator: "\n")
 
-	let schemesBlock: String = {
-		guard layer == .Feature && hasExample else { return "  schemes: []" }
-		return """
-			  schemes: [
-			    .example\(module)Scheme,
-			  ]
+	var schemeDecls: [String] = []
+	if layer == .feature && hasExample {
+		schemeDecls.append(".example\(module)Scheme")
+	}
+	if hasTests {
+		let testsTarget = ".\(targetPrefix)\(module)Tests"
+		schemeDecls.append(
 			"""
+			.scheme(
+				name: "\(projectName)",
+				shared: true,
+				buildAction: .buildAction(targets: [.\(targetPrefix)\(module)]),
+				testAction: .targets(
+					[.testableTarget(target: \(testsTarget))],
+					configuration: .debug,
+					options: .options(coverage: true)
+				)
+			)
+			"""
+		)
+	}
+
+	let schemesBlock: String = {
+		guard !schemeDecls.isEmpty else { return "\tschemes: []" }
+		let suffix = schemeDecls.count > 1 ? "," : ""
+		let body = schemeDecls.enumerated()
+			.map { index, decl -> String in
+				let indented =
+					decl
+					.split(separator: "\n", omittingEmptySubsequences: false)
+					.map { "\t\t\($0)" }
+					.joined(separator: "\n")
+				return indented + (index == schemeDecls.count - 1 ? suffix : ",")
+			}
+			.joined(separator: "\n")
+		return "\tschemes: [\n\(body)\n\t]"
 	}()
 
 	let fileContents = """
+		import ConfigurationPlugin
 		import ProjectDescription
 		import ProjectDescriptionHelpers
 
 		let project = Project(
-		  name: \"\(projectName)\",
-		  options: .options(
-		    automaticSchemesOptions: .disabled,
-		    textSettings: .textSettings(
-		      usesTabs: true,
-		      indentWidth: 2,
-		      tabWidth: 2
-		    )
-		  ),
-		  settings: .settings(
-		    base: baseSettings,
-		    configurations: configurations
-		  ),
-		  targets: [
+			name: \"\(projectName)\",
+			options: .options(
+				automaticSchemesOptions: .disabled,
+				textSettings: .textSettings(
+					usesTabs: true,
+					indentWidth: 2,
+					tabWidth: 2
+				)
+			),
+			settings: .settings(
+				base: baseSettings,
+				configurations: ConfigurationType.configurations()
+			),
+			targets: [
 		\(targetsBlock)
-		  ],
+			],
 		\(schemesBlock)
 		)
+
 		"""
 
 	do {
@@ -125,17 +166,17 @@ func registerModule() {
 		exit(1)
 	}
 	let hasTests = ask("Has Tests? (y/n, default n)").lowercased() == "y"
-	let hasExample = (layer == .Feature) && ask("Has Example? (y/n, default n)").lowercased() == "y"
+	let hasExample = (layer == .feature) && ask("Has Example? (y/n, default n)").lowercased() == "y"
 
 	makeProjectDirectory(layer: layer, module: module)
-	makeScaffold(target: .Interface, layer: layer, module: module)
-	makeScaffold(target: .Sources, layer: layer, module: module)
+	makeScaffold(target: .interface, layer: layer, module: module)
+	makeScaffold(target: .sources, layer: layer, module: module)
 	if hasTests {
-		makeScaffold(target: .Testing, layer: layer, module: module)
-		makeScaffold(target: .Tests, layer: layer, module: module)
+		makeScaffold(target: .testing, layer: layer, module: module)
+		makeScaffold(target: .tests, layer: layer, module: module)
 	}
 	if hasExample {
-		makeScaffold(target: .Example, layer: layer, module: module)
+		makeScaffold(target: .example, layer: layer, module: module)
 	}
 
 	makeProjectFile(layer: layer, module: module, hasTests: hasTests, hasExample: hasExample)

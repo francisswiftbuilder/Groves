@@ -26,9 +26,9 @@ extension Target {
 		}
 		switch infoPlist {
 		case .dictionary(let new):
-			new.forEach { merged[$0.key] = $0.value }
+			for entry in new { merged[entry.key] = entry.value }
 		case .extendingDefault(let new):
-			new.forEach { merged[$0.key] = $0.value }
+			for entry in new { merged[entry.key] = entry.value }
 		default:
 			break
 		}

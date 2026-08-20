@@ -31,7 +31,7 @@ extension InfoPlist {
 		default:
 			merged = [:]
 		}
-		entries.forEach { merged[$0.key] = $0.value }
+		for entry in entries { merged[entry.key] = entry.value }
 		self = .extendingDefault(with: merged)
 	}
 }

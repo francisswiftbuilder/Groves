@@ -10,9 +10,9 @@ private let template = Template(
 		nameAttribute,
 	],
 	items: [
-		.file(
+		.string(
 			path: "Projects/\(layerAttribute)/\(nameAttribute)/Sources/Sources.swift",
-			templatePath: "Sources.stencil"
+			contents: "import Foundation\n"
 		)
 	]
 )
