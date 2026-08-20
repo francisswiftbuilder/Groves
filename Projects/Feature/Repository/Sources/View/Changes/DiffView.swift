@@ -3,11 +3,71 @@ import SwiftUI
 
 struct DiffView: View {
 	let diff: String
+	let fileName: String?
+	let filePath: String?
+	let fileState: GitFileState?
+	let fileActionTitle: String?
 	let lineAction: GitDiffLineAction?
 	let isLoading: Bool
+	let onApplyFileAction: () -> Void
 	let onApplyLine: (GitDiffLineSelection, GitDiffLineAction) -> Void
 
 	var body: some View {
+		VStack(spacing: 0) {
+			diffHeader
+			Divider()
+			diffContent
+		}
+	}
+
+	@ViewBuilder
+	private var diffHeader: some View {
+		if let fileName {
+			HStack(spacing: 10) {
+				if let fileState {
+					GitStatusBadge(state: fileState)
+				}
+
+				VStack(alignment: .leading, spacing: 2) {
+					Text(fileName)
+						.font(.subheadline.weight(.semibold))
+						.lineLimit(1)
+					if let filePath {
+						Text(filePath)
+							.font(.caption)
+							.foregroundStyle(.secondary)
+							.lineLimit(1)
+					}
+				}
+
+				Spacer(minLength: 12)
+
+				if !diff.isEmpty {
+					DiffStatisticsView(diffLines: diffLines)
+				}
+
+				if let fileActionTitle {
+					Button(fileActionTitle, action: onApplyFileAction)
+						.buttonStyle(.bordered)
+						.controlSize(.small)
+						.disabled(isLoading)
+				}
+			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 10)
+		} else {
+			HStack {
+				Text("Diff")
+					.font(.subheadline.weight(.semibold))
+				Spacer()
+			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 14)
+		}
+	}
+
+	@ViewBuilder
+	private var diffContent: some View {
 		if diff.isEmpty {
 			EmptyStateView(
 				title: "No Diff Selected",
@@ -23,13 +83,22 @@ struct DiffView: View {
 		} else {
 			GeometryReader { geometry in
 				ScrollView([.horizontal, .vertical]) {
-					diffCard(minimumWidth: max(geometry.size.width - 32, 0))
-						.padding(16)
+					VStack(alignment: .leading, spacing: 0) {
+						ForEach(diffLines) { line in
+							DiffLineView(
+								line: line,
+								showsOldLineNumbers: showsOldLineNumbers,
+								showsNewLineNumbers: showsNewLineNumbers,
+								action: lineAction,
+								isLoading: isLoading,
+								onApply: onApplyLine
+							)
+						}
+					}
+					.padding(.vertical, 8)
+					.frame(minWidth: max(geometry.size.width, 0), alignment: .leading)
 				}
 				.defaultScrollAnchor(.topLeading)
-			}
-			.background {
-				Color(nsColor: .windowBackgroundColor)
 			}
 		}
 	}
@@ -46,31 +115,29 @@ struct DiffView: View {
 		diffLines.contains { $0.newLineNumber != nil }
 	}
 
-	private func diffCard(minimumWidth: CGFloat) -> some View {
-		VStack(alignment: .leading, spacing: 0) {
-			ForEach(diffLines) { line in
-				DiffLineView(
-					line: line,
-					showsOldLineNumbers: showsOldLineNumbers,
-					showsNewLineNumbers: showsNewLineNumbers,
-					action: lineAction,
-					isLoading: isLoading,
-					onApply: onApplyLine
-				)
-			}
+}
+
+private struct DiffStatisticsView: View {
+	let diffLines: [DiffLine]
+
+	var body: some View {
+		HStack(spacing: 8) {
+			Text("+\(additionCount)")
+				.foregroundStyle(.green)
+			Text("−\(deletionCount)")
+				.foregroundStyle(.red)
 		}
-		.padding(.vertical, 6)
-		.frame(minWidth: minimumWidth, alignment: .leading)
-		.background {
-			RoundedRectangle(cornerRadius: 12, style: .continuous)
-				.fill(Color(nsColor: .textBackgroundColor))
-		}
-		.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-		.overlay {
-			RoundedRectangle(cornerRadius: 12, style: .continuous)
-				.strokeBorder(.primary.opacity(0.08))
-		}
-		.shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+		.font(.caption.weight(.semibold).monospacedDigit())
+		.accessibilityElement(children: .combine)
+		.accessibilityLabel("\(additionCount) additions, \(deletionCount) deletions")
+	}
+
+	private var additionCount: Int {
+		diffLines.count { $0.kind == .addition }
+	}
+
+	private var deletionCount: Int {
+		diffLines.count { $0.kind == .deletion }
 	}
 }
 
