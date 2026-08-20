@@ -7,31 +7,25 @@ struct ChangesView: View {
 	@State private var filterText = ""
 
 	var body: some View {
-		VStack(spacing: 0) {
-			changesHeader
-			Divider()
-			HSplitView {
-				changeList
-				DiffView(
-					diff: viewModel.diff,
-					fileName: selectedFileName,
-					filePath: selectedFilePath,
-					fileState: selectedFileState,
-					fileActionTitle: selectedFileActionTitle,
-					lineAction: viewModel.selectedDiffLineAction,
-					isLoading: viewModel.isApplyingDiffLine,
-					onApplyFileAction: applySelectedFileAction,
-					onApplyLine: viewModel.didRequestApplyDiffLine
-				)
-				ChangeInspectorView(
-					fileName: selectedFileName,
-					filePath: selectedFilePath,
-					fileState: selectedFileState,
-					isStaged: viewModel.selectedChange?.isStaged == true,
-					selectedCount: viewModel.selectedChangeIDs.count,
-					diff: viewModel.diff
-				)
-			}
+		EqualWidthHSplitView(
+			proportions: [0.24, 0.53, 0.23],
+			minimumWidths: [180, 300, 210]
+		) {
+			changesListPane
+				.frame(maxWidth: .infinity)
+		} center: {
+			changesDiffPane
+				.frame(maxWidth: .infinity)
+		} trailing: {
+			ChangeInspectorView(
+				fileName: selectedFileName,
+				filePath: selectedFilePath,
+				fileState: selectedFileState,
+				isStaged: viewModel.selectedChange?.isStaged == true,
+				selectedCount: viewModel.selectedChangeIDs.count,
+				diff: viewModel.diff
+			)
+			.frame(maxWidth: .infinity)
 		}
 		.navigationTitle(viewModel.repositoryName)
 		.navigationSubtitle(viewModel.currentBranchName)
@@ -83,8 +77,35 @@ struct ChangesView: View {
 			"\(viewModel.displayedWorkingTreeChanges.count) working tree items · \(viewModel.amendChanges.count) in amend"
 	}
 
-	private var changesHeader: some View {
-		HStack(alignment: .center, spacing: 10) {
+	private var changesListPane: some View {
+		VStack(spacing: 0) {
+			changesTitleHeader
+			Divider()
+			changeList
+		}
+	}
+
+	private var changesDiffPane: some View {
+		VStack(spacing: 0) {
+			changesActionsHeader
+			Divider()
+			DiffView(
+				diff: viewModel.diff,
+				changedFileCount: viewModel.changes.count,
+				fileName: selectedFileName,
+				filePath: selectedFilePath,
+				fileState: selectedFileState,
+				fileActionTitle: selectedFileActionTitle,
+				lineAction: viewModel.selectedDiffLineAction,
+				isLoading: viewModel.isApplyingDiffLine,
+				onApplyFileAction: applySelectedFileAction,
+				onApplyLine: viewModel.didRequestApplyDiffLine
+			)
+		}
+	}
+
+	private var changesTitleHeader: some View {
+		HStack(alignment: .center) {
 			VStack(alignment: .leading, spacing: 2) {
 				Text("Changes")
 					.font(.title2.weight(.semibold))
@@ -92,9 +113,15 @@ struct ChangesView: View {
 					.font(.subheadline)
 					.foregroundStyle(.secondary)
 			}
+			Spacer(minLength: 8)
+		}
+		.padding(.horizontal, 16)
+		.frame(height: 64)
+	}
 
+	private var changesActionsHeader: some View {
+		HStack(alignment: .center, spacing: 10) {
 			Spacer(minLength: 16)
-
 			Button("Stage All") {
 				viewModel.didRequestStage(stageAllChanges)
 			}
@@ -110,7 +137,7 @@ struct ChangesView: View {
 			.disabled(!viewModel.canCommit)
 		}
 		.padding(.horizontal, 16)
-		.padding(.vertical, 12)
+		.frame(height: 64)
 	}
 
 	private var changeList: some View {

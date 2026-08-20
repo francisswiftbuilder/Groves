@@ -174,6 +174,25 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertTrue(diff.contains("index 0000000..e69de29"))
 	}
 
+	func testRequestCommitDiffReturnsCommittedFileChanges() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		try Data("updated".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Update tracked file"], at: repositoryURL)
+
+		let repository = LocalGitRepository()
+		let commits = try await repository.requestCommitHistory(at: repositoryURL)
+		let commit = try XCTUnwrap(commits.first)
+		let diff = try await repository.requestCommitDiff(for: commit, at: repositoryURL)
+
+		XCTAssertTrue(diff.contains("diff --git a/tracked.txt b/tracked.txt"))
+		XCTAssertTrue(diff.contains("-original"))
+		XCTAssertTrue(diff.contains("+updated"))
+	}
+
 	func testDiscardDeletesStagedAddedFile() async throws {
 		let repositoryURL = try makeRepository()
 		defer {

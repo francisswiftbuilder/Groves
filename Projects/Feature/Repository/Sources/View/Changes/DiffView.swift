@@ -3,6 +3,7 @@ import SwiftUI
 
 struct DiffView: View {
 	let diff: String
+	let changedFileCount: Int
 	let fileName: String?
 	let filePath: String?
 	let fileState: GitFileState?
@@ -18,6 +19,27 @@ struct DiffView: View {
 			Divider()
 			diffContent
 		}
+		.safeAreaInset(edge: .bottom) {
+			if !diff.isEmpty {
+				diffFooter
+			}
+		}
+	}
+
+	private var diffFooter: some View {
+		VStack(spacing: 0) {
+			Divider()
+			HStack(spacing: 12) {
+				Text("\(changedFileCount) files with changes")
+					.foregroundStyle(.secondary)
+				Spacer(minLength: 16)
+				DiffStatisticsView(diffLines: diffLines)
+			}
+			.font(.caption)
+			.padding(.horizontal, 16)
+			.frame(height: 40)
+		}
+		.background(.bar)
 	}
 
 	@ViewBuilder

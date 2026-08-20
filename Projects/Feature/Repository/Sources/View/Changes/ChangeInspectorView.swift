@@ -25,7 +25,7 @@ struct ChangeInspectorView: View {
 			Spacer()
 		}
 		.padding(.horizontal, 16)
-		.padding(.vertical, 14)
+		.frame(height: 64)
 	}
 
 	@ViewBuilder
@@ -38,18 +38,24 @@ struct ChangeInspectorView: View {
 			)
 		} else if let fileName, let filePath, let fileState {
 			ScrollView {
-				VStack(alignment: .leading, spacing: 22) {
+				VStack(alignment: .leading, spacing: 0) {
 					fileIdentity(
 						fileName: fileName,
 						filePath: filePath,
 						fileState: fileState
 					)
+					.padding(16)
+
+					Divider()
 
 					inspectorSection("Information") {
 						InspectorValueRow("Location", value: filePath)
 						InspectorValueRow("Status", value: fileState.inspectorTitle)
 						InspectorValueRow("Staging", value: isStaged ? "Staged" : "Unstaged")
 					}
+					.padding(16)
+
+					Divider()
 
 					inspectorSection("Changes") {
 						HStack(spacing: 10) {
@@ -60,8 +66,9 @@ struct ChangeInspectorView: View {
 						}
 						.font(.subheadline.weight(.semibold).monospacedDigit())
 					}
+					.padding(16)
 				}
-				.padding(16)
+				.frame(maxWidth: .infinity, alignment: .leading)
 			}
 		} else {
 			EmptyStateView(
@@ -79,9 +86,9 @@ struct ChangeInspectorView: View {
 	) -> some View {
 		HStack(alignment: .top, spacing: 12) {
 			Image(systemName: fileSymbol)
-				.font(.title2)
+				.font(.system(size: 28, weight: .light))
 				.foregroundStyle(.secondary)
-				.frame(width: 34, height: 42)
+				.frame(width: 48, height: 54)
 
 			VStack(alignment: .leading, spacing: 4) {
 				Text(fileName)

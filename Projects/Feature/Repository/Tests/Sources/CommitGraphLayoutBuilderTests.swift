@@ -15,6 +15,23 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 		XCTAssertEqual(items.first?.bottomLanes, ["parent"])
 	}
 
+	func testBuildPreservesParentLanesForMergeCommit() {
+		let merge = makeCommit(hash: "merge", parents: ["left", "right"])
+		let left = makeCommit(hash: "left", parents: ["base"])
+		let right = makeCommit(hash: "right", parents: ["base"])
+		let base = makeCommit(hash: "base", parents: [])
+
+		let items = CommitGraphLayoutBuilder.build(commits: [merge, left, right, base])
+
+		XCTAssertEqual(items[0].topLanes, ["merge"])
+		XCTAssertEqual(items[0].bottomLanes, ["left", "right"])
+		XCTAssertEqual(items[0].topLaneColorIndices, [0])
+		XCTAssertEqual(items[0].bottomLaneColorIndices, [0, 1])
+		XCTAssertEqual(items[1].topLanes, ["left", "right"])
+		XCTAssertEqual(items[1].topLaneColorIndices, [0, 1])
+		XCTAssertEqual(items[2].lane, 1)
+	}
+
 	func testRepositoryTreeLayoutIncludesChildrenOfExpandedDirectories() {
 		let source = RepositoryTreeNode(
 			name: "Sources",
@@ -100,6 +117,30 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 
 		XCTAssertEqual(lines.map(\.kind), [.deletion, .addition, .context])
 		XCTAssertEqual(lines.map(\.sourceText), ["old", "new", "context"])
+	}
+
+	func testCommitDiffFileParserSeparatesChangedFiles() {
+		let diff = """
+			diff --git a/Sources/First.swift b/Sources/First.swift
+			index 1111111..2222222 100644
+			--- a/Sources/First.swift
+			+++ b/Sources/First.swift
+			@@ -1 +1 @@
+			-old
+			+new
+			diff --git a/README.md b/README.md
+			new file mode 100644
+			--- /dev/null
+			+++ b/README.md
+			@@ -0,0 +1 @@
+			+Read me
+			"""
+
+		let files = CommitDiffFileParser.parse(diff)
+
+		XCTAssertEqual(files.map(\.path), ["Sources/First.swift", "README.md"])
+		XCTAssertEqual(files.map(\.additions), [1, 1])
+		XCTAssertEqual(files.map(\.deletions), [1, 0])
 	}
 
 	private func makeCommit(hash: String, parents: [String]) -> GitCommit {
