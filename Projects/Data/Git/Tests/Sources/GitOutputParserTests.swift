@@ -50,6 +50,42 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(nodes.first?.children.map(\.name), ["Feature", "App.swift"])
 	}
 
+	func testParseRemotesCombinesFetchAndPushURLs() {
+		let output =
+			"origin\thttps://example.com/Trees.git (fetch)\norigin\tgit@example.com:Trees.git (push)\n"
+
+		let remotes = GitOutputParser.parseRemotes(output)
+
+		XCTAssertEqual(remotes.count, 1)
+		XCTAssertEqual(remotes.first?.name, "origin")
+		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Trees.git")
+		XCTAssertEqual(remotes.first?.pushURL, "git@example.com:Trees.git")
+	}
+
+	func testParseStashesPreservesReferenceAndMessage() {
+		let output =
+			"stash@{0}\u{1f}1234567890abcdef\u{1f}On main: Sidebar work\u{1f}2026-08-20 15:00:00 +0900\u{1e}"
+
+		let stashes = GitOutputParser.parseStashes(output)
+
+		XCTAssertEqual(stashes.count, 1)
+		XCTAssertEqual(stashes.first?.reference, "stash@{0}")
+		XCTAssertEqual(stashes.first?.hash, "1234567890abcdef")
+		XCTAssertEqual(stashes.first?.subject, "On main: Sidebar work")
+		XCTAssertNotNil(stashes.first?.date)
+	}
+
+	func testParseTagsUsesPeeledCommitForAnnotatedTags() {
+		let output =
+			"1.0.0\ttag0001\tcommit0001\ttagobject0001\t2026-08-20 15:00:00 +0900\tRelease\nlightweight\tcommit0002\t\tcommit0002\t2026-08-19 15:00:00 +0900\tCommit\n"
+
+		let tags = GitOutputParser.parseTags(output)
+
+		XCTAssertEqual(tags.count, 2)
+		XCTAssertEqual(tags[0].targetHash, "commit0001")
+		XCTAssertEqual(tags[1].targetHash, "commit0002")
+	}
+
 	func testRequestFileContentsReadsFileInsideRepository() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -191,6 +227,40 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertTrue(diff.contains("diff --git a/tracked.txt b/tracked.txt"))
 		XCTAssertTrue(diff.contains("-original"))
 		XCTAssertTrue(diff.contains("+updated"))
+	}
+
+	func testRequestCommitHistoryIncludesTagsAndExcludesInternalBackupRefs() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+
+		try Data("internal backup".utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Internal backup commit"], at: repositoryURL)
+		let internalBackupHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try requestRunGit(["reset", "--hard", "HEAD^"], at: repositoryURL)
+		try requestRunGit(
+			["update-ref", "refs/original/refs/heads/main", internalBackupHash],
+			at: repositoryURL
+		)
+
+		try Data("tagged".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Tagged commit"], at: repositoryURL)
+		let taggedHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try requestRunGit(["tag", "visible-tag", taggedHash], at: repositoryURL)
+		try requestRunGit(["reset", "--hard", "HEAD^"], at: repositoryURL)
+
+		let commits = try await LocalGitRepository().requestCommitHistory(at: repositoryURL)
+		let hashes = Set(commits.map(\.hash))
+
+		XCTAssertTrue(hashes.contains(taggedHash))
+		XCTAssertFalse(hashes.contains(internalBackupHash))
 	}
 
 	func testDiscardDeletesStagedAddedFile() async throws {
@@ -388,6 +458,54 @@ final class GitOutputParserTests: XCTestCase {
 
 		let restagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
 		XCTAssertEqual(restagedAmendChanges.first?.state, .added)
+	}
+
+	func testRequestRemotesReturnsConfiguredRemote() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		try requestRunGit(
+			["remote", "add", "origin", "https://example.com/Trees.git"],
+			at: repositoryURL
+		)
+
+		let remotes = try await LocalGitRepository().requestRemotes(at: repositoryURL)
+
+		XCTAssertEqual(remotes.first?.name, "origin")
+		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Trees.git")
+		XCTAssertEqual(remotes.first?.pushURL, "https://example.com/Trees.git")
+	}
+
+	func testCreateAndDropStashIncludesUntrackedFiles() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		try Data("stashed".utf8).write(to: repositoryURL.appending(path: "untracked.txt"))
+		let repository = LocalGitRepository()
+
+		try await repository.requestCreateStash(message: "Sidebar work", at: repositoryURL)
+
+		let stashes = try await repository.requestStashes(at: repositoryURL)
+		let stash = try XCTUnwrap(stashes.first)
+		XCTAssertTrue(stash.subject.contains("Sidebar work"))
+		XCTAssertFalse(
+			FileManager.default.fileExists(
+				atPath: repositoryURL.appending(path: "untracked.txt").path
+			)
+		)
+
+		try await repository.requestApplyStash(stash, at: repositoryURL)
+		XCTAssertTrue(
+			FileManager.default.fileExists(
+				atPath: repositoryURL.appending(path: "untracked.txt").path
+			)
+		)
+
+		try await repository.requestDropStash(stash, at: repositoryURL)
+		let remainingStashes = try await repository.requestStashes(at: repositoryURL)
+		XCTAssertTrue(remainingStashes.isEmpty)
 	}
 
 	private func makeRepository() throws -> URL {

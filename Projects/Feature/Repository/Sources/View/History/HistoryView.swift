@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct HistoryView: View {
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@ObservedObject var viewModel: WorkspaceViewModel
 	@State private var selectedFileID: CommitDiffFile.ID?
+	@State private var focusScrollTask: Task<Void, Never>?
 
 	var body: some View {
 		Group {
@@ -21,6 +23,7 @@ struct HistoryView: View {
 						.frame(maxWidth: .infinity)
 				} center: {
 					CommitDiffView(file: selectedFile, changedFileCount: commitFiles.count)
+						.id(viewModel.selectedCommitID)
 						.frame(maxWidth: .infinity)
 				} trailing: {
 					CommitInspectorView(
@@ -45,48 +48,54 @@ struct HistoryView: View {
 		.onChange(of: viewModel.selectedCommitDiff) { _, _ in
 			selectFirstFileIfNeeded()
 		}
-	}
-
-	private var historyList: some View {
-		VStack(spacing: 0) {
-			HStack {
-				Menu {
-					Text("All branches are shown")
-				} label: {
-					Label("All Branches", systemImage: "chevron.down")
-						.labelStyle(.titleAndIcon)
-						.font(.subheadline.weight(.semibold))
-				}
-				.menuStyle(.borderlessButton)
-				Spacer()
-				Image(systemName: "slider.horizontal.3")
-					.foregroundStyle(.secondary)
-					.accessibilityHidden(true)
-			}
-			.padding(.horizontal, 16)
-			.padding(.vertical, 12)
-
-			Divider()
-
-			List(selection: $viewModel.selectedCommitID) {
-				ForEach(viewModel.commitGraphItems) { item in
-					CommitGraphRow(item: item, laneCapacity: graphLaneCapacity)
-						.tag(item.id)
-						.listRowSeparator(.hidden)
-						.listRowInsets(.init())
-				}
-			}
-			.listStyle(.plain)
+		.onDisappear {
+			focusScrollTask?.cancel()
 		}
 	}
 
-	private var graphLaneCapacity: Int {
-		max(
-			1,
-			viewModel.commitGraphItems
-				.map { max($0.topLanes.count, $0.bottomLanes.count, $0.lane + 1) }
-				.max() ?? 1
-		)
+	private var historyList: some View {
+		ScrollViewReader { proxy in
+			VStack(spacing: 0) {
+				HStack {
+					Menu {
+						Text("All branches are shown")
+					} label: {
+						Label("All Branches", systemImage: "chevron.down")
+							.labelStyle(.titleAndIcon)
+							.font(.subheadline.weight(.semibold))
+					}
+					.menuStyle(.borderlessButton)
+					Spacer()
+					Image(systemName: "slider.horizontal.3")
+						.foregroundStyle(.secondary)
+						.accessibilityHidden(true)
+				}
+				.padding(.horizontal, 16)
+				.padding(.vertical, 12)
+
+				Divider()
+
+				List(selection: $viewModel.selectedCommitID) {
+					ForEach(viewModel.commitGraphItems) { item in
+						CommitGraphRow(item: item)
+							.id(item.id)
+							.tag(item.id)
+							.listRowSeparator(.hidden)
+							.listRowInsets(.init())
+					}
+				}
+				.listStyle(.plain)
+			}
+			.onAppear {
+				scrollToFocusedCommit(using: proxy, animated: false)
+			}
+			.onChange(of: viewModel.historyFocusRequest) { _, _ in
+				scrollToFocusedCommit(using: proxy, animated: true)
+			}
+			.onChange(of: viewModel.commitGraphItems.count) { _, _ in
+				scrollToFocusedCommit(using: proxy, animated: false)
+			}
+		}
 	}
 
 	private var commitFiles: [CommitDiffFile] {
@@ -106,17 +115,39 @@ struct HistoryView: View {
 		guard !commitFiles.contains(where: { $0.id == selectedFileID }) else { return }
 		selectedFileID = commitFiles.first?.id
 	}
+
+	private func scrollToFocusedCommit(using proxy: ScrollViewProxy, animated: Bool) {
+		guard let request = viewModel.historyFocusRequest else { return }
+		focusScrollTask?.cancel()
+		focusScrollTask = Task { @MainActor in
+			await Task.yield()
+			await Task.yield()
+			try? await Task.sleep(for: .milliseconds(40))
+			guard
+				!Task.isCancelled,
+				viewModel.historyFocusRequest == request,
+				viewModel.commitGraphItems.contains(where: { $0.id == request.commitID })
+			else { return }
+
+			if animated && request.isAnimated && !reduceMotion {
+				withAnimation(.easeInOut(duration: 0.2)) {
+					proxy.scrollTo(request.commitID, anchor: .center)
+				}
+			} else {
+				proxy.scrollTo(request.commitID, anchor: .center)
+			}
+		}
+	}
 }
 
 private struct CommitGraphRow: View {
 	let item: CommitGraphItem
-	let laneCapacity: Int
 
 	var body: some View {
-		HStack(spacing: 4) {
+		HStack(spacing: CommitGraphMetrics.contentSpacing) {
 			CommitGraphLaneView(item: item)
 				.frame(
-					width: CommitGraphMetrics.width(for: laneCapacity),
+					width: CommitGraphMetrics.width(for: item.visibleLaneCount),
 					height: CommitGraphMetrics.rowHeight
 				)
 				.accessibilityHidden(true)
@@ -131,7 +162,7 @@ private struct CommitGraphRow: View {
 						.foregroundStyle(.tertiary)
 						.accessibilityHidden(true)
 					Text(item.commit.author)
-					Text(item.commit.date, style: .relative)
+					Text(item.commit.date.formatted(date: .abbreviated, time: .shortened))
 				}
 				.font(.caption)
 				.foregroundStyle(.secondary)
@@ -144,8 +175,9 @@ private struct CommitGraphRow: View {
 					}
 				}
 			}
+			.frame(maxWidth: .infinity, alignment: .leading)
 		}
-		.frame(height: CommitGraphMetrics.rowHeight)
+		.frame(maxWidth: .infinity, minHeight: CommitGraphMetrics.rowHeight, alignment: .leading)
 		.padding(.trailing, 12)
 		.accessibilityElement(children: .combine)
 	}
@@ -285,7 +317,8 @@ private struct CommitGraphLaneView: View {
 private enum CommitGraphMetrics {
 	static let leadingInset: CGFloat = 18
 	static let laneWidth: CGFloat = 20
-	static let trailingInset: CGFloat = 12
+	static let trailingInset: CGFloat = 2
+	static let contentSpacing: CGFloat = 8
 	static let rowHeight: CGFloat = 56
 
 	static func width(for laneCapacity: Int) -> CGFloat {

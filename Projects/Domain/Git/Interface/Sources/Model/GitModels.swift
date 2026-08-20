@@ -122,16 +122,54 @@ public struct GitBranch: Identifiable, Hashable, Sendable {
 public struct GitTag: Identifiable, Hashable, Sendable {
 	public let name: String
 	public let shortHash: String
+	public let targetHash: String
 	public let date: Date?
 	public let subject: String
 
 	public var id: String { name }
 
-	public init(name: String, shortHash: String, date: Date?, subject: String) {
+	public init(
+		name: String,
+		shortHash: String,
+		targetHash: String,
+		date: Date?,
+		subject: String
+	) {
 		self.name = name
 		self.shortHash = shortHash
+		self.targetHash = targetHash
 		self.date = date
 		self.subject = subject
+	}
+}
+
+public struct GitRemote: Identifiable, Hashable, Sendable {
+	public let name: String
+	public let fetchURL: String?
+	public let pushURL: String?
+
+	public var id: String { name }
+
+	public init(name: String, fetchURL: String?, pushURL: String?) {
+		self.name = name
+		self.fetchURL = fetchURL
+		self.pushURL = pushURL
+	}
+}
+
+public struct GitStash: Identifiable, Hashable, Sendable {
+	public let reference: String
+	public let hash: String
+	public let subject: String
+	public let date: Date?
+
+	public var id: String { reference }
+
+	public init(reference: String, hash: String, subject: String, date: Date?) {
+		self.reference = reference
+		self.hash = hash
+		self.subject = subject
+		self.date = date
 	}
 }
 

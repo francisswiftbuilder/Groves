@@ -2,7 +2,8 @@ enum WorkspaceSection: String, CaseIterable, Identifiable, Sendable {
 	case changes
 	case history
 	case branches
-	case tags
+	case remotes
+	case stashes
 	case tree
 
 	var id: String { rawValue }
@@ -15,10 +16,12 @@ enum WorkspaceSection: String, CaseIterable, Identifiable, Sendable {
 			return "History"
 		case .branches:
 			return "Branches"
-		case .tags:
-			return "Tags"
+		case .remotes:
+			return "Remotes"
+		case .stashes:
+			return "Stashes"
 		case .tree:
-			return "Tree"
+			return "Workspace"
 		}
 	}
 
@@ -30,8 +33,10 @@ enum WorkspaceSection: String, CaseIterable, Identifiable, Sendable {
 			return "clock"
 		case .branches:
 			return "arrow.triangle.branch"
-		case .tags:
-			return "tag"
+		case .remotes:
+			return "icloud"
+		case .stashes:
+			return "archivebox"
 		case .tree:
 			return "folder"
 		}

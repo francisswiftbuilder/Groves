@@ -2,29 +2,40 @@ import DomainGitInterface
 import Foundation
 import UniformTypeIdentifiers
 
+struct HistoryFocusRequest: Equatable {
+	let commitID: String
+	let isAnimated: Bool
+	private let token = UUID()
+}
+
 @MainActor
 final class WorkspaceViewModel: ObservableObject {
 	@Published var selectedSection: WorkspaceSection? = .changes
 	@Published var selectedChangeIDs: Set<WorkspaceChangeSelection> = []
 	@Published var selectedCommitID: String?
 	@Published var selectedBranchID: String?
+	@Published private(set) var selectedHistoryBranchID: String?
+	@Published var selectedRemoteID: String?
 	@Published var selectedTagID: String?
+	@Published var selectedStashID: String?
 	@Published private(set) var selectedTreeNodeID: String?
 	@Published var commitSubject = ""
 	@Published var commitBody = ""
 	@Published private(set) var isAmendingCommit = false
 	@Published var newBranchName = ""
-	@Published var newTagName = ""
-	@Published var newTagMessage = ""
+	@Published var newStashMessage = ""
 	@Published private(set) var repositoryURL: URL?
 	@Published private(set) var changes: [WorkingTreeChange] = []
 	@Published private(set) var amendChanges: [GitAmendChange] = []
 	@Published private(set) var commitGraphItems: [CommitGraphItem] = []
 	@Published private(set) var branches: [GitBranch] = []
+	@Published private(set) var remotes: [GitRemote] = []
 	@Published private(set) var tags: [GitTag] = []
+	@Published private(set) var stashes: [GitStash] = []
 	@Published private(set) var fileTree: [RepositoryTreeNode] = []
 	@Published private(set) var diff = ""
 	@Published private(set) var selectedCommitDiff = ""
+	@Published private(set) var historyFocusRequest: HistoryFocusRequest?
 	@Published private(set) var filePreview: RepositoryFilePreview = .none
 	@Published private(set) var isLoading = false
 	@Published private(set) var isApplyingDiffLine = false
@@ -104,12 +115,16 @@ final class WorkspaceViewModel: ObservableObject {
 		branches.first { $0.id == selectedBranchID }
 	}
 
+	var selectedRemote: GitRemote? {
+		remotes.first { $0.id == selectedRemoteID }
+	}
+
 	var selectedCommit: GitCommit? {
 		commitGraphItems.first { $0.id == selectedCommitID }?.commit
 	}
 
-	var selectedTag: GitTag? {
-		tags.first { $0.id == selectedTagID }
+	var selectedStash: GitStash? {
+		stashes.first { $0.id == selectedStashID }
 	}
 
 	var canCommit: Bool {
@@ -123,6 +138,8 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didSelectSection(_ section: WorkspaceSection) {
+		selectedHistoryBranchID = nil
+		selectedTagID = nil
 		selectedSection = section
 	}
 
@@ -139,6 +156,8 @@ final class WorkspaceViewModel: ObservableObject {
 					commitDiffTask?.cancel()
 					selectedChangeIDs = []
 					selectedCommitID = nil
+					selectedHistoryBranchID = nil
+					selectedTagID = nil
 					clearDisplayedDiff()
 					clearDisplayedCommitDiff()
 				}
@@ -253,6 +272,18 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didChangeSelectedCommit() {
 		commitDiffTask?.cancel()
+		if let selectedHistoryBranchID,
+			let selectedHistoryBranch = branches.first(where: { $0.id == selectedHistoryBranchID }),
+			selectedHistoryBranch.shortHash != selectedCommit?.shortHash
+		{
+			self.selectedHistoryBranchID = nil
+		}
+		if let selectedTagID,
+			let selectedTag = tags.first(where: { $0.id == selectedTagID }),
+			selectedTag.targetHash != selectedCommit?.hash
+		{
+			self.selectedTagID = nil
+		}
 
 		guard let repositoryURL, let commit = selectedCommit else {
 			clearDisplayedCommitDiff()
@@ -440,22 +471,66 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func didRequestCreateTag() {
-		guard let repositoryURL else { return }
-		let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
-		let message = newTagMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !name.isEmpty else { return }
+	func didOpenBranch(_ branch: GitBranch) {
+		guard
+			let item = commitGraphItems.first(where: {
+				$0.commit.shortHash == branch.shortHash || $0.commit.hash.hasPrefix(branch.shortHash)
+			})
+		else {
+			alertMessage = "The latest commit for branch \(branch.name) is not available in History."
+			return
+		}
+
+		clearDisplayedCommitDiff()
+		selectedCommitID = item.id
+		selectedBranchID = branch.id
+		selectedHistoryBranchID = branch.id
+		selectedTagID = nil
+		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
+		selectedSection = .history
+	}
+
+	func didOpenTag(_ tag: GitTag) {
+		guard let item = commitGraphItems.first(where: { $0.commit.hash == tag.targetHash }) else {
+			alertMessage = "The commit for tag \(tag.name) is not available in History."
+			return
+		}
+
+		clearDisplayedCommitDiff()
+		selectedCommitID = item.id
+		selectedHistoryBranchID = nil
+		selectedTagID = tag.id
+		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
+		selectedSection = .history
+	}
+
+	func didRequestCreateStash() {
+		guard let repositoryURL, !changes.isEmpty else { return }
+		let message = newStashMessage.trimmingCharacters(in: .whitespacesAndNewlines)
 		requestMutation {
-			try await self.repository.requestCreateTag(named: name, message: message, at: repositoryURL)
-			self.newTagName = ""
-			self.newTagMessage = ""
+			try await self.repository.requestCreateStash(message: message, at: repositoryURL)
+			self.newStashMessage = ""
 		}
 	}
 
-	func didRequestDeleteTag() {
-		guard let repositoryURL, let tag = selectedTag else { return }
+	func didRequestApplyStash() {
+		guard let repositoryURL, let stash = selectedStash else { return }
 		requestMutation {
-			try await self.repository.requestDeleteTag(named: tag.name, at: repositoryURL)
+			try await self.repository.requestApplyStash(stash, at: repositoryURL)
+		}
+	}
+
+	func didRequestPopStash() {
+		guard let repositoryURL, let stash = selectedStash else { return }
+		requestMutation {
+			try await self.repository.requestPopStash(stash, at: repositoryURL)
+		}
+	}
+
+	func didRequestDropStash() {
+		guard let repositoryURL, let stash = selectedStash else { return }
+		requestMutation {
+			try await self.repository.requestDropStash(stash, at: repositoryURL)
 		}
 	}
 
@@ -556,16 +631,29 @@ final class WorkspaceViewModel: ObservableObject {
 		async let amendChanges = repository.requestAmendChanges(at: repositoryURL)
 		async let commits = repository.requestCommitHistory(at: repositoryURL)
 		async let branches = repository.requestBranches(at: repositoryURL)
+		async let remotes = repository.requestRemotes(at: repositoryURL)
 		async let tags = repository.requestTags(at: repositoryURL)
+		async let stashes = repository.requestStashes(at: repositoryURL)
 		async let fileTree = repository.requestFileTree(at: repositoryURL)
 
-		let content = try await (changes, amendChanges, commits, branches, tags, fileTree)
+		let content = try await (
+			changes,
+			amendChanges,
+			commits,
+			branches,
+			remotes,
+			tags,
+			stashes,
+			fileTree
+		)
 		self.changes = content.0
 		self.amendChanges = content.1
 		commitGraphItems = CommitGraphLayoutBuilder.build(commits: content.2)
 		self.branches = content.3
-		self.tags = content.4
-		self.fileTree = content.5
+		self.remotes = content.4
+		self.tags = content.5
+		self.stashes = content.6
+		self.fileTree = content.7
 		preserveSelections()
 	}
 
@@ -597,8 +685,17 @@ final class WorkspaceViewModel: ObservableObject {
 		if branches.contains(where: { $0.id == selectedBranchID }) == false {
 			selectedBranchID = branches.first(where: \.isCurrent)?.id ?? branches.first?.id
 		}
+		if branches.contains(where: { $0.id == selectedHistoryBranchID }) == false {
+			selectedHistoryBranchID = nil
+		}
+		if remotes.contains(where: { $0.id == selectedRemoteID }) == false {
+			selectedRemoteID = remotes.first?.id
+		}
 		if tags.contains(where: { $0.id == selectedTagID }) == false {
-			selectedTagID = tags.first?.id
+			selectedTagID = nil
+		}
+		if stashes.contains(where: { $0.id == selectedStashID }) == false {
+			selectedStashID = stashes.first?.id
 		}
 		if selectedTreeNodeID != nil {
 			didSelectTreeNode(requestTreeNode(id: selectedTreeNodeID, in: fileTree))

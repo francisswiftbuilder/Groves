@@ -9,4 +9,8 @@ struct CommitGraphItem: Identifiable, Hashable, Sendable {
 	let lane: Int
 
 	var id: String { commit.id }
+
+	var visibleLaneCount: Int {
+		max(1, topLanes.count, bottomLanes.count, lane + 1)
+	}
 }

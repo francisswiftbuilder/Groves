@@ -79,8 +79,10 @@ private struct WorkspaceDetail: View {
 				HistoryView(viewModel: viewModel)
 			case .branches:
 				BranchesView(viewModel: viewModel)
-			case .tags:
-				TagsView(viewModel: viewModel)
+			case .remotes:
+				RemotesView(viewModel: viewModel)
+			case .stashes:
+				StashesView(viewModel: viewModel)
 			case .tree:
 				RepositoryTreeView(viewModel: viewModel)
 			}

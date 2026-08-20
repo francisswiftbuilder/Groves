@@ -125,6 +125,36 @@ enum GitOutputParser {
 		}
 	}
 
+	static func parseRemotes(_ output: String) -> [GitRemote] {
+		var remoteOrder: [String] = []
+		var remoteURLs: [String: (fetch: String?, push: String?)] = [:]
+
+		for line in output.split(whereSeparator: \.isNewline) {
+			let fields = line.split(separator: "\t", maxSplits: 1).map(String.init)
+			guard fields.count == 2 else { continue }
+			let name = fields[0]
+			let value = fields[1]
+			guard let markerRange = value.range(of: " (", options: .backwards) else { continue }
+			let url = String(value[..<markerRange.lowerBound])
+			let kind = String(value[markerRange.lowerBound...])
+
+			if remoteURLs[name] == nil {
+				remoteOrder.append(name)
+				remoteURLs[name] = (nil, nil)
+			}
+			if kind == " (fetch)" {
+				remoteURLs[name]?.fetch = url
+			} else if kind == " (push)" {
+				remoteURLs[name]?.push = url
+			}
+		}
+
+		return remoteOrder.compactMap { name in
+			guard let urls = remoteURLs[name] else { return nil }
+			return GitRemote(name: name, fetchURL: urls.fetch, pushURL: urls.push)
+		}
+	}
+
 	static func parseTags(_ output: String) -> [GitTag] {
 		let formatter = DateFormatter()
 		formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -132,14 +162,40 @@ enum GitOutputParser {
 
 		return output.split(whereSeparator: \.isNewline).compactMap { line in
 			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-			guard fields.count >= 4 else { return nil }
+			guard fields.count >= 6 else { return nil }
+			let targetHash = fields[2].isEmpty ? fields[3] : fields[2]
 			return GitTag(
 				name: fields[0],
 				shortHash: fields[1],
-				date: formatter.date(from: fields[2]),
-				subject: fields[3]
+				targetHash: targetHash,
+				date: formatter.date(from: fields[4]),
+				subject: fields[5]
 			)
 		}
+	}
+
+	static func parseStashes(_ output: String) -> [GitStash] {
+		let formatter = DateFormatter()
+		formatter.locale = Locale(identifier: "en_US_POSIX")
+		formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+
+		return
+			output
+			.split(separator: "\u{1e}", omittingEmptySubsequences: true)
+			.compactMap { record in
+				let fields = record.split(
+					separator: "\u{1f}",
+					maxSplits: 3,
+					omittingEmptySubsequences: false
+				).map(String.init)
+				guard fields.count == 4 else { return nil }
+				return GitStash(
+					reference: fields[0].trimmingCharacters(in: .whitespacesAndNewlines),
+					hash: fields[1],
+					subject: fields[2],
+					date: formatter.date(from: fields[3].trimmingCharacters(in: .newlines))
+				)
+			}
 	}
 
 	static func buildFileTree(paths: [String]) -> [RepositoryTreeNode] {

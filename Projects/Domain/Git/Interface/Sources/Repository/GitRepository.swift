@@ -7,7 +7,9 @@ public protocol GitRepository: Sendable {
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit]
 	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch]
+	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote]
 	func requestTags(at repositoryURL: URL) async throws -> [GitTag]
+	func requestStashes(at repositoryURL: URL) async throws -> [GitStash]
 	func requestFileTree(at repositoryURL: URL) async throws -> [RepositoryTreeNode]
 	func requestFileContents(at path: String, in repositoryURL: URL) async throws -> Data
 	func requestDiff(for change: WorkingTreeChange, at repositoryURL: URL) async throws -> String
@@ -29,6 +31,10 @@ public protocol GitRepository: Sendable {
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateTag(named name: String, message: String, at repositoryURL: URL) async throws
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws
+	func requestCreateStash(message: String, at repositoryURL: URL) async throws
+	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
+	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws
+	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
 	func requestPull(at repositoryURL: URL) async throws
 	func requestPush(at repositoryURL: URL) async throws
 }

@@ -79,7 +79,14 @@ public struct LocalGitRepository: GitRepository {
 		let format = "%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1f%b%x1e"
 		do {
 			let result = try await runner.requestRun(
-				arguments: ["log", "--all", "--topo-order", "-n", "500", "--pretty=format:\(format)"],
+				arguments: [
+					"log",
+					"--branches",
+					"--remotes",
+					"--tags",
+					"--topo-order",
+					"--pretty=format:\(format)",
+				],
 				at: repositoryURL
 			)
 			return GitOutputParser.parseCommits(result.standardOutput)
@@ -115,13 +122,31 @@ public struct LocalGitRepository: GitRepository {
 		return GitOutputParser.parseBranches(result.standardOutput)
 	}
 
+	public func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] {
+		let result = try await runner.requestRun(
+			arguments: ["remote", "-v"],
+			at: repositoryURL
+		)
+		return GitOutputParser.parseRemotes(result.standardOutput)
+	}
+
 	public func requestTags(at repositoryURL: URL) async throws -> [GitTag] {
-		let format = "%(refname:short)\t%(objectname:short)\t%(creatordate:iso8601)\t%(subject)"
+		let format =
+			"%(refname:short)\t%(objectname:short)\t%(*objectname)\t%(objectname)\t%(creatordate:iso8601)\t%(subject)"
 		let result = try await runner.requestRun(
 			arguments: ["for-each-ref", "--sort=-creatordate", "--format=\(format)", "refs/tags"],
 			at: repositoryURL
 		)
 		return GitOutputParser.parseTags(result.standardOutput)
+	}
+
+	public func requestStashes(at repositoryURL: URL) async throws -> [GitStash] {
+		let format = "%gd%x1f%H%x1f%gs%x1f%ci%x1e"
+		let result = try await runner.requestRun(
+			arguments: ["stash", "list", "--format=\(format)"],
+			at: repositoryURL
+		)
+		return GitOutputParser.parseStashes(result.standardOutput)
 	}
 
 	public func requestFileTree(at repositoryURL: URL) async throws -> [RepositoryTreeNode] {
@@ -361,6 +386,35 @@ public struct LocalGitRepository: GitRepository {
 
 	public func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {
 		_ = try await runner.requestRun(arguments: ["tag", "-d", name], at: repositoryURL)
+	}
+
+	public func requestCreateStash(message: String, at repositoryURL: URL) async throws {
+		var arguments = ["stash", "push", "--include-untracked"]
+		if !message.isEmpty {
+			arguments.append(contentsOf: ["--message", message])
+		}
+		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+	}
+
+	public func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["stash", "apply", "--index", stash.reference],
+			at: repositoryURL
+		)
+	}
+
+	public func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["stash", "pop", "--index", stash.reference],
+			at: repositoryURL
+		)
+	}
+
+	public func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["stash", "drop", stash.reference],
+			at: repositoryURL
+		)
 	}
 
 	public func requestPull(at repositoryURL: URL) async throws {

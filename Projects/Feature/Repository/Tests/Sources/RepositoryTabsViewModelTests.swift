@@ -52,6 +52,96 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 	}
 }
 
+@MainActor
+final class WorkspaceViewModelTests: XCTestCase {
+	func testOpeningBranchFocusesLatestCommitInHistory() async throws {
+		let commits = (0...10).map { index in
+			GitCommit(
+				hash: "commit-\(index)",
+				shortHash: "short-\(index)",
+				parentHashes: index < 10 ? ["commit-\(index + 1)"] : [],
+				author: "Trees Tests",
+				date: Date(timeIntervalSince1970: TimeInterval(10 - index)),
+				references: [],
+				subject: "Commit \(index)",
+				body: ""
+			)
+		}
+		let branch = GitBranch(
+			name: "feature/history-navigation",
+			shortHash: "short-7",
+			upstream: nil,
+			isCurrent: false
+		)
+		let viewModel = WorkspaceViewModel(repository: GitRepositoryStub(commits: commits))
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.commitGraphItems.count == commits.count }
+
+		viewModel.didOpenBranch(branch)
+		try await waitUntil { viewModel.selectedCommitID == "commit-7" }
+
+		XCTAssertEqual(viewModel.selectedSection, .history)
+		XCTAssertEqual(viewModel.selectedBranchID, branch.id)
+		XCTAssertEqual(viewModel.selectedHistoryBranchID, branch.id)
+		XCTAssertNil(viewModel.selectedTagID)
+		XCTAssertEqual(viewModel.historyFocusRequest?.commitID, "commit-7")
+	}
+
+	func testOpeningTagFocusesDistantCommitInCompleteHistory() async throws {
+		let lastIndex = 600
+		let commits = (0...lastIndex).map { index in
+			GitCommit(
+				hash: "commit-\(index)",
+				shortHash: "short-\(index)",
+				parentHashes: index < lastIndex ? ["commit-\(index + 1)"] : [],
+				author: "Trees Tests",
+				date: Date(timeIntervalSince1970: TimeInterval(lastIndex - index)),
+				references: [],
+				subject: "Commit \(index)",
+				body: ""
+			)
+		}
+		let tag = GitTag(
+			name: "deep-tag",
+			shortHash: "short-\(lastIndex)",
+			targetHash: "commit-\(lastIndex)",
+			date: nil,
+			subject: "Commit \(lastIndex)"
+		)
+		let viewModel = WorkspaceViewModel(
+			repository: GitRepositoryStub(commits: commits, tags: [tag])
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.commitGraphItems.count == commits.count }
+
+		viewModel.didOpenTag(tag)
+		try await waitUntil { viewModel.selectedCommitID == tag.targetHash }
+
+		XCTAssertEqual(viewModel.commitGraphItems.count, commits.count)
+		XCTAssertEqual(viewModel.selectedSection, .history)
+		XCTAssertNil(viewModel.selectedHistoryBranchID)
+		XCTAssertEqual(viewModel.selectedTagID, tag.id)
+		XCTAssertEqual(viewModel.historyFocusRequest?.commitID, tag.targetHash)
+	}
+
+	private func waitUntil(
+		timeout: Duration = .seconds(2),
+		condition: @escaping @MainActor () -> Bool
+	) async throws {
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: timeout)
+		while !condition() {
+			guard clock.now < deadline else {
+				XCTFail("Timed out waiting for condition")
+				return
+			}
+			try await Task.sleep(for: .milliseconds(10))
+		}
+	}
+}
+
 final class RepositoryFileSystemMonitorTests: XCTestCase {
 	func testEventsEmitsWhenNestedFileChanges() async throws {
 		let directoryURL = FileManager.default.temporaryDirectory
@@ -119,13 +209,23 @@ private final class SavedRepositoryStoreSpy: SavedRepositoryStore {
 }
 
 private struct GitRepositoryStub: GitRepository {
+	let commits: [GitCommit]
+	let tags: [GitTag]
+
+	init(commits: [GitCommit] = [], tags: [GitTag] = []) {
+		self.commits = commits
+		self.tags = tags
+	}
+
 	func requestRepositoryRoot(at url: URL) async throws -> URL { url }
 	func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] { [] }
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] { [] }
-	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { [] }
+	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { commits }
 	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String { "" }
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] { [] }
-	func requestTags(at repositoryURL: URL) async throws -> [GitTag] { [] }
+	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] { [] }
+	func requestTags(at repositoryURL: URL) async throws -> [GitTag] { tags }
+	func requestStashes(at repositoryURL: URL) async throws -> [GitStash] { [] }
 	func requestFileTree(at repositoryURL: URL) async throws -> [RepositoryTreeNode] { [] }
 	func requestFileContents(at path: String, in repositoryURL: URL) async throws -> Data { Data() }
 	func requestDiff(for change: WorkingTreeChange, at repositoryURL: URL) async throws -> String {
@@ -157,6 +257,10 @@ private struct GitRepositoryStub: GitRepository {
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws {}
 	func requestCreateTag(named name: String, message: String, at repositoryURL: URL) async throws {}
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {}
+	func requestCreateStash(message: String, at repositoryURL: URL) async throws {}
+	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
+	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
+	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
 	func requestPull(at repositoryURL: URL) async throws {}
 	func requestPush(at repositoryURL: URL) async throws {}
 }

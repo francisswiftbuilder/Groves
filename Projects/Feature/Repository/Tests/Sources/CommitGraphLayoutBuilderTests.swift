@@ -13,6 +13,7 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 
 		XCTAssertEqual(items.map(\.lane), [0, 0])
 		XCTAssertEqual(items.first?.bottomLanes, ["parent"])
+		XCTAssertEqual(items.map(\.visibleLaneCount), [1, 1])
 	}
 
 	func testBuildPreservesParentLanesForMergeCommit() {
@@ -29,6 +30,7 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 		XCTAssertEqual(items[0].bottomLaneColorIndices, [0, 1])
 		XCTAssertEqual(items[1].topLanes, ["left", "right"])
 		XCTAssertEqual(items[1].topLaneColorIndices, [0, 1])
+		XCTAssertEqual(items[1].visibleLaneCount, 2)
 		XCTAssertEqual(items[2].lane, 1)
 	}
 
