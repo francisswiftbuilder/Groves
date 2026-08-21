@@ -29,6 +29,30 @@ public struct LocalGitRepository: GitRepository {
 		}
 	}
 
+	public func requestCloneRepository(
+		from remoteURL: String,
+		into directoryURL: URL
+	) async throws -> URL {
+		let remoteURL = remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard let repositoryName = repositoryName(from: remoteURL) else {
+			throw GitRepositoryError.invalidRemoteURL
+		}
+
+		let repositoryURL =
+			directoryURL
+			.appending(path: repositoryName, directoryHint: .isDirectory)
+			.standardizedFileURL
+		guard FileManager.default.fileExists(atPath: repositoryURL.path) == false else {
+			throw GitRepositoryError.repositoryAlreadyExists
+		}
+
+		_ = try await runner.requestRun(
+			arguments: ["clone", "--", remoteURL, repositoryURL.path],
+			at: directoryURL
+		)
+		return repositoryURL
+	}
+
 	public func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] {
 		let result = try await runner.requestRun(
 			arguments: [
@@ -56,6 +80,21 @@ public struct LocalGitRepository: GitRepository {
 				workingTreeState: .untracked
 			)
 		}
+	}
+
+	private func repositoryName(from remoteURL: String) -> String? {
+		guard remoteURL.isEmpty == false else { return nil }
+		let trimmedURL = remoteURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+		guard
+			let component = trimmedURL.split(whereSeparator: { $0 == "/" || $0 == ":" }).last
+		else { return nil }
+
+		var name = String(component)
+		if name.hasSuffix(".git") {
+			name.removeLast(4)
+		}
+		guard name.isEmpty == false, name != ".", name != ".." else { return nil }
+		return name
 	}
 
 	public func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] {

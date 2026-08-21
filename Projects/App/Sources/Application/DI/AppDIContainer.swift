@@ -9,6 +9,7 @@ import SwiftUI
 final class AppDIContainer: RepositoryDIDependencies {
 	static let shared = AppDIContainer()
 	private let savedRepositoryStoreResult: Result<any SavedRepositoryStore, Error>
+	private lazy var repositoryDIContainer = DefaultRepositoryDIContainer(dependencies: self)
 
 	private init() {
 		savedRepositoryStoreResult = Result {
@@ -24,7 +25,7 @@ final class AppDIContainer: RepositoryDIDependencies {
 		try savedRepositoryStoreResult.get()
 	}
 
-	func makeRepositoryRootView() -> AnyView {
-		DefaultRepositoryDIContainer(dependencies: self).makeRootView()
+	func makeRepositoryRootView(repositoryID: Binding<UUID?>) -> AnyView {
+		repositoryDIContainer.makeRootView(repositoryID: repositoryID)
 	}
 }

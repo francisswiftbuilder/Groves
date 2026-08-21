@@ -1,6 +1,7 @@
+import Foundation
 import SwiftUI
 
 @MainActor
 public protocol RepositoryDIContainer: AnyObject {
-	func makeRootView() -> AnyView
+	func makeRootView(repositoryID: Binding<UUID?>) -> AnyView
 }

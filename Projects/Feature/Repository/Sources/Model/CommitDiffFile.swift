@@ -1,21 +1,16 @@
 import Foundation
 
-struct CommitDiffFile: Identifiable, Hashable {
+struct CommitDiffFile: Identifiable, Hashable, Sendable {
 	let id: String
 	let path: String
 	let diff: String
+	let additions: Int
+	let deletions: Int
 
 	var fileName: String {
 		URL(fileURLWithPath: path).lastPathComponent
 	}
 
-	var additions: Int {
-		DiffParser.parseSourceLines(diff).count { $0.kind == .addition }
-	}
-
-	var deletions: Int {
-		DiffParser.parseSourceLines(diff).count { $0.kind == .deletion }
-	}
 }
 
 enum CommitDiffFileParser {
@@ -31,10 +26,13 @@ enum CommitDiffFileParser {
 
 		return sections.enumerated().compactMap { index, section in
 			guard let path = path(in: section) else { return nil }
+			let lines = DiffParser.parseSourceLines(section)
 			return CommitDiffFile(
 				id: "\(index)-\(path)",
 				path: path,
-				diff: section
+				diff: section,
+				additions: lines.count { $0.kind == .addition },
+				deletions: lines.count { $0.kind == .deletion }
 			)
 		}
 	}

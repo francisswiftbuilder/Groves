@@ -3,23 +3,15 @@ import SwiftUI
 struct WorkspaceView: View {
 	@Environment(\.scenePhase) private var scenePhase
 	@ObservedObject var viewModel: WorkspaceViewModel
-	let repositories: [RepositoryTab]
-	let selectedRepositoryID: RepositoryTab.ID?
+	let repositoryID: RepositoryTab.ID
 	@Binding var sidebarSelection: RepositorySidebarSelection?
-	let onSelectRepository: (RepositoryTab.ID) -> Void
-	let onCloseRepository: (RepositoryTab.ID) -> Void
-	let onAddRepository: () -> Void
 
 	var body: some View {
 		NavigationSplitView {
 			RepositorySidebar(
 				viewModel: viewModel,
-				repositories: repositories,
-				selectedRepositoryID: selectedRepositoryID,
-				selectedItem: $sidebarSelection,
-				onSelectRepository: onSelectRepository,
-				onCloseRepository: onCloseRepository,
-				onAddRepository: onAddRepository
+				repositoryID: repositoryID,
+				selectedItem: $sidebarSelection
 			)
 			.navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
 		} detail: {
@@ -77,10 +69,8 @@ private struct WorkspaceDetail: View {
 			switch viewModel.selectedSection ?? .changes {
 			case .changes:
 				ChangesView(viewModel: viewModel)
-			case .history:
+			case .history, .branches:
 				HistoryView(viewModel: viewModel)
-			case .branches:
-				BranchesView(viewModel: viewModel)
 			case .remotes:
 				RemotesView(viewModel: viewModel)
 			case .stashes:

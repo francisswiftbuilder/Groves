@@ -37,6 +37,69 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 		XCTAssertTrue(store.selectionRequestIDs.isEmpty)
 	}
 
+	func testWindowRestorationReturnsPrimaryAndAdditionalRepositoriesOnlyOnce() {
+		let first = makeSavedRepository(name: "First", position: 0, isSelected: true)
+		let second = makeSavedRepository(name: "Second", position: 1, isSelected: false)
+		let viewModel = RepositoryTabsViewModel(
+			gitRepository: GitRepositoryStub(),
+			savedRepositoryStore: SavedRepositoryStoreSpy(repositories: [first, second])
+		)
+
+		let restoration = viewModel.requestWindowRestoration(currentRepositoryID: nil)
+
+		XCTAssertEqual(
+			restoration,
+			RepositoryWindowRestoration(
+				primaryRepositoryID: first.id,
+				additionalRepositoryIDs: [second.id]
+			)
+		)
+		XCTAssertNil(viewModel.requestWindowRestoration(currentRepositoryID: nil))
+	}
+
+	func testChoosingRepositorySavesAndOpensRepository() async throws {
+		let repositoryURL = URL(fileURLWithPath: "/tmp/ExistingTrees", isDirectory: true)
+		let store = SavedRepositoryStoreSpy(repositories: [])
+		let viewModel = RepositoryTabsViewModel(
+			gitRepository: GitRepositoryStub(),
+			savedRepositoryStore: store
+		)
+		var openedRepositoryID: UUID?
+
+		viewModel.didChooseRepository(repositoryURL) { repositoryID in
+			openedRepositoryID = repositoryID
+		}
+
+		try await waitUntil { viewModel.tabs.count == 1 }
+
+		XCTAssertEqual(viewModel.tabs.first?.repository.url, repositoryURL)
+		XCTAssertEqual(openedRepositoryID, viewModel.tabs.first?.id)
+		XCTAssertEqual(store.selectedRepositoryID, viewModel.tabs.first?.id)
+	}
+
+	func testCloningRepositorySavesAndOpensClonedRepository() async throws {
+		let clonedRepositoryURL = URL(fileURLWithPath: "/tmp/ClonedTrees", isDirectory: true)
+		let store = SavedRepositoryStoreSpy(repositories: [])
+		let viewModel = RepositoryTabsViewModel(
+			gitRepository: GitRepositoryStub(clonedRepositoryURL: clonedRepositoryURL),
+			savedRepositoryStore: store
+		)
+		var openedRepositoryID: UUID?
+
+		viewModel.didRequestCloneRepository(
+			from: "https://github.com/owner/ClonedTrees.git",
+			into: URL(fileURLWithPath: "/tmp", isDirectory: true)
+		) { repositoryID in
+			openedRepositoryID = repositoryID
+		}
+
+		try await waitUntil { viewModel.tabs.count == 1 }
+
+		XCTAssertEqual(viewModel.tabs.first?.repository.url, clonedRepositoryURL)
+		XCTAssertEqual(openedRepositoryID, viewModel.tabs.first?.id)
+		XCTAssertEqual(store.selectedRepositoryID, viewModel.tabs.first?.id)
+	}
+
 	func testSidebarSelectionActivationOwnsWorkspaceNavigation() {
 		let repository = makeSavedRepository(name: "Current", position: 0, isSelected: true)
 		let store = SavedRepositoryStoreSpy(repositories: [repository])
@@ -75,6 +138,21 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 		XCTAssertEqual(viewModel.selectedTabID, second.id)
 		XCTAssertEqual(store.removedRepositoryIDs, [first.id])
 		XCTAssertEqual(store.selectedRepositoryID, second.id)
+	}
+
+	private func waitUntil(
+		timeout: Duration = .seconds(2),
+		condition: @escaping @MainActor () -> Bool
+	) async throws {
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: timeout)
+		while condition() == false {
+			guard clock.now < deadline else {
+				XCTFail("Timed out waiting for condition")
+				return
+			}
+			try await Task.sleep(for: .milliseconds(10))
+		}
 	}
 
 	private func makeSavedRepository(
@@ -288,14 +366,24 @@ private struct GitRepositoryStub: GitRepository {
 	let commits: [GitCommit]
 	let remotes: [GitRemote]
 	let tags: [GitTag]
+	let clonedRepositoryURL: URL?
 
-	init(commits: [GitCommit] = [], remotes: [GitRemote] = [], tags: [GitTag] = []) {
+	init(
+		commits: [GitCommit] = [],
+		remotes: [GitRemote] = [],
+		tags: [GitTag] = [],
+		clonedRepositoryURL: URL? = nil
+	) {
 		self.commits = commits
 		self.remotes = remotes
 		self.tags = tags
+		self.clonedRepositoryURL = clonedRepositoryURL
 	}
 
 	func requestRepositoryRoot(at url: URL) async throws -> URL { url }
+	func requestCloneRepository(from remoteURL: String, into directoryURL: URL) async throws -> URL {
+		clonedRepositoryURL ?? directoryURL.appending(path: "Repository", directoryHint: .isDirectory)
+	}
 	func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] { [] }
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] { [] }
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { commits }

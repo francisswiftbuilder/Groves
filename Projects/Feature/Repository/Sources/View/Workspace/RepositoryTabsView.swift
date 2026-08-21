@@ -1,56 +1,52 @@
+import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct RepositoryTabsView: View {
+	@Environment(\.openWindow) private var openWindow
 	@ObservedObject var viewModel: RepositoryTabsViewModel
-	@State private var isRepositoryImporterPresented = false
+	@Binding var repositoryID: RepositoryTab.ID?
+	@State private var isFolderImporterPresented = false
+	@State private var folderImportRequest: RepositoryFolderImportRequest?
+	@State private var sidebarSelection: RepositorySidebarSelection?
 
 	var body: some View {
 		Group {
-			if let workspace = viewModel.selectedWorkspace {
+			if let repositoryTab {
 				WorkspaceView(
-					viewModel: workspace,
-					repositories: viewModel.tabs,
-					selectedRepositoryID: viewModel.selectedTabID,
-					sidebarSelection: $viewModel.sidebarSelection,
-					onSelectRepository: viewModel.didSelectTab,
-					onCloseRepository: viewModel.didRequestCloseTab,
-					onAddRepository: presentRepositoryImporter
+					viewModel: repositoryTab.workspace,
+					repositoryID: repositoryTab.id,
+					sidebarSelection: $sidebarSelection
 				)
 			} else {
-				EmptyStateView(
-					title: "Open a Git Repository",
-					message: "Add repositories and return to them whenever you open Trees.",
-					systemImage: "rectangle.stack.badge.plus",
-					actionTitle: "Add Repository",
-					actionSystemImage: "plus",
-					action: presentRepositoryImporter
+				RepositoryWelcomeContainerView(
+					isWorking: viewModel.isAddingRepository,
+					onOpenRepository: presentRepositoryImporter,
+					onCloneRepository: presentCloneDestinationImporter
 				)
 			}
 		}
-		.onChange(of: viewModel.sidebarSelection) { _, selection in
-			viewModel.didActivateSidebarSelection(selection)
+		.navigationTitle(repositoryTab?.repository.name ?? "New Tab")
+		.task {
+			restoreRepositoryWindows()
+		}
+		.onChange(of: repositoryID) { _, id in
+			activateRepository(id)
+		}
+		.onChange(of: sidebarSelection) { _, selection in
+			activateSidebarSelection(selection)
 		}
 		.toolbar {
-			if let workspace = viewModel.selectedWorkspace {
-				RepositoryWorkspaceToolbar(viewModel: workspace)
+			if let repositoryTab {
+				RepositoryWorkspaceToolbar(viewModel: repositoryTab.workspace)
 			}
 		}
 		.toolbarRole(.editor)
 		.fileImporter(
-			isPresented: $isRepositoryImporterPresented,
+			isPresented: $isFolderImporterPresented,
 			allowedContentTypes: [.folder],
 			allowsMultipleSelection: false
-		) { result in
-			switch result {
-			case .success(let urls):
-				if let url = urls.first {
-					viewModel.didChooseRepository(url)
-				}
-			case .failure(let error):
-				viewModel.alertMessage = error.localizedDescription
-			}
-		}
+		) { handleFolderImport($0) }
 		.alert(
 			"Repository Error",
 			isPresented: Binding(
@@ -73,9 +69,105 @@ struct RepositoryTabsView: View {
 	}
 
 	private func presentRepositoryImporter() {
-		isRepositoryImporterPresented = true
+		folderImportRequest = .openRepository
+		isFolderImporterPresented = true
 	}
 
+	private func presentCloneDestinationImporter(remoteURL: String) {
+		folderImportRequest = .clone(remoteURL: remoteURL)
+		isFolderImporterPresented = true
+	}
+
+	private func handleFolderImport(_ result: Result<[URL], any Error>) {
+		guard let request = folderImportRequest else { return }
+		folderImportRequest = nil
+
+		switch result {
+		case .success(let urls):
+			guard let url = urls.first else { return }
+			switch request {
+			case .openRepository:
+				viewModel.didChooseRepository(url, onOpen: showRepository)
+			case .clone(let remoteURL):
+				viewModel.didRequestCloneRepository(
+					from: remoteURL,
+					into: url,
+					onOpen: showRepository
+				)
+			}
+		case .failure(let error):
+			guard isUserCancellation(error) == false else { return }
+			viewModel.alertMessage = error.localizedDescription
+		}
+	}
+
+	private func isUserCancellation(_ error: any Error) -> Bool {
+		let error = error as NSError
+		return error.domain == NSCocoaErrorDomain && error.code == NSUserCancelledError
+	}
+
+	private var repositoryTab: RepositoryTab? {
+		viewModel.tab(id: repositoryID)
+	}
+
+	private func restoreRepositoryWindows() {
+		guard
+			let restoration = viewModel.requestWindowRestoration(
+				currentRepositoryID: repositoryID
+			)
+		else {
+			activateRepository(repositoryID)
+			return
+		}
+
+		repositoryID = restoration.primaryRepositoryID
+		activateRepository(repositoryID)
+		for id in restoration.additionalRepositoryIDs {
+			openWindow(id: "repository", value: id)
+		}
+	}
+
+	private func activateRepository(_ id: RepositoryTab.ID?) {
+		guard let id, viewModel.tab(id: id) != nil else {
+			sidebarSelection = nil
+			return
+		}
+
+		viewModel.didSelectTab(id)
+		if sidebarSelection?.repositoryID != id {
+			sidebarSelection = viewModel.defaultSidebarSelection(repositoryID: id)
+		}
+	}
+
+	private func activateSidebarSelection(_ selection: RepositorySidebarSelection?) {
+		guard let selection else { return }
+		viewModel.didActivateSidebarSelection(selection)
+		if selection.repositoryID != repositoryID {
+			openRepository(selection.repositoryID)
+		}
+	}
+
+	private func openRepository(_ id: RepositoryTab.ID) {
+		guard id != repositoryID else {
+			activateRepository(id)
+			return
+		}
+		openWindow(id: "repository", value: id)
+	}
+
+	private func showRepository(_ id: RepositoryTab.ID) {
+		if repositoryID == nil {
+			repositoryID = id
+		} else {
+			openRepository(id)
+		}
+	}
+
+}
+
+private enum RepositoryFolderImportRequest {
+	case openRepository
+	case clone(remoteURL: String)
 }
 
 private struct RepositoryWorkspaceToolbar: ToolbarContent {

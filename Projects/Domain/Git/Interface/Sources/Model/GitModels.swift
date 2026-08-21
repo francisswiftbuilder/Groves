@@ -221,6 +221,8 @@ public struct RepositoryTreeNode: Identifiable, Hashable, Sendable {
 
 public enum GitRepositoryError: LocalizedError, Sendable {
 	case invalidRepository
+	case invalidRemoteURL
+	case repositoryAlreadyExists
 	case commandFailed(String)
 	case invalidOutput
 	case invalidFilePath
@@ -231,6 +233,10 @@ public enum GitRepositoryError: LocalizedError, Sendable {
 		switch self {
 		case .invalidRepository:
 			return "선택한 폴더는 Git 저장소가 아닙니다."
+		case .invalidRemoteURL:
+			return "올바른 Git 저장소 URL을 입력해 주세요."
+		case .repositoryAlreadyExists:
+			return "선택한 위치에 같은 이름의 폴더가 이미 있습니다."
 		case .commandFailed(let message):
 			return message.isEmpty ? "Git 명령을 실행하지 못했습니다." : message
 		case .invalidOutput:

@@ -44,7 +44,7 @@ struct HistoryView: View {
 			selectedFileID = nil
 			viewModel.didChangeSelectedCommit()
 		}
-		.onChange(of: viewModel.selectedCommitDiff) { _, _ in
+		.onChange(of: viewModel.selectedCommitFiles.map(\.id)) { _, _ in
 			selectFirstFileIfNeeded()
 		}
 	}
@@ -73,12 +73,16 @@ struct HistoryView: View {
 
 				List(selection: $viewModel.selectedCommitID) {
 					ForEach(viewModel.commitGraphItems) { item in
-						CommitGraphRow(item: item)
-							.id(item.id)
-							.tag(item.id)
-							.contentShape(.rect)
-							.listRowInsets(.init())
-							.listRowSeparator(.hidden)
+						CommitGraphRow(
+							item: item,
+							isSelected: item.id == viewModel.selectedCommitID
+						)
+						.equatable()
+						.id(item.id)
+						.tag(item.id)
+						.contentShape(.rect)
+						.listRowInsets(.init())
+						.listRowSeparator(.hidden)
 					}
 				}
 				.listStyle(.plain)
@@ -90,7 +94,7 @@ struct HistoryView: View {
 	}
 
 	private var commitFiles: [CommitDiffFile] {
-		CommitDiffFileParser.parse(viewModel.selectedCommitDiff)
+		viewModel.selectedCommitFiles
 	}
 
 	private var selectedFile: CommitDiffFile? {
@@ -125,46 +129,58 @@ struct HistoryView: View {
 	}
 }
 
-private struct CommitGraphRow: View {
+private struct CommitGraphRow: View, Equatable {
 	let item: CommitGraphItem
+	let isSelected: Bool
+
+	nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+		lhs.item == rhs.item && lhs.isSelected == rhs.isSelected
+	}
 
 	var body: some View {
 		HStack(spacing: CommitGraphMetrics.contentSpacing) {
-			CommitGraphLaneView(item: item)
-				.frame(
-					width: CommitGraphMetrics.width(for: item.visibleLaneCount),
-					height: CommitGraphMetrics.rowHeight
-				)
+			CommitGraphLaneView(item: item, isSelected: isSelected)
+				.frame(width: laneWidth, height: CommitGraphMetrics.rowHeight)
 				.accessibilityHidden(true)
 
-			VStack(alignment: .leading, spacing: 3) {
-				Text(item.commit.subject)
-					.font(.subheadline.weight(.medium))
-					.lineLimit(1)
+			VStack(alignment: .leading, spacing: 4) {
+				HStack(spacing: 6) {
+					Text(item.commit.subject)
+						.font(.subheadline.weight(.medium))
+						.lineLimit(1)
+						.layoutPriority(1)
 
-				HStack(spacing: 7) {
-					Image(systemName: "person.crop.circle.fill")
-						.foregroundStyle(.tertiary)
-						.accessibilityHidden(true)
+					if let reference = item.commit.references.first {
+						CommitGraphReference(reference: reference)
+					}
+
+					if item.commit.references.count > 1 {
+						CommitGraphReferenceOverflow(count: item.commit.references.count - 1)
+					}
+				}
+
+				HStack(spacing: 6) {
 					Text(item.commit.author)
+						.lineLimit(1)
+					Text("·")
+						.accessibilityHidden(true)
 					Text(item.commit.date.formatted(date: .abbreviated, time: .shortened))
+						.lineLimit(1)
+						.monospacedDigit()
 				}
 				.font(.caption)
 				.foregroundStyle(.secondary)
-
-				if !item.commit.references.isEmpty {
-					HStack(spacing: 5) {
-						ForEach(item.commit.references.prefix(2), id: \.self) { reference in
-							CommitGraphReference(reference: reference)
-						}
-					}
-				}
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 		}
 		.frame(maxWidth: .infinity, minHeight: CommitGraphMetrics.rowHeight, alignment: .leading)
 		.padding(.trailing, 12)
 		.accessibilityElement(children: .combine)
+		.accessibilityAddTraits(isSelected ? .isSelected : [])
+	}
+
+	private var laneWidth: CGFloat {
+		CommitGraphMetrics.width(for: item.visibleLaneCount)
 	}
 }
 
@@ -172,80 +188,116 @@ private struct CommitGraphReference: View {
 	let reference: String
 
 	var body: some View {
-		Text(reference)
+		Label(displayName, systemImage: systemImage)
+			.labelStyle(.titleAndIcon)
 			.font(.caption2.weight(.medium))
+			.lineLimit(1)
+			.truncationMode(.middle)
 			.foregroundStyle(referenceColor)
-			.padding(.horizontal, 6)
+			.padding(.horizontal, 7)
 			.padding(.vertical, 2)
-			.background(referenceColor.opacity(0.12), in: Capsule())
+			.background(referenceColor.opacity(0.10), in: Capsule())
+			.frame(maxWidth: 132)
+			.help(reference)
 	}
 
 	private var referenceColor: Color {
-		reference.contains("HEAD") ? .primary : .blue
+		if reference.contains("HEAD") {
+			return Color(nsColor: .controlAccentColor)
+		}
+		if reference.contains("tag:") {
+			return .orange
+		}
+		if reference.contains("origin/") {
+			return .blue
+		}
+		return Color(nsColor: .secondaryLabelColor)
+	}
+
+	private var displayName: String {
+		reference
+			.replacingOccurrences(of: "HEAD -> ", with: "")
+			.replacingOccurrences(of: "tag: ", with: "")
+	}
+
+	private var systemImage: String {
+		if reference.contains("tag:") {
+			return "tag.fill"
+		}
+		if reference.contains("origin/") {
+			return "cloud.fill"
+		}
+		return "arrow.triangle.branch"
+	}
+}
+
+private struct CommitGraphReferenceOverflow: View {
+	let count: Int
+
+	var body: some View {
+		Text("+\(count)")
+			.font(.caption2.weight(.semibold))
+			.foregroundStyle(.secondary)
+			.padding(.horizontal, 6)
+			.padding(.vertical, 2)
+			.background(Color(nsColor: .quaternaryLabelColor).opacity(0.16), in: Capsule())
 	}
 }
 
 private struct CommitGraphLaneView: View {
+	@Environment(\.colorSchemeContrast) private var colorSchemeContrast
 	let item: CommitGraphItem
+	let isSelected: Bool
 
 	var body: some View {
 		Canvas { context, size in
 			let centerY = size.height / 2
 
-			for (lane, hash) in item.topLanes.enumerated() {
-				let sourceX = xPosition(for: lane)
-				let sourceColor = color(for: item.topLaneColorIndices[lane])
-				strokeLine(
-					from: CGPoint(x: sourceX, y: 0),
-					to: CGPoint(x: sourceX, y: centerY),
-					color: sourceColor,
+			for segment in item.incomingSegments {
+				strokeConnection(
+					from: CGPoint(x: xPosition(for: segment.fromLane), y: 0),
+					to: CGPoint(x: xPosition(for: segment.toLane), y: centerY),
+					colorIndex: segment.colorIndex,
 					in: &context
 				)
+			}
 
-				if hash == item.commit.hash {
-					for parentHash in item.commit.parentHashes {
-						guard let destinationLane = item.bottomLanes.firstIndex(of: parentHash) else {
-							continue
-						}
-						strokeConnection(
-							from: CGPoint(x: sourceX, y: centerY),
-							to: CGPoint(
-								x: xPosition(for: destinationLane),
-								y: size.height
-							),
-							color: color(for: item.bottomLaneColorIndices[destinationLane]),
-							in: &context
-						)
-					}
-				} else if let destinationLane = item.bottomLanes.firstIndex(of: hash) {
-					strokeConnection(
-						from: CGPoint(x: sourceX, y: centerY),
-						to: CGPoint(
-							x: xPosition(for: destinationLane),
-							y: size.height
-						),
-						color: sourceColor,
-						in: &context
-					)
-				}
+			for segment in item.outgoingSegments {
+				strokeConnection(
+					from: CGPoint(x: xPosition(for: segment.fromLane), y: centerY),
+					to: CGPoint(x: xPosition(for: segment.toLane), y: size.height),
+					colorIndex: segment.colorIndex,
+					in: &context
+				)
 			}
 
 			let laneX = xPosition(for: item.lane)
-			let circle = Path(
-				ellipseIn: CGRect(x: laneX - 5, y: centerY - 5, width: 10, height: 10)
+			let node = nodePath(
+				center: CGPoint(x: laneX, y: centerY),
+				isMerge: item.commit.parentHashes.count > 1
 			)
-			context.fill(circle, with: .color(Color(nsColor: .windowBackgroundColor)))
+			let nodeColor =
+				isSelected
+				? Color(nsColor: .selectedControlTextColor)
+				: lineColor(colorIndex: item.nodeColorIndex)
+			context.fill(
+				node,
+				with: .color(
+					isSelected ? nodeColor : Color(nsColor: .windowBackgroundColor)
+				)
+			)
 			context.stroke(
-				circle,
-				with: .color(color(for: item.topLaneColorIndices[item.lane])),
-				lineWidth: 2
+				node,
+				with: .color(nodeColor),
+				lineWidth: isSelected ? 2.25 : 1.75
 			)
 		}
 	}
 
-	private func color(for colorIndex: Int) -> Color {
+	private func lineColor(colorIndex: Int) -> Color {
 		let colors: [Color] = [.blue, .orange, .purple, .green, .pink, .cyan]
-		return colors[colorIndex % colors.count]
+		let opacity = colorSchemeContrast == .increased ? 0.95 : 0.76
+		return colors[colorIndex % colors.count].opacity(opacity)
 	}
 
 	private func xPosition(for lane: Int) -> CGFloat {
@@ -254,22 +306,10 @@ private struct CommitGraphLaneView: View {
 			+ CommitGraphMetrics.laneWidth / 2
 	}
 
-	private func strokeLine(
-		from start: CGPoint,
-		to end: CGPoint,
-		color: Color,
-		in context: inout GraphicsContext
-	) {
-		var path = Path()
-		path.move(to: start)
-		path.addLine(to: end)
-		context.stroke(path, with: .color(color), style: graphStrokeStyle)
-	}
-
 	private func strokeConnection(
 		from start: CGPoint,
 		to end: CGPoint,
-		color: Color,
+		colorIndex: Int,
 		in context: inout GraphicsContext
 	) {
 		var path = Path()
@@ -278,33 +318,62 @@ private struct CommitGraphLaneView: View {
 			path.addLine(to: end)
 		} else {
 			let verticalDistance = end.y - start.y
-			let curveInset = min(10, verticalDistance / 3)
-			let curveStart = CGPoint(x: start.x, y: start.y + curveInset)
-			let curveEnd = CGPoint(x: end.x, y: end.y - curveInset)
-			let curveHeight = curveEnd.y - curveStart.y
-
-			path.addLine(to: curveStart)
+			let transitionHeight = min(12, max(6, verticalDistance * 0.46))
+			let transitionEnd = CGPoint(
+				x: end.x,
+				y: min(end.y, start.y + transitionHeight)
+			)
 			path.addCurve(
-				to: curveEnd,
-				control1: CGPoint(x: curveStart.x, y: curveStart.y + curveHeight / 3),
-				control2: CGPoint(x: curveEnd.x, y: curveEnd.y - curveHeight / 3)
+				to: transitionEnd,
+				control1: CGPoint(x: start.x, y: start.y + transitionHeight * 0.64),
+				control2: CGPoint(x: end.x, y: start.y + transitionHeight * 0.36)
 			)
 			path.addLine(to: end)
 		}
-		context.stroke(path, with: .color(color), style: graphStrokeStyle)
+		context.stroke(
+			path,
+			with: .color(lineColor(colorIndex: colorIndex)),
+			style: graphStrokeStyle
+		)
+	}
+
+	private func nodePath(center: CGPoint, isMerge: Bool) -> Path {
+		let radius: CGFloat = isSelected ? 5 : 4
+		if isMerge {
+			var path = Path()
+			path.move(to: CGPoint(x: center.x, y: center.y - radius))
+			path.addLine(to: CGPoint(x: center.x + radius, y: center.y))
+			path.addLine(to: CGPoint(x: center.x, y: center.y + radius))
+			path.addLine(to: CGPoint(x: center.x - radius, y: center.y))
+			path.closeSubpath()
+			return path
+		}
+
+		let frame = CGRect(
+			x: center.x - radius,
+			y: center.y - radius,
+			width: radius * 2,
+			height: radius * 2
+		)
+		return Path(ellipseIn: frame)
 	}
 
 	private var graphStrokeStyle: StrokeStyle {
-		StrokeStyle(lineWidth: 1.75, lineCap: .round, lineJoin: .round)
+		let lineWidth: CGFloat = colorSchemeContrast == .increased ? 1.75 : 1.5
+		return StrokeStyle(
+			lineWidth: lineWidth,
+			lineCap: .round,
+			lineJoin: .round
+		)
 	}
 }
 
 private enum CommitGraphMetrics {
-	static let leadingInset: CGFloat = 18
-	static let laneWidth: CGFloat = 20
-	static let trailingInset: CGFloat = 2
-	static let contentSpacing: CGFloat = 8
-	static let rowHeight: CGFloat = 56
+	static let leadingInset: CGFloat = 10
+	static let laneWidth: CGFloat = 16
+	static let trailingInset: CGFloat = 4
+	static let contentSpacing: CGFloat = 10
+	static let rowHeight: CGFloat = 52
 
 	static func width(for laneCapacity: Int) -> CGFloat {
 		leadingInset + CGFloat(laneCapacity) * laneWidth + trailingInset

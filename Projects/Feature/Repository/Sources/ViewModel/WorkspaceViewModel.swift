@@ -32,7 +32,7 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var stashes: [GitStash] = []
 	@Published private(set) var fileTree: [RepositoryTreeNode] = []
 	@Published private(set) var diff = ""
-	@Published private(set) var selectedCommitDiff = ""
+	@Published private(set) var selectedCommitFiles: [CommitDiffFile] = []
 	@Published private(set) var historyFocusRequest: HistoryFocusRequest?
 	@Published private(set) var filePreview: RepositoryFilePreview = .none
 	@Published private(set) var isLoading = false
@@ -46,6 +46,7 @@ final class WorkspaceViewModel: ObservableObject {
 	private var filePreviewTask: Task<Void, Never>?
 	private var displayedDiffSelection: WorkspaceChangeSelection?
 	private var displayedCommitDiffID: String?
+	private var requestedCommitDiffID: String?
 
 	init(repository: any GitRepository, repositoryURL: URL? = nil) {
 		self.repository = repository
@@ -269,27 +270,38 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didChangeSelectedCommit() {
-		commitDiffTask?.cancel()
-
 		guard let repositoryURL, let commit = selectedCommit else {
+			commitDiffTask?.cancel()
+			requestedCommitDiffID = nil
 			clearDisplayedCommitDiff()
 			return
 		}
+		guard displayedCommitDiffID != commit.id, requestedCommitDiffID != commit.id else {
+			return
+		}
 
+		commitDiffTask?.cancel()
+		requestedCommitDiffID = commit.id
 		if displayedCommitDiffID != commit.id {
 			clearDisplayedCommitDiff()
 		}
 
 		commitDiffTask = Task {
+			defer {
+				if requestedCommitDiffID == commit.id {
+					requestedCommitDiffID = nil
+				}
+			}
 			do {
 				let requestedDiff = try await repository.requestCommitDiff(
 					for: commit,
 					at: repositoryURL
 				)
+				let requestedFiles = await Task.detached(priority: .userInitiated) {
+					CommitDiffFileParser.parse(requestedDiff)
+				}.value
 				guard selectedCommitID == commit.id else { return }
-				if selectedCommitDiff != requestedDiff {
-					selectedCommitDiff = requestedDiff
-				}
+				selectedCommitFiles = requestedFiles
 				displayedCommitDiffID = commit.id
 			} catch is CancellationError {
 				return
@@ -732,8 +744,8 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	private func clearDisplayedCommitDiff() {
-		if !selectedCommitDiff.isEmpty {
-			selectedCommitDiff = ""
+		if !selectedCommitFiles.isEmpty {
+			selectedCommitFiles = []
 		}
 		displayedCommitDiffID = nil
 	}

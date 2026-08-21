@@ -5,6 +5,30 @@ import XCTest
 @testable import DataGit
 
 final class GitOutputParserTests: XCTestCase {
+	func testCloneRepositoryCreatesRepositoryInSelectedDirectory() async throws {
+		let sourceRepositoryURL = try makeRepository()
+		let destinationDirectoryURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesCloneTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+		try FileManager.default.createDirectory(
+			at: destinationDirectoryURL,
+			withIntermediateDirectories: true
+		)
+		defer {
+			try? FileManager.default.removeItem(at: sourceRepositoryURL)
+			try? FileManager.default.removeItem(at: destinationDirectoryURL)
+		}
+
+		let clonedRepositoryURL = try await LocalGitRepository().requestCloneRepository(
+			from: sourceRepositoryURL.absoluteString,
+			into: destinationDirectoryURL
+		)
+
+		XCTAssertEqual(clonedRepositoryURL.lastPathComponent, sourceRepositoryURL.lastPathComponent)
+		XCTAssertTrue(
+			FileManager.default.fileExists(atPath: clonedRepositoryURL.appending(path: ".git").path)
+		)
+	}
+
 	func testParseWorkingTreeChangesSeparatesIndexAndWorkingTreeStates() {
 		let output = "M  staged.swift\0 M unstaged.swift\0?? new.swift\0"
 

@@ -2,6 +2,7 @@ import Foundation
 
 public protocol GitRepository: Sendable {
 	func requestRepositoryRoot(at url: URL) async throws -> URL
+	func requestCloneRepository(from remoteURL: String, into directoryURL: URL) async throws -> URL
 	func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange]
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange]
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit]

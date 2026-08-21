@@ -3,56 +3,113 @@ import Foundation
 
 enum CommitGraphLayoutBuilder {
 	static func build(commits: [GitCommit]) -> [CommitGraphItem] {
-		var lanes: [Lane] = []
+		var columns: [CommitGraphColumn] = []
+		var nextColumnID = 0
 		var nextColorIndex = 0
 
 		return commits.map { commit in
 			let lane: Int
-			if let existingLane = lanes.firstIndex(where: { $0.hash == commit.hash }) {
+			let startsAtCommit: Bool
+			if let existingLane = columns.firstIndex(where: { $0.targetHash == commit.hash }) {
 				lane = existingLane
+				startsAtCommit = false
 			} else {
-				lanes.insert(
-					Lane(hash: commit.hash, colorIndex: nextColorIndex),
-					at: 0
+				columns.append(
+					CommitGraphColumn(
+						id: nextColumnID,
+						targetHash: commit.hash,
+						colorIndex: nextColorIndex
+					)
 				)
+				nextColumnID += 1
 				nextColorIndex += 1
-				lane = 0
+				lane = columns.count - 1
+				startsAtCommit = true
 			}
 
-			let topLanes = lanes
-			let currentLane = lanes.remove(at: lane)
+			let topColumns = columns
+			let currentColumn = columns.remove(at: lane)
 			var insertedParentCount = 0
+			var parentColumnIDs: [CommitGraphColumn.ID] = []
 
-			for (parentIndex, parentHash) in commit.parentHashes.enumerated()
-			where !lanes.contains(where: { $0.hash == parentHash }) {
-				let colorIndex: Int
+			for (parentIndex, parentHash) in commit.parentHashes.enumerated() {
+				if let existingLane = columns.firstIndex(where: { $0.targetHash == parentHash }) {
+					parentColumnIDs.append(columns[existingLane].id)
+					continue
+				}
+
+				let parentColumn: CommitGraphColumn
 				if parentIndex == 0 {
-					colorIndex = currentLane.colorIndex
+					parentColumn = CommitGraphColumn(
+						id: currentColumn.id,
+						targetHash: parentHash,
+						colorIndex: currentColumn.colorIndex
+					)
 				} else {
-					colorIndex = nextColorIndex
+					parentColumn = CommitGraphColumn(
+						id: nextColumnID,
+						targetHash: parentHash,
+						colorIndex: nextColorIndex
+					)
+					nextColumnID += 1
 					nextColorIndex += 1
 				}
 
-				lanes.insert(
-					Lane(hash: parentHash, colorIndex: colorIndex),
-					at: min(lane + insertedParentCount, lanes.count)
+				columns.insert(
+					parentColumn,
+					at: min(lane + insertedParentCount, columns.count)
 				)
+				parentColumnIDs.append(parentColumn.id)
 				insertedParentCount += 1
+			}
+
+			let incomingSegments: [CommitGraphSegment] = topColumns.enumerated().compactMap {
+				lane, column in
+				if startsAtCommit, column.id == currentColumn.id {
+					return nil
+				}
+				return CommitGraphSegment(
+					columnID: column.id,
+					fromLane: lane,
+					toLane: lane,
+					colorIndex: column.colorIndex
+				)
+			}
+			let continuingSegments: [CommitGraphSegment] = topColumns.enumerated().compactMap {
+				topLane, column in
+				guard column.id != currentColumn.id else { return nil }
+				guard let bottomLane = columns.firstIndex(where: { $0.id == column.id }) else {
+					return nil
+				}
+				return CommitGraphSegment(
+					columnID: column.id,
+					fromLane: topLane,
+					toLane: bottomLane,
+					colorIndex: column.colorIndex
+				)
+			}
+			let parentSegments: [CommitGraphSegment] = parentColumnIDs.compactMap { columnID in
+				guard let bottomLane = columns.firstIndex(where: { $0.id == columnID }) else {
+					return nil
+				}
+				let column = columns[bottomLane]
+				return CommitGraphSegment(
+					columnID: column.id,
+					fromLane: lane,
+					toLane: bottomLane,
+					colorIndex: column.colorIndex
+				)
 			}
 
 			return CommitGraphItem(
 				commit: commit,
-				topLanes: topLanes.map(\.hash),
-				bottomLanes: lanes.map(\.hash),
-				topLaneColorIndices: topLanes.map(\.colorIndex),
-				bottomLaneColorIndices: lanes.map(\.colorIndex),
-				lane: lane
+				topColumns: topColumns,
+				bottomColumns: columns,
+				incomingSegments: incomingSegments,
+				outgoingSegments: continuingSegments + parentSegments,
+				lane: lane,
+				nodeColorIndex: currentColumn.colorIndex
 			)
 		}
-	}
-
-	private struct Lane: Hashable {
-		let hash: String
-		let colorIndex: Int
 	}
 }

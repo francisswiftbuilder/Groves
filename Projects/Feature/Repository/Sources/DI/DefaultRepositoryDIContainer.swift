@@ -1,25 +1,30 @@
 import FeatureRepositoryInterface
+import Foundation
 import SwiftUI
 
 @MainActor
 public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
-	private let dependencies: any RepositoryDIDependencies
+	private let viewModelResult: Result<RepositoryTabsViewModel, Error>
 
 	public init(dependencies: some RepositoryDIDependencies) {
-		self.dependencies = dependencies
+		viewModelResult = Result {
+			RepositoryTabsViewModel(
+				gitRepository: dependencies.makeGitRepository(),
+				savedRepositoryStore: try dependencies.makeSavedRepositoryStore()
+			)
+		}
 	}
 
-	public func makeRootView() -> AnyView {
-		do {
+	public func makeRootView(repositoryID: Binding<UUID?>) -> AnyView {
+		switch viewModelResult {
+		case .success(let viewModel):
 			return AnyView(
 				RepositoryRootView(
-					viewModel: RepositoryTabsViewModel(
-						gitRepository: dependencies.makeGitRepository(),
-						savedRepositoryStore: try dependencies.makeSavedRepositoryStore()
-					)
+					viewModel: viewModel,
+					repositoryID: repositoryID
 				)
 			)
-		} catch {
+		case .failure(let error):
 			return AnyView(
 				ContentUnavailableView(
 					"Unable to Open Trees",
@@ -32,13 +37,13 @@ public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 }
 
 private struct RepositoryRootView: View {
-	@StateObject private var viewModel: RepositoryTabsViewModel
-
-	init(viewModel: RepositoryTabsViewModel) {
-		_viewModel = StateObject(wrappedValue: viewModel)
-	}
+	@ObservedObject var viewModel: RepositoryTabsViewModel
+	@Binding var repositoryID: UUID?
 
 	var body: some View {
-		RepositoryTabsView(viewModel: viewModel)
+		RepositoryTabsView(
+			viewModel: viewModel,
+			repositoryID: $repositoryID
+		)
 	}
 }
