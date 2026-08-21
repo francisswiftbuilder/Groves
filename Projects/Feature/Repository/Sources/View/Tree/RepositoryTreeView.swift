@@ -164,8 +164,10 @@ private struct RepositoryFilePreviewPane: View {
 						systemImage: "doc.text.magnifyingglass"
 					)
 				case .loading:
-					ProgressView("Loading Preview")
-						.controlSize(.small)
+					LoadingStateView(
+						title: "Loading Preview",
+						message: "Reading the selected file."
+					)
 				case .text(let content, _):
 					RepositoryTextPreview(content: content)
 				case .image(let data):

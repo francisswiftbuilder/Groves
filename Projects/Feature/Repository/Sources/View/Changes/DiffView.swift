@@ -9,7 +9,8 @@ struct DiffView: View {
 	let fileState: GitFileState?
 	let fileActionTitle: String?
 	let lineAction: GitDiffLineAction?
-	let isLoading: Bool
+	let isLoadingDiff: Bool
+	let isApplyingAction: Bool
 	let onApplyFileAction: () -> Void
 	let onApplyLine: (GitDiffLineSelection, GitDiffLineAction) -> Void
 
@@ -72,7 +73,7 @@ struct DiffView: View {
 					Button(fileActionTitle, action: onApplyFileAction)
 						.buttonStyle(.bordered)
 						.controlSize(.small)
-						.disabled(isLoading)
+						.disabled(isApplyingAction || isLoadingDiff)
 				}
 			}
 			.padding(.horizontal, 16)
@@ -90,7 +91,12 @@ struct DiffView: View {
 
 	@ViewBuilder
 	private var diffContent: some View {
-		if diff.isEmpty {
+		if isLoadingDiff {
+			LoadingStateView(
+				title: "Loading Diff",
+				message: "Reading the selected file changes."
+			)
+		} else if diff.isEmpty {
 			EmptyStateView(
 				title: "No Diff Selected",
 				message: "Select a tracked text change to inspect its diff.",
@@ -112,7 +118,7 @@ struct DiffView: View {
 								showsOldLineNumbers: showsOldLineNumbers,
 								showsNewLineNumbers: showsNewLineNumbers,
 								action: lineAction,
-								isLoading: isLoading,
+								isLoading: isApplyingAction,
 								onApply: onApplyLine
 							)
 						}

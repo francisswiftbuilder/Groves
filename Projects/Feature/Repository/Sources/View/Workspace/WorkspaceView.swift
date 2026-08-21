@@ -65,6 +65,13 @@ private struct WorkspaceDetail: View {
 				message: "Choose a local repository to inspect changes, history, tags, and files.",
 				systemImage: "externaldrive.badge.plus"
 			)
+		} else if viewModel.isLoadingContent {
+			LoadingStateView(
+				title: "Loading Repository",
+				message: "Fetching changes, history, branches, tags, and files."
+			)
+			.navigationTitle(viewModel.repositoryName)
+			.navigationSubtitle(viewModel.currentBranchName)
 		} else {
 			switch viewModel.selectedSection ?? .changes {
 			case .changes:

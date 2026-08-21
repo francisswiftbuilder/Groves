@@ -21,13 +21,18 @@ struct HistoryView: View {
 					historyList
 						.frame(maxWidth: .infinity)
 				} center: {
-					CommitDiffView(file: selectedFile, changedFileCount: commitFiles.count)
-						.id(viewModel.selectedCommitID)
-						.frame(maxWidth: .infinity)
+					CommitDiffView(
+						file: selectedFile,
+						changedFileCount: commitFiles.count,
+						isLoading: viewModel.isLoadingCommitDiff
+					)
+					.id(viewModel.selectedCommitID)
+					.frame(maxWidth: .infinity)
 				} trailing: {
 					CommitInspectorView(
 						commit: viewModel.selectedCommit,
 						files: commitFiles,
+						isLoadingFiles: viewModel.isLoadingCommitDiff,
 						selectedFileID: $selectedFileID
 					)
 					.frame(maxWidth: .infinity)

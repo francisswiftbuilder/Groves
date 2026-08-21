@@ -23,7 +23,8 @@ struct ChangesView: View {
 				fileState: selectedFileState,
 				isStaged: viewModel.selectedChange?.isStaged == true,
 				selectedCount: viewModel.selectedChangeIDs.count,
-				diff: viewModel.diff
+				diff: viewModel.diff,
+				isLoading: viewModel.isLoadingDiff
 			)
 			.frame(maxWidth: .infinity)
 		}
@@ -97,7 +98,8 @@ struct ChangesView: View {
 				fileState: selectedFileState,
 				fileActionTitle: selectedFileActionTitle,
 				lineAction: viewModel.selectedDiffLineAction,
-				isLoading: viewModel.isApplyingDiffLine,
+				isLoadingDiff: viewModel.isLoadingDiff,
+				isApplyingAction: viewModel.isApplyingDiffLine,
 				onApplyFileAction: applySelectedFileAction,
 				onApplyLine: viewModel.didRequestApplyDiffLine
 			)

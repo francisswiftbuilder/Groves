@@ -9,6 +9,7 @@ struct ChangeInspectorView: View {
 	let isStaged: Bool
 	let selectedCount: Int
 	let diff: String
+	let isLoading: Bool
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -30,7 +31,12 @@ struct ChangeInspectorView: View {
 
 	@ViewBuilder
 	private var inspectorContent: some View {
-		if selectedCount > 1 {
+		if isLoading {
+			LoadingStateView(
+				title: "Loading File",
+				message: "Reading file information and change statistics."
+			)
+		} else if selectedCount > 1 {
 			EmptyStateView(
 				title: "Multiple Files Selected",
 				message: "Select one file to inspect its details.",

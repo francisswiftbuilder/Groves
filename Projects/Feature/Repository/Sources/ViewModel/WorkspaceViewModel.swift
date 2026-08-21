@@ -36,6 +36,9 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var historyFocusRequest: HistoryFocusRequest?
 	@Published private(set) var filePreview: RepositoryFilePreview = .none
 	@Published private(set) var isLoading = false
+	@Published private(set) var isLoadingContent: Bool
+	@Published private(set) var isLoadingDiff = false
+	@Published private(set) var isLoadingCommitDiff = false
 	@Published private(set) var isApplyingDiffLine = false
 	@Published var alertMessage: String?
 
@@ -45,12 +48,15 @@ final class WorkspaceViewModel: ObservableObject {
 	private var commitDiffTask: Task<Void, Never>?
 	private var filePreviewTask: Task<Void, Never>?
 	private var displayedDiffSelection: WorkspaceChangeSelection?
+	private var requestedDiffSelection: WorkspaceChangeSelection?
 	private var displayedCommitDiffID: String?
 	private var requestedCommitDiffID: String?
+	private var contentLoadID: UUID?
 
 	init(repository: any GitRepository, repositoryURL: URL? = nil) {
 		self.repository = repository
 		self.repositoryURL = repositoryURL
+		isLoadingContent = repositoryURL != nil
 	}
 
 	deinit {
@@ -146,9 +152,9 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didChooseRepository(_ url: URL) {
 		refreshTask?.cancel()
+		let loadID = beginContentLoad()
 		refreshTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+			defer { finishContentLoad(id: loadID) }
 
 			do {
 				let root = try await repository.requestRepositoryRoot(at: url)
@@ -173,9 +179,9 @@ final class WorkspaceViewModel: ObservableObject {
 	func didRequestRefresh() {
 		guard let repositoryURL else { return }
 		refreshTask?.cancel()
+		let loadID = beginContentLoad()
 		refreshTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+			defer { finishContentLoad(id: loadID) }
 
 			do {
 				try await requestAllContent(at: repositoryURL)
@@ -218,6 +224,7 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didChangeSelectedChanges() {
 		diffTask?.cancel()
+		clearDiffLoad()
 
 		guard
 			let repositoryURL,
@@ -231,14 +238,16 @@ final class WorkspaceViewModel: ObservableObject {
 		if displayedDiffSelection != selection {
 			clearDisplayedDiff()
 		}
-
 		switch selection {
 		case .workingTree(let id):
 			guard let change = changes.first(where: { $0.id == id }) else {
 				clearDisplayedDiff()
 				return
 			}
+			requestedDiffSelection = selection
+			isLoadingDiff = true
 			diffTask = Task {
+				defer { finishDiffLoad(for: selection) }
 				do {
 					let requestedDiff = try await repository.requestDiff(for: change, at: repositoryURL)
 					updateDisplayedDiff(requestedDiff, for: selection)
@@ -253,7 +262,10 @@ final class WorkspaceViewModel: ObservableObject {
 				clearDisplayedDiff()
 				return
 			}
+			requestedDiffSelection = selection
+			isLoadingDiff = true
 			diffTask = Task {
+				defer { finishDiffLoad(for: selection) }
 				do {
 					let requestedDiff = try await repository.requestAmendDiff(
 						for: change,
@@ -273,6 +285,7 @@ final class WorkspaceViewModel: ObservableObject {
 		guard let repositoryURL, let commit = selectedCommit else {
 			commitDiffTask?.cancel()
 			requestedCommitDiffID = nil
+			isLoadingCommitDiff = false
 			clearDisplayedCommitDiff()
 			return
 		}
@@ -281,15 +294,17 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 
 		commitDiffTask?.cancel()
-		requestedCommitDiffID = commit.id
 		if displayedCommitDiffID != commit.id {
 			clearDisplayedCommitDiff()
 		}
+		requestedCommitDiffID = commit.id
+		isLoadingCommitDiff = true
 
 		commitDiffTask = Task {
 			defer {
 				if requestedCommitDiffID == commit.id {
 					requestedCommitDiffID = nil
+					isLoadingCommitDiff = false
 				}
 			}
 			do {
@@ -736,11 +751,38 @@ final class WorkspaceViewModel: ObservableObject {
 		displayedDiffSelection = selection
 	}
 
+	private func beginContentLoad() -> UUID {
+		let id = UUID()
+		contentLoadID = id
+		isLoading = true
+		isLoadingContent = true
+		return id
+	}
+
+	private func finishContentLoad(id: UUID) {
+		guard contentLoadID == id else { return }
+		contentLoadID = nil
+		isLoading = false
+		isLoadingContent = false
+	}
+
+	private func finishDiffLoad(for selection: WorkspaceChangeSelection) {
+		guard requestedDiffSelection == selection else { return }
+		requestedDiffSelection = nil
+		isLoadingDiff = false
+	}
+
+	private func clearDiffLoad() {
+		requestedDiffSelection = nil
+		isLoadingDiff = false
+	}
+
 	private func clearDisplayedDiff() {
 		if !diff.isEmpty {
 			diff = ""
 		}
 		displayedDiffSelection = nil
+		clearDiffLoad()
 	}
 
 	private func clearDisplayedCommitDiff() {
@@ -748,6 +790,8 @@ final class WorkspaceViewModel: ObservableObject {
 			selectedCommitFiles = []
 		}
 		displayedCommitDiffID = nil
+		requestedCommitDiffID = nil
+		isLoadingCommitDiff = false
 	}
 
 	private var currentCommit: GitCommit? {

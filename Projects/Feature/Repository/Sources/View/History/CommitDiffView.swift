@@ -3,6 +3,7 @@ import SwiftUI
 struct CommitDiffView: View {
 	let file: CommitDiffFile?
 	let changedFileCount: Int
+	let isLoading: Bool
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -64,7 +65,12 @@ struct CommitDiffView: View {
 
 	@ViewBuilder
 	private var diffContent: some View {
-		if file != nil {
+		if isLoading {
+			LoadingStateView(
+				title: "Loading Commit Diff",
+				message: "Reading the files changed by this commit."
+			)
+		} else if file != nil {
 			if diffLines.isEmpty {
 				EmptyStateView(
 					title: "No Text Diff",

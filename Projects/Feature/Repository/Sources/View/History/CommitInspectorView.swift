@@ -4,6 +4,7 @@ import SwiftUI
 struct CommitInspectorView: View {
 	let commit: GitCommit?
 	let files: [CommitDiffFile]
+	let isLoadingFiles: Bool
 	@Binding var selectedFileID: CommitDiffFile.ID?
 
 	var body: some View {
@@ -112,12 +113,23 @@ struct CommitInspectorView: View {
 
 	private var changedFiles: some View {
 		Section {
-			ForEach(files) { file in
-				CommitChangedFileRow(file: file)
-					.tag(file.id)
-					.contentShape(.rect)
-					.listRowInsets(.init(top: 2, leading: 16, bottom: 2, trailing: 16))
-					.listRowSeparator(.hidden)
+			if isLoadingFiles {
+				HStack(spacing: 8) {
+					ProgressView()
+						.controlSize(.small)
+					Text("Loading changed files…")
+						.foregroundStyle(.secondary)
+				}
+				.font(.caption)
+				.listRowSeparator(.hidden)
+			} else {
+				ForEach(files) { file in
+					CommitChangedFileRow(file: file)
+						.tag(file.id)
+						.contentShape(.rect)
+						.listRowInsets(.init(top: 2, leading: 16, bottom: 2, trailing: 16))
+						.listRowSeparator(.hidden)
+				}
 			}
 		} header: {
 			Text("Files")
