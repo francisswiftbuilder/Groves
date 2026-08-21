@@ -155,6 +155,26 @@ enum GitOutputParser {
 		}
 	}
 
+	static func parseRemoteBranches(_ output: String) -> [GitRemoteBranch] {
+		output.split(whereSeparator: \.isNewline).compactMap { line in
+			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+			guard fields.count >= 4, fields[3].isEmpty else { return nil }
+			let fullName = fields[0]
+			guard let separatorIndex = fullName.firstIndex(of: "/") else { return nil }
+			let remoteName = String(fullName[..<separatorIndex])
+			let branchName = String(fullName[fullName.index(after: separatorIndex)...])
+			guard !remoteName.isEmpty, !branchName.isEmpty else { return nil }
+
+			return GitRemoteBranch(
+				name: branchName,
+				fullName: fullName,
+				remoteName: remoteName,
+				shortHash: fields[1],
+				hash: fields[2]
+			)
+		}
+	}
+
 	static func parseTags(_ output: String) -> [GitTag] {
 		let formatter = DateFormatter()
 		formatter.locale = Locale(identifier: "en_US_POSIX")

@@ -35,31 +35,27 @@ struct CommitInspectorView: View {
 	@ViewBuilder
 	private var inspectorContent: some View {
 		if let commit {
-			ScrollView {
-				VStack(alignment: .leading, spacing: 0) {
-					commitSummary(commit)
-						.padding(16)
+			List(selection: $selectedFileID) {
+				commitSummary(commit)
+					.padding(.vertical, 8)
+					.selectionDisabled()
+					.listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
 
-					Divider()
+				commitInformation(commit)
+					.padding(.vertical, 8)
+					.selectionDisabled()
+					.listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
 
-					commitInformation(commit)
-						.padding(16)
-
-					if !commit.references.isEmpty {
-						Divider()
-					}
-
+				if !commit.references.isEmpty {
 					commitReferences(commit)
-						.padding(.horizontal, 16)
-						.padding(.vertical, commit.references.isEmpty ? 0 : 16)
-
-					Divider()
-
-					changedFiles
-						.padding(16)
+						.padding(.vertical, 8)
+						.selectionDisabled()
+						.listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
 				}
-				.frame(maxWidth: .infinity, alignment: .leading)
+
+				changedFiles
 			}
+			.listStyle(.plain)
 		} else {
 			EmptyStateView(
 				title: "No Commit Selected",
@@ -115,20 +111,19 @@ struct CommitInspectorView: View {
 	}
 
 	private var changedFiles: some View {
-		CommitInspectorSection("Files") {
-			VStack(spacing: 4) {
-				ForEach(files) { file in
-					Button {
-						selectedFileID = file.id
-					} label: {
-						CommitChangedFileRow(
-							file: file,
-							isSelected: file.id == selectedFileID
-						)
-					}
-					.buttonStyle(.plain)
-				}
+		Section {
+			ForEach(files) { file in
+				CommitChangedFileRow(file: file)
+					.tag(file.id)
+					.contentShape(.rect)
+					.listRowInsets(.init(top: 2, leading: 16, bottom: 2, trailing: 16))
+					.listRowSeparator(.hidden)
 			}
+		} header: {
+			Text("Files")
+				.font(.subheadline.weight(.semibold))
+				.textCase(nil)
+				.foregroundStyle(.primary)
 		}
 	}
 }
@@ -196,7 +191,6 @@ private struct CommitReferenceTag: View {
 
 private struct CommitChangedFileRow: View {
 	let file: CommitDiffFile
-	let isSelected: Bool
 
 	var body: some View {
 		HStack(spacing: 8) {
@@ -216,9 +210,6 @@ private struct CommitChangedFileRow: View {
 		.font(.caption.monospacedDigit())
 		.padding(.horizontal, 6)
 		.padding(.vertical, 5)
-		.background(
-			isSelected ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6)
-		)
 		.contentShape(.rect)
 	}
 }

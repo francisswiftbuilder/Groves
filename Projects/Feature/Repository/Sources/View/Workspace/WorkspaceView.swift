@@ -5,6 +5,7 @@ struct WorkspaceView: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
 	let repositories: [RepositoryTab]
 	let selectedRepositoryID: RepositoryTab.ID?
+	@Binding var sidebarSelection: RepositorySidebarSelection?
 	let onSelectRepository: (RepositoryTab.ID) -> Void
 	let onCloseRepository: (RepositoryTab.ID) -> Void
 	let onAddRepository: () -> Void
@@ -15,6 +16,7 @@ struct WorkspaceView: View {
 				viewModel: viewModel,
 				repositories: repositories,
 				selectedRepositoryID: selectedRepositoryID,
+				selectedItem: $sidebarSelection,
 				onSelectRepository: onSelectRepository,
 				onCloseRepository: onCloseRepository,
 				onAddRepository: onAddRepository

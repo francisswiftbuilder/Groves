@@ -4,7 +4,6 @@ struct HistoryView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@ObservedObject var viewModel: WorkspaceViewModel
 	@State private var selectedFileID: CommitDiffFile.ID?
-	@State private var focusScrollTask: Task<Void, Never>?
 
 	var body: some View {
 		Group {
@@ -48,9 +47,6 @@ struct HistoryView: View {
 		.onChange(of: viewModel.selectedCommitDiff) { _, _ in
 			selectFirstFileIfNeeded()
 		}
-		.onDisappear {
-			focusScrollTask?.cancel()
-		}
 	}
 
 	private var historyList: some View {
@@ -80,20 +76,15 @@ struct HistoryView: View {
 						CommitGraphRow(item: item)
 							.id(item.id)
 							.tag(item.id)
-							.listRowSeparator(.hidden)
+							.contentShape(.rect)
 							.listRowInsets(.init())
+							.listRowSeparator(.hidden)
 					}
 				}
 				.listStyle(.plain)
 			}
-			.onAppear {
-				scrollToFocusedCommit(using: proxy, animated: false)
-			}
-			.onChange(of: viewModel.historyFocusRequest) { _, _ in
-				scrollToFocusedCommit(using: proxy, animated: true)
-			}
-			.onChange(of: viewModel.commitGraphItems.count) { _, _ in
-				scrollToFocusedCommit(using: proxy, animated: false)
+			.task(id: viewModel.historyFocusRequest) {
+				await scrollToFocusedCommit(using: proxy)
 			}
 		}
 	}
@@ -116,26 +107,20 @@ struct HistoryView: View {
 		selectedFileID = commitFiles.first?.id
 	}
 
-	private func scrollToFocusedCommit(using proxy: ScrollViewProxy, animated: Bool) {
+	private func scrollToFocusedCommit(using proxy: ScrollViewProxy) async {
 		guard let request = viewModel.historyFocusRequest else { return }
-		focusScrollTask?.cancel()
-		focusScrollTask = Task { @MainActor in
-			await Task.yield()
-			await Task.yield()
-			try? await Task.sleep(for: .milliseconds(40))
-			guard
-				!Task.isCancelled,
-				viewModel.historyFocusRequest == request,
-				viewModel.commitGraphItems.contains(where: { $0.id == request.commitID })
-			else { return }
+		await Task.yield()
+		guard !Task.isCancelled else { return }
+		guard viewModel.commitGraphItems.contains(where: { $0.id == request.commitID }) else {
+			return
+		}
 
-			if animated && request.isAnimated && !reduceMotion {
-				withAnimation(.easeInOut(duration: 0.2)) {
-					proxy.scrollTo(request.commitID, anchor: .center)
-				}
-			} else {
+		if request.isAnimated && !reduceMotion {
+			withAnimation(.easeInOut(duration: 0.2)) {
 				proxy.scrollTo(request.commitID, anchor: .center)
 			}
+		} else {
+			proxy.scrollTo(request.commitID, anchor: .center)
 		}
 	}
 }

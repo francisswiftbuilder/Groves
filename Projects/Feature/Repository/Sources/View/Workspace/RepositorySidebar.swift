@@ -6,12 +6,12 @@ struct RepositorySidebar: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
 	let repositories: [RepositoryTab]
 	let selectedRepositoryID: RepositoryTab.ID?
+	@Binding var selectedItem: RepositorySidebarSelection?
 	let onSelectRepository: (RepositoryTab.ID) -> Void
 	let onCloseRepository: (RepositoryTab.ID) -> Void
 	let onAddRepository: () -> Void
 	@State private var expandedRepositoryIDs: Set<RepositoryTab.ID> = []
 	@State private var expandedGroups: Set<RepositorySidebarGroup> = []
-	@State private var selectedItem: RepositorySidebarSelection?
 
 	var body: some View {
 		List(selection: $selectedItem) {
@@ -21,8 +21,7 @@ struct RepositorySidebar: View {
 						RepositoryNavigationRows(
 							workspace: repository.workspace,
 							repositoryID: repository.id,
-							expandedGroups: $expandedGroups,
-							onSelectRepository: onSelectRepository
+							expandedGroups: $expandedGroups
 						)
 					} label: {
 						Button {
@@ -56,6 +55,11 @@ struct RepositorySidebar: View {
 			}
 		}
 		.listStyle(.sidebar)
+		.contextMenu(forSelectionType: RepositorySidebarSelection.self) { selections in
+			sidebarContextMenu(for: selections)
+		} primaryAction: { selections in
+			performPrimaryAction(for: selections)
+		}
 		.safeAreaInset(edge: .bottom) {
 			RepositorySidebarBottomBar(
 				viewModel: viewModel,
@@ -67,75 +71,89 @@ struct RepositorySidebar: View {
 		}
 		.onAppear {
 			expandSelectedRepository()
-			synchronizeSelection()
 		}
 		.onChange(of: selectedRepositoryID) { _, _ in
 			expandSelectedRepository()
-			synchronizeSelection()
 		}
-		.onChange(of: viewModel.selectedSection) { _, _ in
-			synchronizeSelection()
-		}
-		.onChange(of: viewModel.selectedBranchID) { _, _ in
-			synchronizeSelection()
-		}
-		.onChange(of: viewModel.selectedHistoryBranchID) { _, _ in
-			synchronizeSelection()
-		}
-		.onChange(of: viewModel.selectedRemoteID) { _, _ in
-			synchronizeSelection()
-		}
-		.onChange(of: viewModel.selectedTagID) { _, _ in
-			synchronizeSelection()
-		}
-		.onChange(of: viewModel.selectedStashID) { _, _ in
-			synchronizeSelection()
-		}
-		.task(id: selectedItem) {
-			try? await Task.sleep(for: .milliseconds(1))
-			guard !Task.isCancelled else { return }
-			didChangeSelection(selectedItem)
-		}
-	}
-
-	private var modelSelection: RepositorySidebarSelection? {
-		guard
-			let selectedRepositoryID,
-			let repository = repositories.first(where: { $0.id == selectedRepositoryID })
-		else { return nil }
-
-		let workspace = repository.workspace
-		if let id = workspace.selectedHistoryBranchID {
-			return .branch(repositoryID: selectedRepositoryID, id: id)
-		}
-		if let id = workspace.selectedTagID {
-			return .tag(repositoryID: selectedRepositoryID, id: id)
-		}
-		switch workspace.selectedSection ?? .changes {
-		case .branches:
-			if let id = workspace.selectedBranchID {
-				return .branch(repositoryID: selectedRepositoryID, id: id)
-			}
-		case .remotes:
-			if let id = workspace.selectedRemoteID {
-				return .remote(repositoryID: selectedRepositoryID, id: id)
-			}
-		case .stashes:
-			if let id = workspace.selectedStashID {
-				return .stash(repositoryID: selectedRepositoryID, id: id)
-			}
-		case .changes, .history, .tree:
-			break
-		}
-
-		return .section(
-			repositoryID: selectedRepositoryID,
-			section: workspace.selectedSection ?? .changes
-		)
 	}
 
 	private var expansionAnimation: Animation? {
 		reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 1)
+	}
+
+	@ViewBuilder
+	private func sidebarContextMenu(
+		for selections: Set<RepositorySidebarSelection>
+	) -> some View {
+		if selections.count == 1,
+			let selection = selections.first,
+			let repository = repositories.first(where: { $0.id == selection.repositoryID })
+		{
+			switch selection {
+			case .branch(_, let id):
+				if let branch = repository.workspace.branches.first(where: { $0.id == id }) {
+					Button("Switch to \(branch.name)", systemImage: "arrow.triangle.branch") {
+						selectBranch(branch, in: repository)
+						repository.workspace.didRequestSwitchBranch()
+					}
+					.disabled(branch.isCurrent)
+
+					Button("Delete Branch", systemImage: "trash", role: .destructive) {
+						selectBranch(branch, in: repository)
+						repository.workspace.didRequestDeleteBranch()
+					}
+					.disabled(branch.isCurrent)
+				}
+			case .stash(_, let id):
+				if let stash = repository.workspace.stashes.first(where: { $0.id == id }) {
+					Button("Apply Stash", systemImage: "arrow.down.doc") {
+						selectStash(stash, in: repository)
+						repository.workspace.didRequestApplyStash()
+					}
+
+					Button("Pop Stash", systemImage: "arrow.up.doc") {
+						selectStash(stash, in: repository)
+						repository.workspace.didRequestPopStash()
+					}
+
+					Divider()
+
+					Button("Delete Stash", systemImage: "trash", role: .destructive) {
+						selectStash(stash, in: repository)
+						repository.workspace.didRequestDropStash()
+					}
+				}
+			case .section, .remote, .remoteBranch, .tag:
+				EmptyView()
+			}
+		}
+	}
+
+	private func performPrimaryAction(
+		for selections: Set<RepositorySidebarSelection>
+	) {
+		guard
+			selections.count == 1,
+			let selection = selections.first,
+			case .branch(_, let id) = selection,
+			let repository = repositories.first(where: { $0.id == selection.repositoryID }),
+			let branch = repository.workspace.branches.first(where: { $0.id == id })
+		else { return }
+
+		selectBranch(branch, in: repository)
+		repository.workspace.didRequestSwitchBranch()
+	}
+
+	private func selectBranch(_ branch: GitBranch, in repository: RepositoryTab) {
+		selectedItem = .branch(repositoryID: repository.id, id: branch.id)
+		selectRepository(repository.id)
+		repository.workspace.selectedBranchID = branch.id
+	}
+
+	private func selectStash(_ stash: GitStash, in repository: RepositoryTab) {
+		selectedItem = .stash(repositoryID: repository.id, id: stash.id)
+		selectRepository(repository.id)
+		repository.workspace.selectedStashID = stash.id
 	}
 
 	private func expansionBinding(for repositoryID: RepositoryTab.ID) -> Binding<Bool> {
@@ -158,40 +176,8 @@ struct RepositorySidebar: View {
 
 	private func selectSection(_ section: WorkspaceSection) {
 		guard let selectedRepositoryID else { return }
-		viewModel.didSelectSection(section)
+		selectedItem = .section(repositoryID: selectedRepositoryID, section: section)
 		expandGroupIfNeeded(section, repositoryID: selectedRepositoryID)
-	}
-
-	private func synchronizeSelection() {
-		let modelSelection = modelSelection
-		guard selectedItem != modelSelection else { return }
-		selectedItem = modelSelection
-	}
-
-	private func didChangeSelection(_ selection: RepositorySidebarSelection?) {
-		guard
-			let selection,
-			selection != modelSelection,
-			let repository = repositories.first(where: { $0.id == selection.repositoryID })
-		else { return }
-
-		expandRepository(repository.id)
-		switch selection {
-		case .section(_, let section):
-			repository.workspace.didSelectSection(section)
-			expandGroupIfNeeded(section, repositoryID: repository.id)
-		case .branch(_, let id):
-			repository.workspace.selectedBranchID = id
-		case .remote(_, let id):
-			repository.workspace.selectedRemoteID = id
-			repository.workspace.didSelectSection(.remotes)
-		case .tag(_, let id):
-			repository.workspace.selectedTagID = id
-		case .stash(_, let id):
-			repository.workspace.selectedStashID = id
-			repository.workspace.didSelectSection(.stashes)
-		}
-		onSelectRepository(repository.id)
 	}
 
 	private func expandGroupIfNeeded(
@@ -242,54 +228,36 @@ private struct RepositoryNavigationRows: View {
 	@ObservedObject var workspace: WorkspaceViewModel
 	let repositoryID: RepositoryTab.ID
 	@Binding var expandedGroups: Set<RepositorySidebarGroup>
-	let onSelectRepository: (RepositoryTab.ID) -> Void
 
 	var body: some View {
 		sectionRow(.tree)
 		sectionRow(.changes, badgeCount: workspace.changes.count)
 		sectionRow(.history)
 
-		navigationGroup(.branches, kind: .branches) {
+		navigationGroup(.branches, kind: .branches, selectsSection: false) {
 			ForEach(workspace.branches) { branch in
 				BranchSidebarRow(branch: branch)
 					.tag(RepositorySidebarSelection.branch(repositoryID: repositoryID, id: branch.id))
-					.gesture(
-						TapGesture(count: 2)
-							.exclusively(before: TapGesture())
-							.onEnded { gesture in
-								onSelectRepository(repositoryID)
-								switch gesture {
-								case .first:
-									workspace.selectedBranchID = branch.id
-									workspace.didRequestSwitchBranch()
-								case .second:
-									workspace.didOpenBranch(branch)
-								}
-							}
-					)
 					.help("Click to show \(branch.name) in History. Double-click to switch branches.")
-					.contextMenu {
-						Button("Switch to \(branch.name)", systemImage: "arrow.triangle.branch") {
-							onSelectRepository(repositoryID)
-							workspace.selectedBranchID = branch.id
-							workspace.didRequestSwitchBranch()
-						}
-						.disabled(branch.isCurrent)
-
-						Button("Delete Branch", systemImage: "trash", role: .destructive) {
-							onSelectRepository(repositoryID)
-							workspace.selectedBranchID = branch.id
-							workspace.didRequestDeleteBranch()
-						}
-						.disabled(branch.isCurrent)
-					}
 			}
 		}
 
-		navigationGroup(.remotes, kind: .remotes) {
+		navigationGroup(.remotes, kind: .remotes, selectsSection: false) {
 			ForEach(workspace.remotes) { remote in
-				SidebarChildRow(title: remote.name, systemImage: "icloud", accessory: nil)
-					.tag(RepositorySidebarSelection.remote(repositoryID: repositoryID, id: remote.id))
+				DisclosureGroup {
+					ForEach(remote.branches) { branch in
+						RemoteBranchSidebarRow(branch: branch)
+							.tag(
+								RepositorySidebarSelection.remoteBranch(
+									repositoryID: repositoryID,
+									id: branch.id
+								)
+							)
+							.help("Show \(branch.fullName) in History")
+					}
+				} label: {
+					SidebarChildRow(title: remote.name, systemImage: "icloud", accessory: nil)
+				}
 			}
 		}
 
@@ -297,10 +265,6 @@ private struct RepositoryNavigationRows: View {
 			ForEach(workspace.tags) { tag in
 				TagSidebarRow(tag: tag)
 					.tag(RepositorySidebarSelection.tag(repositoryID: repositoryID, id: tag.id))
-					.onTapGesture {
-						onSelectRepository(repositoryID)
-						workspace.didOpenTag(tag)
-					}
 					.help("Show \(tag.name) in History")
 			}
 		}
@@ -313,24 +277,6 @@ private struct RepositoryNavigationRows: View {
 					accessory: stash.reference
 				)
 				.tag(RepositorySidebarSelection.stash(repositoryID: repositoryID, id: stash.id))
-				.contextMenu {
-					Button("Apply Stash", systemImage: "arrow.down.doc") {
-						select(stash)
-						workspace.didRequestApplyStash()
-					}
-
-					Button("Pop Stash", systemImage: "arrow.up.doc") {
-						select(stash)
-						workspace.didRequestPopStash()
-					}
-
-					Divider()
-
-					Button("Delete Stash", systemImage: "trash", role: .destructive) {
-						select(stash)
-						workspace.didRequestDropStash()
-					}
-				}
 			}
 		}
 	}
@@ -340,16 +286,18 @@ private struct RepositoryNavigationRows: View {
 			.tag(RepositorySidebarSelection.section(repositoryID: repositoryID, section: section))
 	}
 
+	@ViewBuilder
 	private func navigationGroup<Content: View>(
 		_ section: WorkspaceSection,
 		kind: RepositorySidebarGroupKind,
+		selectsSection: Bool = true,
 		@ViewBuilder content: @escaping () -> Content
 	) -> some View {
 		let group = RepositorySidebarGroup(
 			repositoryID: repositoryID,
 			kind: kind
 		)
-		return DisclosureGroup(
+		let disclosureGroup = DisclosureGroup(
 			isExpanded: Binding(
 				get: { expandedGroups.contains(group) },
 				set: { isExpanded in
@@ -365,7 +313,13 @@ private struct RepositoryNavigationRows: View {
 		} label: {
 			SidebarSectionRow(section: section, badgeCount: nil)
 		}
-		.tag(RepositorySidebarSelection.section(repositoryID: repositoryID, section: section))
+
+		if selectsSection {
+			disclosureGroup
+				.tag(RepositorySidebarSelection.section(repositoryID: repositoryID, section: section))
+		} else {
+			disclosureGroup
+		}
 	}
 
 	private func tagNavigationGroup<Content: View>(
@@ -390,29 +344,6 @@ private struct RepositoryNavigationRows: View {
 		}
 	}
 
-	private func select(_ stash: GitStash) {
-		onSelectRepository(repositoryID)
-		workspace.selectedStashID = stash.id
-	}
-}
-
-private enum RepositorySidebarSelection: Hashable {
-	case section(repositoryID: RepositoryTab.ID, section: WorkspaceSection)
-	case branch(repositoryID: RepositoryTab.ID, id: String)
-	case remote(repositoryID: RepositoryTab.ID, id: String)
-	case tag(repositoryID: RepositoryTab.ID, id: String)
-	case stash(repositoryID: RepositoryTab.ID, id: String)
-
-	var repositoryID: RepositoryTab.ID {
-		switch self {
-		case .section(let repositoryID, _),
-			.branch(let repositoryID, _),
-			.remote(let repositoryID, _),
-			.tag(let repositoryID, _),
-			.stash(let repositoryID, _):
-			return repositoryID
-		}
-	}
 }
 
 private struct RepositorySidebarGroup: Hashable {
@@ -537,6 +468,18 @@ private struct BranchSidebarRow: View {
 			title: branch.name,
 			systemImage: branch.isCurrent ? "checkmark" : "arrow.triangle.branch",
 			accessory: branch.isCurrent ? "Current" : nil
+		)
+	}
+}
+
+private struct RemoteBranchSidebarRow: View {
+	let branch: GitRemoteBranch
+
+	var body: some View {
+		SidebarChildRow(
+			title: branch.name,
+			systemImage: "arrow.triangle.branch",
+			accessory: nil
 		)
 	}
 }

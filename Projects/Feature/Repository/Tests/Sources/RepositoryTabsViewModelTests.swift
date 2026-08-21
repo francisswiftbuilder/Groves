@@ -18,6 +18,46 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 
 		XCTAssertEqual(viewModel.tabs.map(\.id), [first.id, second.id])
 		XCTAssertEqual(viewModel.selectedTabID, second.id)
+		XCTAssertEqual(
+			viewModel.sidebarSelection,
+			.section(repositoryID: second.id, section: .changes)
+		)
+	}
+
+	func testSelectingCurrentRepositoryDoesNotPersistSelectionAgain() {
+		let repository = makeSavedRepository(name: "Current", position: 0, isSelected: true)
+		let store = SavedRepositoryStoreSpy(repositories: [repository])
+		let viewModel = RepositoryTabsViewModel(
+			gitRepository: GitRepositoryStub(),
+			savedRepositoryStore: store
+		)
+
+		viewModel.didSelectTab(repository.id)
+
+		XCTAssertTrue(store.selectionRequestIDs.isEmpty)
+	}
+
+	func testSidebarSelectionActivationOwnsWorkspaceNavigation() {
+		let repository = makeSavedRepository(name: "Current", position: 0, isSelected: true)
+		let store = SavedRepositoryStoreSpy(repositories: [repository])
+		let viewModel = RepositoryTabsViewModel(
+			gitRepository: GitRepositoryStub(),
+			savedRepositoryStore: store
+		)
+		let selection = RepositorySidebarSelection.section(
+			repositoryID: repository.id,
+			section: .history
+		)
+
+		viewModel.sidebarSelection = selection
+
+		XCTAssertEqual(viewModel.selectedWorkspace?.selectedSection, .changes)
+
+		viewModel.didActivateSidebarSelection(selection)
+
+		XCTAssertEqual(viewModel.sidebarSelection, selection)
+		XCTAssertEqual(viewModel.selectedWorkspace?.selectedSection, .history)
+		XCTAssertTrue(store.selectionRequestIDs.isEmpty)
 	}
 
 	func testClosingSelectedRepositorySelectsNeighborAndPersistsSelection() {
@@ -83,9 +123,45 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		XCTAssertEqual(viewModel.selectedSection, .history)
 		XCTAssertEqual(viewModel.selectedBranchID, branch.id)
-		XCTAssertEqual(viewModel.selectedHistoryBranchID, branch.id)
-		XCTAssertNil(viewModel.selectedTagID)
 		XCTAssertEqual(viewModel.historyFocusRequest?.commitID, "commit-7")
+	}
+
+	func testOpeningRemoteBranchFocusesLatestCommitInHistory() async throws {
+		let commit = GitCommit(
+			hash: "remote-commit",
+			shortHash: "remote",
+			parentHashes: [],
+			author: "Trees Tests",
+			date: Date(timeIntervalSince1970: 0),
+			references: [],
+			subject: "Remote commit",
+			body: ""
+		)
+		let branch = GitRemoteBranch(
+			name: "main",
+			fullName: "origin/main",
+			remoteName: "origin",
+			shortHash: commit.shortHash,
+			hash: commit.hash
+		)
+		let remote = GitRemote(
+			name: "origin",
+			fetchURL: "https://example.com/Trees.git",
+			pushURL: "https://example.com/Trees.git",
+			branches: [branch]
+		)
+		let viewModel = WorkspaceViewModel(
+			repository: GitRepositoryStub(commits: [commit], remotes: [remote])
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.commitGraphItems.count == 1 }
+
+		viewModel.didOpenRemoteBranch(branch)
+
+		XCTAssertEqual(viewModel.selectedSection, .history)
+		XCTAssertEqual(viewModel.selectedRemoteID, remote.id)
+		XCTAssertEqual(viewModel.historyFocusRequest?.commitID, commit.id)
 	}
 
 	func testOpeningTagFocusesDistantCommitInCompleteHistory() async throws {
@@ -121,8 +197,6 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		XCTAssertEqual(viewModel.commitGraphItems.count, commits.count)
 		XCTAssertEqual(viewModel.selectedSection, .history)
-		XCTAssertNil(viewModel.selectedHistoryBranchID)
-		XCTAssertEqual(viewModel.selectedTagID, tag.id)
 		XCTAssertEqual(viewModel.historyFocusRequest?.commitID, tag.targetHash)
 	}
 
@@ -177,6 +251,7 @@ private final class SavedRepositoryStoreSpy: SavedRepositoryStore {
 	private(set) var repositories: [SavedRepository]
 	private(set) var removedRepositoryIDs: [UUID] = []
 	private(set) var selectedRepositoryID: UUID?
+	private(set) var selectionRequestIDs: [UUID?] = []
 
 	init(repositories: [SavedRepository]) {
 		self.repositories = repositories
@@ -205,15 +280,18 @@ private final class SavedRepositoryStoreSpy: SavedRepositoryStore {
 
 	func requestSelectRepository(id: UUID?) throws {
 		selectedRepositoryID = id
+		selectionRequestIDs.append(id)
 	}
 }
 
 private struct GitRepositoryStub: GitRepository {
 	let commits: [GitCommit]
+	let remotes: [GitRemote]
 	let tags: [GitTag]
 
-	init(commits: [GitCommit] = [], tags: [GitTag] = []) {
+	init(commits: [GitCommit] = [], remotes: [GitRemote] = [], tags: [GitTag] = []) {
 		self.commits = commits
+		self.remotes = remotes
 		self.tags = tags
 	}
 
@@ -223,7 +301,7 @@ private struct GitRepositoryStub: GitRepository {
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { commits }
 	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String { "" }
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] { [] }
-	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] { [] }
+	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] { remotes }
 	func requestTags(at repositoryURL: URL) async throws -> [GitTag] { tags }
 	func requestStashes(at repositoryURL: URL) async throws -> [GitStash] { [] }
 	func requestFileTree(at repositoryURL: URL) async throws -> [RepositoryTreeNode] { [] }

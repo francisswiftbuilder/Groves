@@ -147,13 +147,44 @@ public struct GitRemote: Identifiable, Hashable, Sendable {
 	public let name: String
 	public let fetchURL: String?
 	public let pushURL: String?
+	public let branches: [GitRemoteBranch]
 
 	public var id: String { name }
 
-	public init(name: String, fetchURL: String?, pushURL: String?) {
+	public init(
+		name: String,
+		fetchURL: String?,
+		pushURL: String?,
+		branches: [GitRemoteBranch] = []
+	) {
 		self.name = name
 		self.fetchURL = fetchURL
 		self.pushURL = pushURL
+		self.branches = branches
+	}
+}
+
+public struct GitRemoteBranch: Identifiable, Hashable, Sendable {
+	public let name: String
+	public let fullName: String
+	public let remoteName: String
+	public let shortHash: String
+	public let hash: String
+
+	public var id: String { fullName }
+
+	public init(
+		name: String,
+		fullName: String,
+		remoteName: String,
+		shortHash: String,
+		hash: String
+	) {
+		self.name = name
+		self.fullName = fullName
+		self.remoteName = remoteName
+		self.shortHash = shortHash
+		self.hash = hash
 	}
 }
 

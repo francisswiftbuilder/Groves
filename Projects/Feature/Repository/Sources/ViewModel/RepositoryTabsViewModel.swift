@@ -5,6 +5,7 @@ import Foundation
 final class RepositoryTabsViewModel: ObservableObject {
 	@Published private(set) var tabs: [RepositoryTab] = []
 	@Published private(set) var selectedTabID: SavedRepository.ID?
+	@Published var sidebarSelection: RepositorySidebarSelection?
 	@Published private(set) var isAddingRepository = false
 	@Published var alertMessage: String?
 
@@ -63,12 +64,44 @@ final class RepositoryTabsViewModel: ObservableObject {
 
 	func didSelectTab(_ id: SavedRepository.ID) {
 		guard tabs.contains(where: { $0.id == id }) else { return }
-		selectedTabID = id
-		do {
-			try savedRepositoryStore.requestSelectRepository(id: id)
-			activateSelectedTabIfNeeded()
-		} catch {
-			alertMessage = error.localizedDescription
+		if selectedTabID != id {
+			selectedTabID = id
+			do {
+				try savedRepositoryStore.requestSelectRepository(id: id)
+			} catch {
+				alertMessage = error.localizedDescription
+			}
+		}
+		activateSelectedTabIfNeeded()
+		selectDefaultSidebarItemIfNeeded(repositoryID: id)
+	}
+
+	func didActivateSidebarSelection(_ selection: RepositorySidebarSelection?) {
+		guard
+			let selection,
+			let tab = tabs.first(where: { $0.id == selection.repositoryID })
+		else { return }
+
+		didSelectTab(tab.id)
+		let workspace = tab.workspace
+		switch selection {
+		case .section(_, let section):
+			workspace.didSelectSection(section)
+		case .branch(_, let id):
+			guard let branch = workspace.branches.first(where: { $0.id == id }) else { return }
+			workspace.didOpenBranch(branch)
+		case .remote(_, let id):
+			workspace.selectedRemoteID = id
+			workspace.didSelectSection(.remotes)
+		case .remoteBranch(_, let id):
+			guard let branch = workspace.remoteBranches.first(where: { $0.id == id }) else { return }
+			workspace.didOpenRemoteBranch(branch)
+		case .tag(_, let id):
+			guard let tag = workspace.tags.first(where: { $0.id == id }) else { return }
+			workspace.didOpenTag(tag)
+		case .stash(_, let id):
+			workspace.selectedStashID = id
+			workspace.didSelectSection(.stashes)
 		}
 	}
 
@@ -83,6 +116,11 @@ final class RepositoryTabsViewModel: ObservableObject {
 				selectedTabID = nextIndex >= 0 ? tabs[nextIndex].id : nil
 				try savedRepositoryStore.requestSelectRepository(id: selectedTabID)
 				activateSelectedTabIfNeeded()
+				if let selectedTabID {
+					sidebarSelection = defaultSidebarSelection(repositoryID: selectedTabID)
+				} else {
+					sidebarSelection = nil
+				}
 			}
 		} catch {
 			alertMessage = error.localizedDescription
@@ -98,6 +136,9 @@ final class RepositoryTabsViewModel: ObservableObject {
 				try savedRepositoryStore.requestSelectRepository(id: selectedTabID)
 			}
 			activateSelectedTabIfNeeded()
+			if let selectedTabID {
+				sidebarSelection = defaultSidebarSelection(repositoryID: selectedTabID)
+			}
 		} catch {
 			alertMessage = error.localizedDescription
 		}
@@ -117,5 +158,39 @@ final class RepositoryTabsViewModel: ObservableObject {
 		guard let selectedTab, selectedTab.hasLoadedContent == false else { return }
 		selectedTab.hasLoadedContent = true
 		selectedTab.workspace.didRequestRefresh()
+	}
+
+	private func selectDefaultSidebarItemIfNeeded(repositoryID: RepositoryTab.ID) {
+		guard sidebarSelection?.repositoryID != repositoryID else { return }
+		sidebarSelection = defaultSidebarSelection(repositoryID: repositoryID)
+	}
+
+	private func defaultSidebarSelection(
+		repositoryID: RepositoryTab.ID
+	) -> RepositorySidebarSelection {
+		let section =
+			tabs.first(where: { $0.id == repositoryID })?.workspace.selectedSection ?? .changes
+		return .section(repositoryID: repositoryID, section: section)
+	}
+}
+
+enum RepositorySidebarSelection: Hashable {
+	case section(repositoryID: RepositoryTab.ID, section: WorkspaceSection)
+	case branch(repositoryID: RepositoryTab.ID, id: String)
+	case remote(repositoryID: RepositoryTab.ID, id: String)
+	case remoteBranch(repositoryID: RepositoryTab.ID, id: String)
+	case tag(repositoryID: RepositoryTab.ID, id: String)
+	case stash(repositoryID: RepositoryTab.ID, id: String)
+
+	var repositoryID: RepositoryTab.ID {
+		switch self {
+		case .section(let repositoryID, _),
+			.branch(let repositoryID, _),
+			.remote(let repositoryID, _),
+			.remoteBranch(let repositoryID, _),
+			.tag(let repositoryID, _),
+			.stash(let repositoryID, _):
+			return repositoryID
+		}
 	}
 }

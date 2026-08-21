@@ -123,11 +123,31 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] {
-		let result = try await runner.requestRun(
+		let remoteResult = try await runner.requestRun(
 			arguments: ["remote", "-v"],
 			at: repositoryURL
 		)
-		return GitOutputParser.parseRemotes(result.standardOutput)
+		let branchFormat =
+			"%(refname:short)\t%(objectname:short)\t%(objectname)\t%(symref)"
+		let branchResult = try await runner.requestRun(
+			arguments: [
+				"for-each-ref",
+				"--sort=-committerdate",
+				"--format=\(branchFormat)",
+				"refs/remotes",
+			],
+			at: repositoryURL
+		)
+		let branches = GitOutputParser.parseRemoteBranches(branchResult.standardOutput)
+
+		return GitOutputParser.parseRemotes(remoteResult.standardOutput).map { remote in
+			GitRemote(
+				name: remote.name,
+				fetchURL: remote.fetchURL,
+				pushURL: remote.pushURL,
+				branches: branches.filter { $0.remoteName == remote.name }
+			)
+		}
 	}
 
 	public func requestTags(at repositoryURL: URL) async throws -> [GitTag] {

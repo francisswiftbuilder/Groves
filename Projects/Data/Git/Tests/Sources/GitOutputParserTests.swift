@@ -62,6 +62,22 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(remotes.first?.pushURL, "git@example.com:Trees.git")
 	}
 
+	func testParseRemoteBranchesSeparatesRemoteAndBranchNames() {
+		let output = """
+			origin/main\t1234567\t1234567890abcdef\t
+			origin/feature/sidebar\t2345678\t234567890abcdef1\t
+			origin/HEAD\t1234567\t1234567890abcdef\trefs/remotes/origin/main
+			"""
+
+		let branches = GitOutputParser.parseRemoteBranches(output)
+
+		XCTAssertEqual(branches.count, 2)
+		XCTAssertEqual(branches[0].remoteName, "origin")
+		XCTAssertEqual(branches[0].name, "main")
+		XCTAssertEqual(branches[0].fullName, "origin/main")
+		XCTAssertEqual(branches[1].name, "feature/sidebar")
+	}
+
 	func testParseStashesPreservesReferenceAndMessage() {
 		let output =
 			"stash@{0}\u{1f}1234567890abcdef\u{1f}On main: Sidebar work\u{1f}2026-08-20 15:00:00 +0900\u{1e}"
@@ -469,12 +485,16 @@ final class GitOutputParserTests: XCTestCase {
 			["remote", "add", "origin", "https://example.com/Trees.git"],
 			at: repositoryURL
 		)
+		let head = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try requestRunGit(["update-ref", "refs/remotes/origin/main", head], at: repositoryURL)
 
 		let remotes = try await LocalGitRepository().requestRemotes(at: repositoryURL)
 
 		XCTAssertEqual(remotes.first?.name, "origin")
 		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Trees.git")
 		XCTAssertEqual(remotes.first?.pushURL, "https://example.com/Trees.git")
+		XCTAssertEqual(remotes.first?.branches.map(\.fullName), ["origin/main"])
 	}
 
 	func testCreateAndDropStashIncludesUntrackedFiles() async throws {

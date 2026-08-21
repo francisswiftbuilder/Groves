@@ -12,6 +12,7 @@ struct RepositoryTabsView: View {
 					viewModel: workspace,
 					repositories: viewModel.tabs,
 					selectedRepositoryID: viewModel.selectedTabID,
+					sidebarSelection: $viewModel.sidebarSelection,
 					onSelectRepository: viewModel.didSelectTab,
 					onCloseRepository: viewModel.didRequestCloseTab,
 					onAddRepository: presentRepositoryImporter
@@ -26,6 +27,9 @@ struct RepositoryTabsView: View {
 					action: presentRepositoryImporter
 				)
 			}
+		}
+		.onChange(of: viewModel.sidebarSelection) { _, selection in
+			viewModel.didActivateSidebarSelection(selection)
 		}
 		.toolbar {
 			if let workspace = viewModel.selectedWorkspace {
@@ -71,6 +75,7 @@ struct RepositoryTabsView: View {
 	private func presentRepositoryImporter() {
 		isRepositoryImporterPresented = true
 	}
+
 }
 
 private struct RepositoryWorkspaceToolbar: ToolbarContent {

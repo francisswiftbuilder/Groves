@@ -14,9 +14,7 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published var selectedChangeIDs: Set<WorkspaceChangeSelection> = []
 	@Published var selectedCommitID: String?
 	@Published var selectedBranchID: String?
-	@Published private(set) var selectedHistoryBranchID: String?
 	@Published var selectedRemoteID: String?
-	@Published var selectedTagID: String?
 	@Published var selectedStashID: String?
 	@Published private(set) var selectedTreeNodeID: String?
 	@Published var commitSubject = ""
@@ -119,6 +117,10 @@ final class WorkspaceViewModel: ObservableObject {
 		remotes.first { $0.id == selectedRemoteID }
 	}
 
+	var remoteBranches: [GitRemoteBranch] {
+		remotes.flatMap(\.branches)
+	}
+
 	var selectedCommit: GitCommit? {
 		commitGraphItems.first { $0.id == selectedCommitID }?.commit
 	}
@@ -138,8 +140,6 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didSelectSection(_ section: WorkspaceSection) {
-		selectedHistoryBranchID = nil
-		selectedTagID = nil
 		selectedSection = section
 	}
 
@@ -156,8 +156,6 @@ final class WorkspaceViewModel: ObservableObject {
 					commitDiffTask?.cancel()
 					selectedChangeIDs = []
 					selectedCommitID = nil
-					selectedHistoryBranchID = nil
-					selectedTagID = nil
 					clearDisplayedDiff()
 					clearDisplayedCommitDiff()
 				}
@@ -272,18 +270,6 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didChangeSelectedCommit() {
 		commitDiffTask?.cancel()
-		if let selectedHistoryBranchID,
-			let selectedHistoryBranch = branches.first(where: { $0.id == selectedHistoryBranchID }),
-			selectedHistoryBranch.shortHash != selectedCommit?.shortHash
-		{
-			self.selectedHistoryBranchID = nil
-		}
-		if let selectedTagID,
-			let selectedTag = tags.first(where: { $0.id == selectedTagID }),
-			selectedTag.targetHash != selectedCommit?.hash
-		{
-			self.selectedTagID = nil
-		}
 
 		guard let repositoryURL, let commit = selectedCommit else {
 			clearDisplayedCommitDiff()
@@ -484,8 +470,20 @@ final class WorkspaceViewModel: ObservableObject {
 		clearDisplayedCommitDiff()
 		selectedCommitID = item.id
 		selectedBranchID = branch.id
-		selectedHistoryBranchID = branch.id
-		selectedTagID = nil
+		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
+		selectedSection = .history
+	}
+
+	func didOpenRemoteBranch(_ branch: GitRemoteBranch) {
+		guard let item = commitGraphItems.first(where: { $0.commit.hash == branch.hash }) else {
+			alertMessage =
+				"The latest commit for remote branch \(branch.fullName) is not available in History."
+			return
+		}
+
+		clearDisplayedCommitDiff()
+		selectedCommitID = item.id
+		selectedRemoteID = branch.remoteName
 		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
 		selectedSection = .history
 	}
@@ -498,8 +496,6 @@ final class WorkspaceViewModel: ObservableObject {
 
 		clearDisplayedCommitDiff()
 		selectedCommitID = item.id
-		selectedHistoryBranchID = nil
-		selectedTagID = tag.id
 		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
 		selectedSection = .history
 	}
@@ -685,14 +681,8 @@ final class WorkspaceViewModel: ObservableObject {
 		if branches.contains(where: { $0.id == selectedBranchID }) == false {
 			selectedBranchID = branches.first(where: \.isCurrent)?.id ?? branches.first?.id
 		}
-		if branches.contains(where: { $0.id == selectedHistoryBranchID }) == false {
-			selectedHistoryBranchID = nil
-		}
 		if remotes.contains(where: { $0.id == selectedRemoteID }) == false {
 			selectedRemoteID = remotes.first?.id
-		}
-		if tags.contains(where: { $0.id == selectedTagID }) == false {
-			selectedTagID = nil
 		}
 		if stashes.contains(where: { $0.id == selectedStashID }) == false {
 			selectedStashID = stashes.first?.id
