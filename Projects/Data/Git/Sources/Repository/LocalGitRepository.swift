@@ -139,7 +139,22 @@ public struct LocalGitRepository: GitRepository {
 
 	public func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String
 	{
-		try await runner.requestRun(
+		if commit.parentHashes.count > 1, let firstParentHash = commit.parentHashes.first {
+			return try await runner.requestRun(
+				arguments: [
+					"diff",
+					"--no-color",
+					"--find-renames",
+					"--unified=3",
+					firstParentHash,
+					commit.hash,
+					"--",
+				],
+				at: repositoryURL
+			).standardOutput
+		}
+
+		return try await runner.requestRun(
 			arguments: [
 				"show",
 				"--format=",

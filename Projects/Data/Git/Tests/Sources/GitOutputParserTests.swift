@@ -269,6 +269,40 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertTrue(diff.contains("+updated"))
 	}
 
+	func testRequestCommitDiffReturnsChangesIntroducedByMerge() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let baseBranch = try requestGitOutput(
+			["branch", "--show-current"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+
+		try requestRunGit(["switch", "-c", "feature"], at: repositoryURL)
+		try Data("feature".utf8).write(to: repositoryURL.appending(path: "feature.txt"))
+		try requestRunGit(["add", "feature.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Add feature"], at: repositoryURL)
+
+		try requestRunGit(["switch", baseBranch], at: repositoryURL)
+		try Data("base".utf8).write(to: repositoryURL.appending(path: "base.txt"))
+		try requestRunGit(["add", "base.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Update base"], at: repositoryURL)
+		try requestRunGit(["merge", "--no-ff", "feature", "-m", "Merge feature"], at: repositoryURL)
+
+		let repository = LocalGitRepository()
+		let commits = try await repository.requestCommitHistory(at: repositoryURL)
+		let mergeCommit = try XCTUnwrap(commits.first { $0.parentHashes.count > 1 })
+		let diff = try await repository.requestCommitDiff(
+			for: mergeCommit,
+			at: repositoryURL
+		)
+
+		XCTAssertTrue(diff.contains("diff --git a/feature.txt b/feature.txt"))
+		XCTAssertTrue(diff.contains("+feature"))
+		XCTAssertFalse(diff.contains("base.txt"))
+	}
+
 	func testRequestCommitHistoryIncludesTagsAndExcludesInternalBackupRefs() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
