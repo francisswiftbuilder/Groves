@@ -103,6 +103,9 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws {}
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws {}
+	func requestMergeBranch(named name: String, at repositoryURL: URL) async throws {
+		await recorder?.record(.merge(branchName: name))
+	}
 	func requestCreateTag(named name: String, message: String, at repositoryURL: URL) async throws {}
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {}
 	func requestCreateStash(message: String, at repositoryURL: URL) async throws {}
@@ -122,6 +125,7 @@ actor GitRepositoryRecorder {
 		case repositoryRoot(URL)
 		case clone(remoteURL: String, directoryURL: URL)
 		case stage(path: String)
+		case merge(branchName: String)
 		case push(GitPushTarget)
 	}
 

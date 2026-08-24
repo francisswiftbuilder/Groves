@@ -261,6 +261,13 @@ final class WorkspaceViewModel: ObservableObject {
 		commitGraphItems.isEmpty == false && !isLoading
 	}
 
+	func canMergeBranch(_ branch: GitBranch) -> Bool {
+		currentBranch != nil
+			&& !branch.isCurrent
+			&& operationState == .normal
+			&& !isLoading
+	}
+
 	private var operationStateTitle: String {
 		switch operationState {
 		case .normal:
@@ -733,6 +740,21 @@ final class WorkspaceViewModel: ObservableObject {
 				named: branch.name,
 				at: repositoryURL
 			)
+		}
+	}
+
+	func didRequestMergeBranch(_ branch: GitBranch) {
+		guard let repositoryURL, canMergeBranch(branch) else { return }
+		requestMutation {
+			let snapshot = try await self.referencesUseCase.mergeBranch(
+				named: branch.name,
+				at: repositoryURL
+			)
+			if snapshot.operationState == .conflicted {
+				self.alertMessage =
+					"Merge has conflicts. Resolve the conflicted files in Changes before continuing."
+			}
+			return snapshot
 		}
 	}
 

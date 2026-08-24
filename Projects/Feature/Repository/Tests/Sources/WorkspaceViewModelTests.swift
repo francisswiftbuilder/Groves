@@ -96,6 +96,39 @@ final class WorkspaceViewModelTests: XCTestCase {
 		XCTAssertEqual(viewModel.currentBranchStatus, "Rebase in Progress")
 	}
 
+	func testMergeBranchUsesExplicitContextMenuBranch() async throws {
+		let recorder = GitRepositoryRecorder()
+		let currentBranch = GitBranch(
+			name: "main",
+			shortHash: "1234567",
+			upstream: nil,
+			isCurrent: true
+		)
+		let mergeBranch = GitBranch(
+			name: "feature/merge",
+			shortHash: "7654321",
+			upstream: nil,
+			isCurrent: false
+		)
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(
+				recorder: recorder,
+				branches: [currentBranch, mergeBranch]
+			)
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.currentBranch == currentBranch }
+		XCTAssertTrue(viewModel.canMergeBranch(mergeBranch))
+		XCTAssertFalse(viewModel.canMergeBranch(currentBranch))
+
+		viewModel.didRequestMergeBranch(mergeBranch)
+		try await waitUntilRecorded(
+			.merge(branchName: mergeBranch.name),
+			by: recorder
+		)
+	}
+
 	func testOpeningBranchFocusesLatestCommitInHistory() async throws {
 		let commits = (0...10).map { index in
 			GitCommit(
@@ -293,6 +326,22 @@ final class WorkspaceViewModelTests: XCTestCase {
 		while !condition() {
 			guard clock.now < deadline else {
 				XCTFail("Timed out waiting for condition")
+				return
+			}
+			try await Task.sleep(for: .milliseconds(10))
+		}
+	}
+
+	private func waitUntilRecorded(
+		_ event: GitRepositoryRecorder.Event,
+		by recorder: GitRepositoryRecorder,
+		timeout: Duration = .seconds(2)
+	) async throws {
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: timeout)
+		while !(await recorder.recordedEvents().contains(event)) {
+			guard clock.now < deadline else {
+				XCTFail("Timed out waiting for repository event")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

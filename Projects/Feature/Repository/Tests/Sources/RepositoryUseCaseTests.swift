@@ -78,4 +78,36 @@ final class RepositoryUseCaseTests: XCTestCase {
 			[.push(.setUpstream(remoteName: "upstream", branchName: branch.name))]
 		)
 	}
+
+	func testMergeBranchRunsMutationBeforeReturningFreshSnapshot() async throws {
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let recorder = GitRepositoryRecorder()
+		let currentBranch = GitBranch(
+			name: "main",
+			shortHash: "1234567",
+			upstream: nil,
+			isCurrent: true
+		)
+		let mergeBranch = GitBranch(
+			name: "feature/merge",
+			shortHash: "7654321",
+			upstream: nil,
+			isCurrent: false
+		)
+		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
+			repository: GitRepositoryStub(
+				recorder: recorder,
+				branches: [currentBranch, mergeBranch]
+			)
+		)
+
+		let snapshot = try await useCase.mergeBranch(
+			named: mergeBranch.name,
+			at: repositoryURL
+		)
+		let events = await recorder.recordedEvents()
+
+		XCTAssertEqual(snapshot.branches, [currentBranch, mergeBranch])
+		XCTAssertEqual(events, [.merge(branchName: mergeBranch.name)])
+	}
 }

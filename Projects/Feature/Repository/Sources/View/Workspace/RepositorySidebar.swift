@@ -54,6 +54,18 @@ struct RepositorySidebar: View {
 					}
 					.disabled(branch.isCurrent)
 
+					if let currentBranch = viewModel.currentBranch, !branch.isCurrent {
+						Button(
+							"Merge \(branch.name) into \(currentBranch.name)",
+							systemImage: "arrow.triangle.merge"
+						) {
+							viewModel.didRequestMergeBranch(branch)
+						}
+						.disabled(!viewModel.canMergeBranch(branch))
+					}
+
+					Divider()
+
 					Button("Delete Branch", systemImage: "trash", role: .destructive) {
 						selectBranch(branch)
 						viewModel.didRequestDeleteBranch()

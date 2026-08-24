@@ -40,6 +40,7 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	) async throws
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws
+	func requestMergeBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateTag(named name: String, message: String, at repositoryURL: URL) async throws
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws
 	func requestCreateStash(message: String, at repositoryURL: URL) async throws

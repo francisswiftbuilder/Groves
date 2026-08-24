@@ -498,6 +498,22 @@ public struct LocalGitRepository: GitRepository {
 		_ = try await runner.requestRun(arguments: ["branch", "-d", name], at: repositoryURL)
 	}
 
+	public func requestMergeBranch(named name: String, at repositoryURL: URL) async throws {
+		do {
+			_ = try await runner.requestRun(
+				arguments: ["merge", "--no-edit", "--", name],
+				at: repositoryURL
+			)
+		} catch is CancellationError {
+			throw CancellationError()
+		} catch {
+			let operationState = try? await requestOperationState(at: repositoryURL)
+			guard operationState == .conflicted || operationState == .mergeInProgress else {
+				throw error
+			}
+		}
+	}
+
 	public func requestCreateTag(
 		named name: String,
 		message: String,

@@ -315,6 +315,13 @@ private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
+	func mergeBranch(named name: String, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
+	{
+		try await repository.requestMergeBranch(named: name, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
 	func createTag(named name: String, message: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{

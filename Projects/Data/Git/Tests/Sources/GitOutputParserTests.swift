@@ -684,6 +684,41 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(branch.upstream, "origin/feature/remote")
 	}
 
+	func testMergeBranchCreatesMergeCommitAndPreservesBothHistories() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let baseBranch = try requestGitOutput(
+			["branch", "--show-current"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		try requestRunGit(["switch", "-c", "feature/merge"], at: repositoryURL)
+		try Data("feature".utf8).write(to: repositoryURL.appending(path: "feature.txt"))
+		try requestRunGit(["add", "feature.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Feature commit"], at: repositoryURL)
+		let featureHead = try requestGitOutput(
+			["rev-parse", "HEAD"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		try requestRunGit(["switch", baseBranch], at: repositoryURL)
+		try Data("base".utf8).write(to: repositoryURL.appending(path: "base.txt"))
+		try requestRunGit(["add", "base.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Base commit"], at: repositoryURL)
+
+		try await LocalGitRepository().requestMergeBranch(
+			named: "feature/merge",
+			at: repositoryURL
+		)
+
+		let headParents = try requestGitOutput(
+			["rev-list", "--parents", "-n", "1", "HEAD"],
+			at: repositoryURL
+		).split(whereSeparator: \.isWhitespace)
+		XCTAssertEqual(headParents.count, 3)
+		XCTAssertTrue(headParents.contains(Substring(featureHead)))
+	}
+
 	func testSetUpstreamPushAndFetchReportAheadAndBehindCounts() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -778,7 +813,7 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(detachedState, .detachedHead)
 	}
 
-	func testRequestOperationStatePrioritizesConflictedState() async throws {
+	func testMergeBranchReturnsConflictedOperationState() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -794,8 +829,9 @@ final class GitOutputParserTests: XCTestCase {
 		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Base change"], at: repositoryURL)
 
-		XCTAssertThrowsError(try requestRunGit(["merge", "conflict"], at: repositoryURL))
-		let operationState = try await LocalGitRepository().requestOperationState(at: repositoryURL)
+		let repository = LocalGitRepository()
+		try await repository.requestMergeBranch(named: "conflict", at: repositoryURL)
+		let operationState = try await repository.requestOperationState(at: repositoryURL)
 		XCTAssertEqual(operationState, .conflicted)
 	}
 

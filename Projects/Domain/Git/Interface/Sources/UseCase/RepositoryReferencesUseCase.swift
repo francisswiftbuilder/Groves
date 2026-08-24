@@ -17,6 +17,8 @@ public protocol RepositoryReferencesUseCase: Sendable {
 	) async throws -> RepositorySnapshot
 	func deleteBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
+	func mergeBranch(named name: String, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
 	func createTag(named name: String, message: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	func deleteTag(named name: String, at repositoryURL: URL) async throws
