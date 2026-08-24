@@ -120,10 +120,3 @@ enum GitLinePatchBuilder {
 			&& lines[markerIndex] == "\\ No newline at end of file"
 	}
 }
-
-private struct PatchLine {
-	let text: String
-	let oldLineNumber: Int
-	let newLineNumber: Int
-	let hasNoNewlineMarker: Bool
-}

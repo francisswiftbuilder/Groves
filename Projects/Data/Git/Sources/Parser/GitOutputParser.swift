@@ -303,31 +303,3 @@ enum GitOutputParser {
 		return lhs.name.localizedStandardCompare(rhs.name)
 	}
 }
-
-private struct MutableTreeNode {
-	let name: String
-	let path: String
-	var children: [String: MutableTreeNode] = [:]
-
-	mutating func insert(components: ArraySlice<String>, parentPath: String) {
-		guard let name = components.first else { return }
-		let path = parentPath.isEmpty ? name : "\(parentPath)/\(name)"
-		var child = children[name] ?? MutableTreeNode(name: name, path: path)
-		child.insert(components: components.dropFirst(), parentPath: path)
-		children[name] = child
-	}
-}
-
-extension RepositoryTreeNode {
-	fileprivate init(_ node: MutableTreeNode) {
-		let children = node.children.values
-			.map(RepositoryTreeNode.init)
-			.sorted {
-				if $0.isDirectory != $1.isDirectory {
-					return $0.isDirectory
-				}
-				return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-			}
-		self.init(name: node.name, path: node.path, children: children)
-	}
-}

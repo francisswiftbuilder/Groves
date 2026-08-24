@@ -35,15 +35,3 @@ public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 		}
 	}
 }
-
-private struct RepositoryRootView: View {
-	@ObservedObject var viewModel: RepositoryTabsViewModel
-	@Binding var repositoryID: UUID?
-
-	var body: some View {
-		RepositoryTabsView(
-			viewModel: viewModel,
-			repositoryID: $repositoryID
-		)
-	}
-}

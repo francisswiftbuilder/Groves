@@ -1,25 +1,5 @@
 import SwiftUI
 
-struct RepositoryWelcomeContainerView: View {
-	let isWorking: Bool
-	let onOpenRepository: () -> Void
-	let onCloneRepository: (String) -> Void
-
-	var body: some View {
-		NavigationSplitView {
-			List {}
-				.listStyle(.sidebar)
-				.navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
-		} detail: {
-			RepositoryWelcomeView(
-				isWorking: isWorking,
-				onOpenRepository: onOpenRepository,
-				onCloneRepository: onCloneRepository
-			)
-		}
-	}
-}
-
 struct RepositoryWelcomeView: View {
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
@@ -159,17 +139,5 @@ struct RepositoryWelcomeView: View {
 	private func cloneRepository() {
 		guard isCloneDisabled == false else { return }
 		onCloneRepository(trimmedRemoteURL)
-	}
-}
-
-extension View {
-	fileprivate func welcomeCard() -> some View {
-		padding(18)
-			.frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
-			.background(.regularMaterial, in: .rect(cornerRadius: 14))
-			.overlay {
-				RoundedRectangle(cornerRadius: 14)
-					.stroke(.quaternary, lineWidth: 1)
-			}
 	}
 }

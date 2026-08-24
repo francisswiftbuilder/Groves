@@ -28,35 +28,3 @@ struct TreesApp: App {
 		}
 	}
 }
-
-private struct RepositoryWindowCommands: Commands {
-	@Environment(\.openWindow) private var openWindow
-
-	var body: some Commands {
-		CommandGroup(replacing: .newItem) {
-			Button("New Repository Tab") {
-				openWindow(id: "repository")
-			}
-			.keyboardShortcut("t", modifiers: .command)
-		}
-	}
-}
-
-private struct FindCommands: Commands {
-	var body: some Commands {
-		CommandGroup(after: .textEditing) {
-			Button("Find…", action: showFindInterface)
-				.keyboardShortcut("f", modifiers: .command)
-		}
-	}
-
-	private func showFindInterface() {
-		let menuItem = NSMenuItem()
-		menuItem.tag = Int(NSFindPanelAction.showFindPanel.rawValue)
-		NSApp.sendAction(
-			#selector(NSTextView.performFindPanelAction(_:)),
-			to: nil,
-			from: menuItem
-		)
-	}
-}

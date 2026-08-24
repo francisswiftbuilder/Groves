@@ -1,18 +1,5 @@
 import DomainGitInterface
 
-struct CommitGraphColumn: Identifiable, Hashable, Sendable {
-	let id: Int
-	let targetHash: String
-	let colorIndex: Int
-}
-
-struct CommitGraphSegment: Hashable, Sendable {
-	let columnID: CommitGraphColumn.ID
-	let fromLane: Int
-	let toLane: Int
-	let colorIndex: Int
-}
-
 struct CommitGraphItem: Identifiable, Hashable, Sendable {
 	let commit: GitCommit
 	let topColumns: [CommitGraphColumn]

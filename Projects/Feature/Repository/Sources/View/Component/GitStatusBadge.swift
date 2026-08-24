@@ -33,7 +33,7 @@ struct GitStatusBadge: View {
 }
 
 extension GitFileState {
-	fileprivate var title: String {
+	var title: String {
 		switch self {
 		case .added:
 			return "Added"
@@ -58,7 +58,7 @@ extension GitFileState {
 		}
 	}
 
-	fileprivate var symbol: String {
+	var symbol: String {
 		switch self {
 		case .added:
 			return "A"

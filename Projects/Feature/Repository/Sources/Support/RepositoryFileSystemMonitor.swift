@@ -86,7 +86,7 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 		continuation.finish()
 	}
 
-	fileprivate func didReceiveEvents() {
+	func didReceiveEvents() {
 		continuation.yield()
 	}
 }
