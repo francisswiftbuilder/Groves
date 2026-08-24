@@ -1,3 +1,4 @@
+import DomainGit
 import DomainGitInterface
 import Foundation
 import XCTest
@@ -5,6 +6,7 @@ import XCTest
 @testable import FeatureRepository
 
 struct GitRepositoryStub: GitRepository {
+	let recorder: GitRepositoryRecorder?
 	let changes: [WorkingTreeChange]
 	let commits: [GitCommit]
 	let branches: [GitBranch]
@@ -16,6 +18,7 @@ struct GitRepositoryStub: GitRepository {
 	let clonedRepositoryURL: URL?
 
 	init(
+		recorder: GitRepositoryRecorder? = nil,
 		changes: [WorkingTreeChange] = [],
 		commits: [GitCommit] = [],
 		branches: [GitBranch] = [],
@@ -26,6 +29,7 @@ struct GitRepositoryStub: GitRepository {
 		unstagedDiff: String = "",
 		clonedRepositoryURL: URL? = nil
 	) {
+		self.recorder = recorder
 		self.changes = changes
 		self.commits = commits
 		self.branches = branches
@@ -37,9 +41,14 @@ struct GitRepositoryStub: GitRepository {
 		self.clonedRepositoryURL = clonedRepositoryURL
 	}
 
-	func requestRepositoryRoot(at url: URL) async throws -> URL { url }
+	func requestRepositoryRoot(at url: URL) async throws -> URL {
+		await recorder?.record(.repositoryRoot(url))
+		return url
+	}
 	func requestCloneRepository(from remoteURL: String, into directoryURL: URL) async throws -> URL {
-		clonedRepositoryURL ?? directoryURL.appending(path: "Repository", directoryHint: .isDirectory)
+		await recorder?.record(.clone(remoteURL: remoteURL, directoryURL: directoryURL))
+		return clonedRepositoryURL
+			?? directoryURL.appending(path: "Repository", directoryHint: .isDirectory)
 	}
 	func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] {
 		changes
@@ -68,7 +77,9 @@ struct GitRepositoryStub: GitRepository {
 	{
 		""
 	}
-	func requestStage(path: String, at repositoryURL: URL) async throws {}
+	func requestStage(path: String, at repositoryURL: URL) async throws {
+		await recorder?.record(.stage(path: path))
+	}
 	func requestUnstage(path: String, at repositoryURL: URL) async throws {}
 	func requestApplyDiffLine(
 		_ selection: GitDiffLineSelection,
@@ -101,5 +112,75 @@ struct GitRepositoryStub: GitRepository {
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws {}
 	func requestFetchAll(at repositoryURL: URL) async throws {}
 	func requestPull(at repositoryURL: URL) async throws {}
-	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {}
+	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+		await recorder?.record(.push(target))
+	}
+}
+
+actor GitRepositoryRecorder {
+	enum Event: Equatable, Sendable {
+		case repositoryRoot(URL)
+		case clone(remoteURL: String, directoryURL: URL)
+		case stage(path: String)
+		case push(GitPushTarget)
+	}
+
+	private var events: [Event] = []
+
+	func record(_ event: Event) {
+		events.append(event)
+	}
+
+	func recordedEvents() -> [Event] {
+		events
+	}
+}
+
+@MainActor
+func makeRepositoryTabsUseCase(
+	repository: any GitRepository = GitRepositoryStub(),
+	savedRepositoryStore: any SavedRepositoryStore = SavedRepositoryStoreSpy(repositories: [])
+) -> any RepositoryTabsUseCase {
+	RepositoryUseCaseFactory.makeTabsUseCase(
+		repository: repository,
+		savedRepositoryStore: savedRepositoryStore
+	)
+}
+
+@MainActor
+func makeWorkspaceViewModel(
+	repository: any GitRepository = GitRepositoryStub()
+) -> WorkspaceViewModel {
+	WorkspaceViewModel(
+		contentUseCase: RepositoryUseCaseFactory.makeContentUseCase(repository: repository),
+		changesUseCase: RepositoryUseCaseFactory.makeChangesUseCase(repository: repository),
+		referencesUseCase: RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository),
+		stashesUseCase: RepositoryUseCaseFactory.makeStashesUseCase(repository: repository)
+	)
+}
+
+@MainActor
+func makeRepositoryTabsViewModel(
+	repository: any GitRepository = GitRepositoryStub(),
+	savedRepositoryStore: any SavedRepositoryStore = SavedRepositoryStoreSpy(repositories: [])
+) -> RepositoryTabsViewModel {
+	let contentUseCase = RepositoryUseCaseFactory.makeContentUseCase(repository: repository)
+	let changesUseCase = RepositoryUseCaseFactory.makeChangesUseCase(repository: repository)
+	let referencesUseCase = RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository)
+	let stashesUseCase = RepositoryUseCaseFactory.makeStashesUseCase(repository: repository)
+	return RepositoryTabsViewModel(
+		useCase: makeRepositoryTabsUseCase(
+			repository: repository,
+			savedRepositoryStore: savedRepositoryStore
+		),
+		makeWorkspaceViewModel: { repositoryURL in
+			WorkspaceViewModel(
+				contentUseCase: contentUseCase,
+				changesUseCase: changesUseCase,
+				referencesUseCase: referencesUseCase,
+				stashesUseCase: stashesUseCase,
+				repositoryURL: repositoryURL
+			)
+		}
+	)
 }

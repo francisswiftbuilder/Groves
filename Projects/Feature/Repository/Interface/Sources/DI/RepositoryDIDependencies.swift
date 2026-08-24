@@ -2,6 +2,9 @@ import DomainGitInterface
 
 @MainActor
 public protocol RepositoryDIDependencies: AnyObject {
-	func makeGitRepository() -> any GitRepository
-	func makeSavedRepositoryStore() throws -> any SavedRepositoryStore
+	func makeRepositoryTabsUseCase() throws -> any RepositoryTabsUseCase
+	func makeRepositoryContentUseCase() -> any RepositoryContentUseCase
+	func makeRepositoryChangesUseCase() -> any RepositoryChangesUseCase
+	func makeRepositoryReferencesUseCase() -> any RepositoryReferencesUseCase
+	func makeRepositoryStashesUseCase() -> any RepositoryStashesUseCase
 }

@@ -13,7 +13,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			indexState: .modified,
 			workingTreeState: .modified
 		)
-		let viewModel = WorkspaceViewModel(
+		let viewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(
 				changes: [change],
 				stagedDiff: "cached diff",
@@ -51,14 +51,14 @@ final class WorkspaceViewModelTests: XCTestCase {
 		let origin = GitRemote(name: "origin", fetchURL: nil, pushURL: nil)
 		let upstream = GitRemote(name: "upstream", fetchURL: nil, pushURL: nil)
 
-		let trackedViewModel = WorkspaceViewModel(
+		let trackedViewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(branches: [trackedBranch], remotes: [origin])
 		)
 		trackedViewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Tracked"))
 		try await waitUntil { trackedViewModel.currentBranch == trackedBranch }
 		XCTAssertEqual(trackedViewModel.pushAction, .upstream)
 
-		let singleRemoteViewModel = WorkspaceViewModel(
+		let singleRemoteViewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(branches: [untrackedBranch], remotes: [origin])
 		)
 		singleRemoteViewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Single"))
@@ -68,7 +68,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			.setUpstream(remoteName: "origin", branchName: "feature/push")
 		)
 
-		let multipleRemoteViewModel = WorkspaceViewModel(
+		let multipleRemoteViewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(
 				branches: [untrackedBranch],
 				remotes: [origin, upstream]
@@ -86,7 +86,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 	}
 
 	func testRepositoryOperationStateIsLoadedIntoWorkspace() async throws {
-		let viewModel = WorkspaceViewModel(
+		let viewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(operationState: .rebaseInProgress)
 		)
 
@@ -115,7 +115,9 @@ final class WorkspaceViewModelTests: XCTestCase {
 			upstream: nil,
 			isCurrent: false
 		)
-		let viewModel = WorkspaceViewModel(repository: GitRepositoryStub(commits: commits))
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(commits: commits)
+		)
 
 		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
 		try await waitUntil { viewModel.commitGraphItems.count == commits.count }
@@ -152,7 +154,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			pushURL: "https://example.com/Trees.git",
 			branches: [branch]
 		)
-		let viewModel = WorkspaceViewModel(
+		let viewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(commits: [commit], remotes: [remote])
 		)
 
@@ -187,7 +189,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			date: nil,
 			subject: "Commit \(lastIndex)"
 		)
-		let viewModel = WorkspaceViewModel(
+		let viewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(commits: commits, tags: [tag])
 		)
 
@@ -200,6 +202,86 @@ final class WorkspaceViewModelTests: XCTestCase {
 		XCTAssertEqual(viewModel.commitGraphItems.count, commits.count)
 		XCTAssertEqual(viewModel.selectedSection, .history)
 		XCTAssertEqual(viewModel.historyFocusRequest?.commitID, tag.targetHash)
+	}
+
+	func testViewModelOwnsChangeFilteringAndDiscardPresentation() async throws {
+		let swiftChange = WorkingTreeChange(
+			path: "Sources/GalleryView.swift",
+			previousPath: nil,
+			indexState: .modified,
+			workingTreeState: .modified
+		)
+		let markdownChange = WorkingTreeChange(
+			path: "README.md",
+			previousPath: nil,
+			indexState: .unchanged,
+			workingTreeState: .modified
+		)
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(changes: [swiftChange, markdownChange])
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.changes.count == 2 }
+		viewModel.changeFilterText = "gallery"
+
+		XCTAssertEqual(viewModel.filteredStagedChanges, [swiftChange])
+		XCTAssertEqual(viewModel.filteredUnstagedChanges, [swiftChange])
+
+		viewModel.didPresentDiscardConfirmation(for: [swiftChange, markdownChange])
+
+		XCTAssertEqual(viewModel.pendingDiscardChanges, [swiftChange, markdownChange])
+		XCTAssertEqual(viewModel.discardConfirmationTitle, "Discard Changes to 2 Files?")
+
+		viewModel.didDismissDiscardConfirmation()
+
+		XCTAssertNil(viewModel.pendingDiscardChanges)
+	}
+
+	func testViewModelOwnsSidebarTreeAndNewBranchPresentationState() async {
+		let viewModel = makeWorkspaceViewModel()
+		let repositoryID = UUID()
+		let branchesGroup = RepositorySidebarGroup(
+			repositoryID: repositoryID,
+			kind: .branches
+		)
+
+		viewModel.didPrepareSidebar(repositoryID: repositoryID)
+
+		XCTAssertTrue(viewModel.expandedSidebarGroups.contains(branchesGroup))
+
+		viewModel.setSidebarGroup(branchesGroup, isExpanded: false)
+		viewModel.setTreeNode("Sources", isExpanded: true)
+		viewModel.didPresentNewBranch()
+		viewModel.newBranchName = "feature/view-model-state"
+
+		XCTAssertFalse(viewModel.expandedSidebarGroups.contains(branchesGroup))
+		XCTAssertTrue(viewModel.expandedTreeNodeIDs.contains("Sources"))
+		XCTAssertTrue(viewModel.isPresentingNewBranch)
+		XCTAssertEqual(viewModel.newBranchName, "feature/view-model-state")
+
+		viewModel.didDismissNewBranch()
+
+		XCTAssertFalse(viewModel.isPresentingNewBranch)
+		XCTAssertTrue(viewModel.newBranchName.isEmpty)
+	}
+
+	func testSelectionEventsPublishAfterSwiftUIUpdateCycle() async throws {
+		let change = WorkingTreeChange(
+			path: "GalleryView.swift",
+			previousPath: nil,
+			indexState: .modified,
+			workingTreeState: .modified
+		)
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(changes: [change])
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.changes == [change] }
+		await viewModel.didSelectChanges([.unstaged(change.id)])
+
+		XCTAssertEqual(viewModel.selectedChangeIDs, [.unstaged(change.id)])
 	}
 
 	private func waitUntil(

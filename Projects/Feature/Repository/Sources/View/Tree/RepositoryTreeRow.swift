@@ -6,12 +6,9 @@ import SwiftUI
 struct RepositoryTreeRow: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	let item: RepositoryTreeItem
-	@Binding var expandedNodeIDs: Set<String>
+	let isExpanded: Bool
+	let onToggleExpansion: () -> Void
 	let onSelect: () -> Void
-
-	private var isExpanded: Bool {
-		expandedNodeIDs.contains(item.id)
-	}
 
 	var body: some View {
 		HStack(spacing: 6) {
@@ -54,20 +51,14 @@ struct RepositoryTreeRow: View {
 		.simultaneousGesture(
 			TapGesture()
 				.onEnded {
-					Task { @MainActor in
-						await Task.yield()
-						onSelect()
-					}
+					onSelect()
 				}
 		)
 		.simultaneousGesture(
 			TapGesture(count: 2)
 				.onEnded {
 					guard item.node.isDirectory else { return }
-					Task { @MainActor in
-						await Task.yield()
-						toggleExpansion()
-					}
+					toggleExpansion()
 				}
 		)
 		.help(item.node.path)
@@ -119,11 +110,7 @@ struct RepositoryTreeRow: View {
 			? .easeOut(duration: 0.12)
 			: .spring(response: 0.28, dampingFraction: 1)
 		withAnimation(animation) {
-			if isExpanded {
-				expandedNodeIDs.remove(item.id)
-			} else {
-				expandedNodeIDs.insert(item.id)
-			}
+			onToggleExpansion()
 		}
 	}
 }

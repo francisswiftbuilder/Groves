@@ -5,23 +5,20 @@ import UniformTypeIdentifiers
 struct RepositoryTabsView: View {
 	@Environment(\.openWindow) private var openWindow
 	@ObservedObject var viewModel: RepositoryTabsViewModel
+	@ObservedObject var windowViewModel: RepositoryWindowViewModel
 	@Binding var repositoryID: RepositoryTab.ID?
-	@State private var isFolderImporterPresented = false
-	@State private var folderImportRequest: RepositoryFolderImportRequest?
-	@State private var sidebarSelection: RepositorySidebarSelection?
-	@State private var isPresentingNewBranch = false
-	@State private var newBranchName = ""
 
 	var body: some View {
 		Group {
 			if let repositoryTab {
 				WorkspaceView(
 					viewModel: repositoryTab.workspace,
-					repositoryID: repositoryTab.id,
-					sidebarSelection: $sidebarSelection
+					windowViewModel: windowViewModel,
+					repositoryID: repositoryTab.id
 				)
 			} else {
 				RepositoryWelcomeContainerView(
+					viewModel: windowViewModel,
 					isWorking: viewModel.isAddingRepository,
 					onOpenRepository: presentRepositoryImporter,
 					onCloneRepository: presentCloneDestinationImporter
@@ -35,7 +32,7 @@ struct RepositoryTabsView: View {
 		.onChange(of: repositoryID) { _, id in
 			activateRepository(id)
 		}
-		.onChange(of: sidebarSelection) { _, selection in
+		.onChange(of: windowViewModel.sidebarSelection) { _, selection in
 			activateSidebarSelection(selection)
 		}
 		.toolbar {
@@ -48,7 +45,7 @@ struct RepositoryTabsView: View {
 		}
 		.toolbarRole(.editor)
 		.fileImporter(
-			isPresented: $isFolderImporterPresented,
+			isPresented: folderImporterPresentation,
 			allowedContentTypes: [.folder],
 			allowsMultipleSelection: false
 		) { handleFolderImport($0) }
@@ -71,45 +68,22 @@ struct RepositoryTabsView: View {
 				Text(viewModel.alertMessage ?? "")
 			}
 		)
-		.alert("New Branch", isPresented: $isPresentingNewBranch) {
-			if let repositoryTab {
-				TextField("Branch name", text: $newBranchName)
-				Button("Cancel", role: .cancel) {
-					newBranchName = ""
-				}
-				Button("Create") {
-					repositoryTab.workspace.newBranchName = newBranchName
-					repositoryTab.workspace.didRequestCreateBranch()
-				}
-				.disabled(
-					newBranchName
-						.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-				)
-			}
-		} message: {
-			Text("Create and switch to a new branch from the current branch.")
-		}
 	}
 
 	private func presentNewBranch() {
-		guard repositoryTab != nil else { return }
-		newBranchName = ""
-		isPresentingNewBranch = true
+		repositoryTab?.workspace.didPresentNewBranch()
 	}
 
 	private func presentRepositoryImporter() {
-		folderImportRequest = .openRepository
-		isFolderImporterPresented = true
+		windowViewModel.didPresentRepositoryImporter()
 	}
 
-	private func presentCloneDestinationImporter(remoteURL: String) {
-		folderImportRequest = .clone(remoteURL: remoteURL)
-		isFolderImporterPresented = true
+	private func presentCloneDestinationImporter() {
+		windowViewModel.didPresentCloneDestinationImporter()
 	}
 
 	private func handleFolderImport(_ result: Result<[URL], any Error>) {
-		guard let request = folderImportRequest else { return }
-		folderImportRequest = nil
+		guard let request = windowViewModel.consumeFolderImportRequest() else { return }
 
 		switch result {
 		case .success(let urls):
@@ -139,6 +113,17 @@ struct RepositoryTabsView: View {
 		viewModel.tab(id: repositoryID)
 	}
 
+	private var folderImporterPresentation: Binding<Bool> {
+		Binding(
+			get: { windowViewModel.isFolderImporterPresented },
+			set: { isPresented in
+				if !isPresented {
+					windowViewModel.didDismissFolderImporter()
+				}
+			}
+		)
+	}
+
 	private func restoreRepositoryWindows() {
 		guard
 			let restoration = viewModel.requestWindowRestoration(
@@ -157,14 +142,19 @@ struct RepositoryTabsView: View {
 	}
 
 	private func activateRepository(_ id: RepositoryTab.ID?) {
-		guard let id, viewModel.tab(id: id) != nil else {
-			sidebarSelection = nil
-			return
-		}
+		Task { @MainActor in
+			await Task.yield()
+			guard let id, viewModel.tab(id: id) != nil else {
+				await windowViewModel.didSelectSidebarItem(nil)
+				return
+			}
 
-		viewModel.didSelectTab(id)
-		if sidebarSelection?.repositoryID != id {
-			sidebarSelection = viewModel.defaultSidebarSelection(repositoryID: id)
+			viewModel.didSelectTab(id)
+			if windowViewModel.sidebarSelection?.repositoryID != id {
+				await windowViewModel.didSelectSidebarItem(
+					viewModel.defaultSidebarSelection(repositoryID: id)
+				)
+			}
 		}
 	}
 

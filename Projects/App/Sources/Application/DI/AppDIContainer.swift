@@ -1,4 +1,5 @@
 import DataGit
+import DomainGit
 import DomainGitInterface
 import FeatureRepository
 import FeatureRepositoryInterface
@@ -8,6 +9,7 @@ import SwiftUI
 @MainActor
 final class AppDIContainer: RepositoryDIDependencies {
 	static let shared = AppDIContainer()
+	private let repository: any GitRepository = LocalGitRepository()
 	private let savedRepositoryStoreResult: Result<any SavedRepositoryStore, Error>
 	private lazy var repositoryDIContainer = DefaultRepositoryDIContainer(dependencies: self)
 
@@ -17,12 +19,27 @@ final class AppDIContainer: RepositoryDIDependencies {
 		}
 	}
 
-	func makeGitRepository() -> any GitRepository {
-		LocalGitRepository()
+	func makeRepositoryTabsUseCase() throws -> any RepositoryTabsUseCase {
+		RepositoryUseCaseFactory.makeTabsUseCase(
+			repository: repository,
+			savedRepositoryStore: try savedRepositoryStoreResult.get()
+		)
 	}
 
-	func makeSavedRepositoryStore() throws -> any SavedRepositoryStore {
-		try savedRepositoryStoreResult.get()
+	func makeRepositoryContentUseCase() -> any RepositoryContentUseCase {
+		RepositoryUseCaseFactory.makeContentUseCase(repository: repository)
+	}
+
+	func makeRepositoryChangesUseCase() -> any RepositoryChangesUseCase {
+		RepositoryUseCaseFactory.makeChangesUseCase(repository: repository)
+	}
+
+	func makeRepositoryReferencesUseCase() -> any RepositoryReferencesUseCase {
+		RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository)
+	}
+
+	func makeRepositoryStashesUseCase() -> any RepositoryStashesUseCase {
+		RepositoryUseCaseFactory.makeStashesUseCase(repository: repository)
 	}
 
 	func makeRepositoryRootView(repositoryID: Binding<UUID?>) -> AnyView {

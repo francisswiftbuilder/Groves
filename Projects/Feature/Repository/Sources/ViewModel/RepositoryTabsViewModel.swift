@@ -5,21 +5,20 @@ import Foundation
 final class RepositoryTabsViewModel: ObservableObject {
 	@Published private(set) var tabs: [RepositoryTab] = []
 	@Published private(set) var selectedTabID: SavedRepository.ID?
-	@Published var sidebarSelection: RepositorySidebarSelection?
 	@Published private(set) var isAddingRepository = false
 	@Published var alertMessage: String?
 
-	private let gitRepository: any GitRepository
-	private let savedRepositoryStore: any SavedRepositoryStore
+	private let useCase: any RepositoryTabsUseCase
+	private let makeWorkspaceViewModel: @MainActor (URL) -> WorkspaceViewModel
 	private var addRepositoryTask: Task<Void, Never>?
 	private var didRestoreRepositoryWindows = false
 
 	init(
-		gitRepository: any GitRepository,
-		savedRepositoryStore: any SavedRepositoryStore
+		useCase: any RepositoryTabsUseCase,
+		makeWorkspaceViewModel: @escaping @MainActor (URL) -> WorkspaceViewModel
 	) {
-		self.gitRepository = gitRepository
-		self.savedRepositoryStore = savedRepositoryStore
+		self.useCase = useCase
+		self.makeWorkspaceViewModel = makeWorkspaceViewModel
 		restoreTabs()
 	}
 
@@ -49,16 +48,9 @@ final class RepositoryTabsViewModel: ObservableObject {
 			isAddingRepository = true
 			defer { isAddingRepository = false }
 
-			let didAccessResource = url.startAccessingSecurityScopedResource()
-			defer {
-				if didAccessResource {
-					url.stopAccessingSecurityScopedResource()
-				}
-			}
-
 			do {
-				let rootURL = try await gitRepository.requestRepositoryRoot(at: url)
-				try saveAndOpenRepository(at: rootURL, onOpen: onOpen)
+				let repository = try await useCase.openRepository(at: url)
+				openRepository(repository, onOpen: onOpen)
 			} catch is CancellationError {
 				return
 			} catch {
@@ -77,19 +69,12 @@ final class RepositoryTabsViewModel: ObservableObject {
 			isAddingRepository = true
 			defer { isAddingRepository = false }
 
-			let didAccessResource = directoryURL.startAccessingSecurityScopedResource()
-			defer {
-				if didAccessResource {
-					directoryURL.stopAccessingSecurityScopedResource()
-				}
-			}
-
 			do {
-				let repositoryURL = try await gitRepository.requestCloneRepository(
+				let repository = try await useCase.cloneRepository(
 					from: remoteURL,
 					into: directoryURL
 				)
-				try saveAndOpenRepository(at: repositoryURL, onOpen: onOpen)
+				openRepository(repository, onOpen: onOpen)
 			} catch is CancellationError {
 				return
 			} catch {
@@ -115,13 +100,12 @@ final class RepositoryTabsViewModel: ObservableObject {
 		if selectedTabID != id {
 			selectedTabID = id
 			do {
-				try savedRepositoryStore.requestSelectRepository(id: id)
+				try useCase.selectRepository(id: id)
 			} catch {
 				alertMessage = error.localizedDescription
 			}
 		}
 		activateSelectedTabIfNeeded()
-		selectDefaultSidebarItemIfNeeded(repositoryID: id)
 	}
 
 	func didActivateSidebarSelection(_ selection: RepositorySidebarSelection?) {
@@ -155,24 +139,13 @@ final class RepositoryTabsViewModel: ObservableObject {
 
 	@discardableResult
 	func didRequestCloseTab(_ id: SavedRepository.ID) -> SavedRepository.ID? {
-		guard let closingIndex = tabs.firstIndex(where: { $0.id == id }) else { return nil }
+		guard tabs.contains(where: { $0.id == id }) else { return nil }
 		do {
-			try savedRepositoryStore.requestRemoveRepository(id: id)
-			tabs.remove(at: closingIndex)
-			let nextIndex = min(closingIndex, tabs.count - 1)
-			let nextRepositoryID = nextIndex >= 0 ? tabs[nextIndex].id : nil
-
-			if selectedTabID == id {
-				selectedTabID = nextRepositoryID
-				try savedRepositoryStore.requestSelectRepository(id: selectedTabID)
-				activateSelectedTabIfNeeded()
-				if let selectedTabID {
-					sidebarSelection = defaultSidebarSelection(repositoryID: selectedTabID)
-				} else {
-					sidebarSelection = nil
-				}
-			}
-			return nextRepositoryID
+			let snapshot = try useCase.removeRepository(id: id)
+			reconcileTabs(with: snapshot.repositories)
+			selectedTabID = snapshot.selectedRepositoryID
+			activateSelectedTabIfNeeded()
+			return snapshot.selectedRepositoryID
 		} catch {
 			alertMessage = error.localizedDescription
 			return nil
@@ -181,16 +154,10 @@ final class RepositoryTabsViewModel: ObservableObject {
 
 	private func restoreTabs() {
 		do {
-			let repositories = try savedRepositoryStore.requestRepositories()
-			tabs = repositories.map(makeTab)
-			selectedTabID = repositories.first(where: \.isSelected)?.id ?? repositories.first?.id
-			if repositories.contains(where: \.isSelected) == false {
-				try savedRepositoryStore.requestSelectRepository(id: selectedTabID)
-			}
+			let snapshot = try useCase.loadTabs()
+			tabs = snapshot.repositories.map(makeTab)
+			selectedTabID = snapshot.selectedRepositoryID
 			activateSelectedTabIfNeeded()
-			if let selectedTabID {
-				sidebarSelection = defaultSidebarSelection(repositoryID: selectedTabID)
-			}
 		} catch {
 			alertMessage = error.localizedDescription
 		}
@@ -199,34 +166,33 @@ final class RepositoryTabsViewModel: ObservableObject {
 	private func makeTab(repository: SavedRepository) -> RepositoryTab {
 		RepositoryTab(
 			repository: repository,
-			workspace: WorkspaceViewModel(
-				repository: gitRepository,
-				repositoryURL: repository.url
-			)
+			workspace: makeWorkspaceViewModel(repository.url)
 		)
 	}
 
-	private func saveAndOpenRepository(
-		at repositoryURL: URL,
+	private func openRepository(
+		_ repository: SavedRepository,
 		onOpen: (RepositoryTab.ID) -> Void
-	) throws {
-		let savedRepository = try savedRepositoryStore.requestSaveRepository(at: repositoryURL)
-		if tabs.contains(where: { $0.id == savedRepository.id }) == false {
-			tabs.append(makeTab(repository: savedRepository))
+	) {
+		if tabs.contains(where: { $0.id == repository.id }) == false {
+			tabs.append(makeTab(repository: repository))
 		}
-		didSelectTab(savedRepository.id)
-		onOpen(savedRepository.id)
+		selectedTabID = repository.id
+		activateSelectedTabIfNeeded()
+		onOpen(repository.id)
+	}
+
+	private func reconcileTabs(with repositories: [SavedRepository]) {
+		let existingTabs = Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0) })
+		tabs = repositories.map { repository in
+			existingTabs[repository.id] ?? makeTab(repository: repository)
+		}
 	}
 
 	private func activateSelectedTabIfNeeded() {
 		guard let selectedTab, selectedTab.hasLoadedContent == false else { return }
 		selectedTab.hasLoadedContent = true
 		selectedTab.workspace.didRequestRefresh()
-	}
-
-	private func selectDefaultSidebarItemIfNeeded(repositoryID: RepositoryTab.ID) {
-		guard sidebarSelection?.repositoryID != repositoryID else { return }
-		sidebarSelection = defaultSidebarSelection(repositoryID: repositoryID)
 	}
 
 	func defaultSidebarSelection(

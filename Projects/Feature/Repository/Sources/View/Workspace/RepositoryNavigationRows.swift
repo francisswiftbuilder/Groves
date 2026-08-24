@@ -4,7 +4,6 @@ import SwiftUI
 struct RepositoryNavigationRows: View {
 	@ObservedObject var workspace: WorkspaceViewModel
 	let repositoryID: RepositoryTab.ID
-	@Binding var expandedGroups: Set<RepositorySidebarGroup>
 	let onCreateBranch: () -> Void
 
 	var body: some View {
@@ -79,13 +78,9 @@ struct RepositoryNavigationRows: View {
 		)
 		let disclosureGroup = DisclosureGroup(
 			isExpanded: Binding(
-				get: { expandedGroups.contains(group) },
+				get: { workspace.expandedSidebarGroups.contains(group) },
 				set: { isExpanded in
-					if isExpanded {
-						expandedGroups.insert(group)
-					} else {
-						expandedGroups.remove(group)
-					}
+					workspace.setSidebarGroup(group, isExpanded: isExpanded)
 				}
 			)
 		) {
@@ -125,13 +120,9 @@ struct RepositoryNavigationRows: View {
 		let group = RepositorySidebarGroup(repositoryID: repositoryID, kind: .tags)
 		return DisclosureGroup(
 			isExpanded: Binding(
-				get: { expandedGroups.contains(group) },
+				get: { workspace.expandedSidebarGroups.contains(group) },
 				set: { isExpanded in
-					if isExpanded {
-						expandedGroups.insert(group)
-					} else {
-						expandedGroups.remove(group)
-					}
+					workspace.setSidebarGroup(group, isExpanded: isExpanded)
 				}
 			)
 		) {

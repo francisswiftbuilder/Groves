@@ -3,18 +3,15 @@ import SwiftUI
 
 struct RepositorySidebar: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
+	@ObservedObject var windowViewModel: RepositoryWindowViewModel
 	let repositoryID: RepositoryTab.ID
-	@Binding var selectedItem: RepositorySidebarSelection?
-	@State private var expandedGroups: Set<RepositorySidebarGroup> = []
-	@State private var isPresentingNewBranch = false
 
 	var body: some View {
-		List(selection: $selectedItem) {
+		List(selection: selectedItemBinding) {
 			RepositoryNavigationRows(
 				workspace: viewModel,
 				repositoryID: repositoryID,
-				expandedGroups: $expandedGroups,
-				onCreateBranch: presentNewBranch
+				onCreateBranch: viewModel.didPresentNewBranch
 			)
 			.padding(.horizontal, 10)
 		}
@@ -25,25 +22,19 @@ struct RepositorySidebar: View {
 			performPrimaryAction(for: selections)
 		}
 		.onAppear {
-			expandDefaultGroups(repositoryID: repositoryID)
-			if let selectedSection = viewModel.selectedSection {
-				expandGroupIfNeeded(selectedSection, repositoryID: repositoryID)
-			}
+			viewModel.didPrepareSidebar(repositoryID: repositoryID)
 		}
-		.alert("New Branch", isPresented: $isPresentingNewBranch) {
-			TextField("Branch name", text: $viewModel.newBranchName)
-			Button("Cancel", role: .cancel) {
-				viewModel.newBranchName = ""
+	}
+
+	private var selectedItemBinding: Binding<RepositorySidebarSelection?> {
+		Binding(
+			get: { windowViewModel.sidebarSelection },
+			set: { selection in
+				Task {
+					await windowViewModel.didSelectSidebarItem(selection)
+				}
 			}
-			Button("Create") {
-				viewModel.didRequestCreateBranch()
-			}
-			.disabled(
-				viewModel.newBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-			)
-		} message: {
-			Text("Create and switch to a new branch from the current commit.")
-		}
+		)
 	}
 
 	@ViewBuilder
@@ -149,31 +140,16 @@ struct RepositorySidebar: View {
 	}
 
 	private func selectBranch(_ branch: GitBranch) {
-		selectedItem = .branch(repositoryID: repositoryID, id: branch.id)
+		windowViewModel.selectSidebarItem(
+			.branch(repositoryID: repositoryID, id: branch.id)
+		)
 		viewModel.selectedBranchID = branch.id
 	}
 
 	private func selectStash(_ stash: GitStash) {
-		selectedItem = .stash(repositoryID: repositoryID, id: stash.id)
+		windowViewModel.selectSidebarItem(
+			.stash(repositoryID: repositoryID, id: stash.id)
+		)
 		viewModel.selectedStashID = stash.id
-	}
-
-	private func presentNewBranch() {
-		viewModel.newBranchName = ""
-		isPresentingNewBranch = true
-	}
-
-	private func expandGroupIfNeeded(
-		_ section: WorkspaceSection,
-		repositoryID: RepositoryTab.ID
-	) {
-		guard let kind = RepositorySidebarGroupKind(section: section) else { return }
-		expandedGroups.insert(RepositorySidebarGroup(repositoryID: repositoryID, kind: kind))
-	}
-
-	private func expandDefaultGroups(repositoryID: RepositoryTab.ID) {
-		for kind in RepositorySidebarGroupKind.allCases {
-			expandedGroups.insert(RepositorySidebarGroup(repositoryID: repositoryID, kind: kind))
-		}
 	}
 }

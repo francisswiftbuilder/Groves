@@ -3,8 +3,6 @@ import SwiftUI
 
 struct ChangesView: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
-	@State private var pendingDiscardChanges: [WorkingTreeChange]?
-	@State private var filterText = ""
 
 	var body: some View {
 		EqualWidthHSplitView(
@@ -34,37 +32,27 @@ struct ChangesView: View {
 			CommitBar(viewModel: viewModel)
 		}
 		.confirmationDialog(
-			discardConfirmationTitle,
+			viewModel.discardConfirmationTitle,
 			isPresented: discardConfirmationBinding,
-			presenting: pendingDiscardChanges
-		) { changes in
+			presenting: viewModel.pendingDiscardChanges
+		) { _ in
 			Button("Discard Changes", role: .destructive) {
-				pendingDiscardChanges = nil
-				viewModel.didRequestDiscard(changes)
+				viewModel.didConfirmDiscardChanges()
 			}
 			Button("Cancel", role: .cancel) {
-				pendingDiscardChanges = nil
+				viewModel.didDismissDiscardConfirmation()
 			}
 		} message: { _ in
 			Text("This action cannot be undone.")
 		}
 	}
 
-	private var discardConfirmationTitle: String {
-		guard let pendingDiscardChanges else { return "Discard Changes?" }
-		guard pendingDiscardChanges.count == 1, let change = pendingDiscardChanges.first else {
-			return "Discard Changes to \(pendingDiscardChanges.count) Files?"
-		}
-		let fileName = URL(fileURLWithPath: change.path).lastPathComponent
-		return "Discard Changes to “\(fileName)”?"
-	}
-
 	private var discardConfirmationBinding: Binding<Bool> {
 		Binding(
-			get: { pendingDiscardChanges != nil },
+			get: { viewModel.pendingDiscardChanges != nil },
 			set: { isPresented in
 				if !isPresented {
-					pendingDiscardChanges = nil
+					viewModel.didDismissDiscardConfirmation()
 				}
 			}
 		)
@@ -153,10 +141,10 @@ struct ChangesView: View {
 					systemImage: "checkmark.circle"
 				)
 			} else {
-				List(selection: $viewModel.selectedChangeIDs) {
+				List(selection: selectedChangesBinding) {
 					if viewModel.isAmendingCommit, !viewModel.amendChanges.isEmpty {
 						Section {
-							ForEach(filteredAmendChanges) { change in
+							ForEach(viewModel.filteredAmendChanges) { change in
 								AmendChangeRow(change: change) {
 									viewModel.didRequestUnstageFromAmend([change])
 								}
@@ -169,45 +157,51 @@ struct ChangesView: View {
 						} header: {
 							ChangeListSectionHeader(
 								title: "Included in Amended Commit",
-								count: filteredAmendChanges.count
+								count: viewModel.filteredAmendChanges.count
 							)
 						}
 					}
 
-					if !filteredStagedChanges.isEmpty {
+					if !viewModel.filteredStagedChanges.isEmpty {
 						Section {
-							workingTreeRows(filteredStagedChanges, source: .staged)
+							workingTreeRows(viewModel.filteredStagedChanges, source: .staged)
 						} header: {
 							ChangeListSectionHeader(
 								title: "Staged",
-								count: filteredStagedChanges.count
+								count: viewModel.filteredStagedChanges.count
 							)
 						}
 					}
 
-					if !filteredUnstagedChanges.isEmpty {
+					if !viewModel.filteredUnstagedChanges.isEmpty {
 						Section {
-							workingTreeRows(filteredUnstagedChanges, source: .unstaged)
+							workingTreeRows(viewModel.filteredUnstagedChanges, source: .unstaged)
 						} header: {
 							ChangeListSectionHeader(
 								title: "Unstaged",
-								count: filteredUnstagedChanges.count
+								count: viewModel.filteredUnstagedChanges.count
 							)
 						}
 					}
 				}
 				.listStyle(.plain)
 				.safeAreaInset(edge: .bottom) {
-					TextField("Filter Files", text: $filterText)
+					TextField("Filter Files", text: $viewModel.changeFilterText)
 						.textFieldStyle(.roundedBorder)
 						.padding(10)
 						.background(.bar)
 				}
 			}
 		}
-		.onChange(of: viewModel.selectedChangeIDs) {
-			viewModel.didChangeSelectedChanges()
-		}
+	}
+
+	private var selectedChangesBinding: Binding<Set<WorkspaceChangeSelection>> {
+		Binding(
+			get: { viewModel.selectedChangeIDs },
+			set: { selections in
+				Task { await viewModel.didSelectChanges(selections) }
+			}
+		)
 	}
 
 	private func workingTreeRows(
@@ -237,22 +231,6 @@ struct ChangesView: View {
 
 	private var stageAllChanges: [WorkingTreeChange] {
 		viewModel.displayedWorkingTreeChanges.filter(\.hasWorkingTreeChange)
-	}
-
-	private var filteredStagedChanges: [WorkingTreeChange] {
-		filteredWorkingTreeChanges.filter(\.isStaged)
-	}
-
-	private var filteredUnstagedChanges: [WorkingTreeChange] {
-		filteredWorkingTreeChanges.filter(\.hasWorkingTreeChange)
-	}
-
-	private var filteredWorkingTreeChanges: [WorkingTreeChange] {
-		viewModel.displayedWorkingTreeChanges.filter(matchesFilter)
-	}
-
-	private var filteredAmendChanges: [GitAmendChange] {
-		viewModel.amendChanges.filter(matchesFilter)
 	}
 
 	private var selectedFileName: String? {
@@ -288,20 +266,6 @@ struct ChangesView: View {
 		}
 	}
 
-	private func matchesFilter(_ change: WorkingTreeChange) -> Bool {
-		matchesFilter(path: change.path)
-	}
-
-	private func matchesFilter(_ change: GitAmendChange) -> Bool {
-		matchesFilter(path: change.path)
-	}
-
-	private func matchesFilter(path: String) -> Bool {
-		let query = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !query.isEmpty else { return true }
-		return path.localizedCaseInsensitiveContains(query)
-	}
-
 	@ViewBuilder
 	private func changeContextMenu(
 		for change: WorkingTreeChange,
@@ -331,7 +295,7 @@ struct ChangesView: View {
 				systemImage: "trash",
 				role: .destructive
 			) {
-				pendingDiscardChanges = changes
+				viewModel.didPresentDiscardConfirmation(for: changes)
 			}
 			.disabled(viewModel.isLoading)
 		}

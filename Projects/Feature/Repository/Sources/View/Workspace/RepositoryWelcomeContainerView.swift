@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct RepositoryWelcomeContainerView: View {
+	@ObservedObject var viewModel: RepositoryWindowViewModel
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
-	let onCloneRepository: (String) -> Void
+	let onCloneRepository: () -> Void
 
 	var body: some View {
 		NavigationSplitView {
@@ -12,6 +13,7 @@ struct RepositoryWelcomeContainerView: View {
 				.navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
 		} detail: {
 			RepositoryWelcomeView(
+				viewModel: viewModel,
 				isWorking: isWorking,
 				onOpenRepository: onOpenRepository,
 				onCloneRepository: onCloneRepository

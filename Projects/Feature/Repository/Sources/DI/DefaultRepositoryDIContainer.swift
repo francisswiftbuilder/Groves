@@ -8,9 +8,21 @@ public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 
 	public init(dependencies: some RepositoryDIDependencies) {
 		viewModelResult = Result {
-			RepositoryTabsViewModel(
-				gitRepository: dependencies.makeGitRepository(),
-				savedRepositoryStore: try dependencies.makeSavedRepositoryStore()
+			let contentUseCase = dependencies.makeRepositoryContentUseCase()
+			let changesUseCase = dependencies.makeRepositoryChangesUseCase()
+			let referencesUseCase = dependencies.makeRepositoryReferencesUseCase()
+			let stashesUseCase = dependencies.makeRepositoryStashesUseCase()
+			return RepositoryTabsViewModel(
+				useCase: try dependencies.makeRepositoryTabsUseCase(),
+				makeWorkspaceViewModel: { repositoryURL in
+					WorkspaceViewModel(
+						contentUseCase: contentUseCase,
+						changesUseCase: changesUseCase,
+						referencesUseCase: referencesUseCase,
+						stashesUseCase: stashesUseCase,
+						repositoryURL: repositoryURL
+					)
+				}
 			)
 		}
 	}

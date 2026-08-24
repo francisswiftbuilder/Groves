@@ -11,10 +11,16 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published var selectedRemoteID: String?
 	@Published var selectedStashID: String?
 	@Published private(set) var selectedTreeNodeID: String?
+	@Published var selectedCommitFileID: CommitDiffFile.ID?
+	@Published var expandedTreeNodeIDs: Set<String> = []
+	@Published var expandedSidebarGroups: Set<RepositorySidebarGroup> = []
+	@Published var changeFilterText = ""
+	@Published private(set) var pendingDiscardChanges: [WorkingTreeChange]?
 	@Published var commitSubject = ""
 	@Published var commitBody = ""
 	@Published private(set) var isAmendingCommit = false
 	@Published var newBranchName = ""
+	@Published var isPresentingNewBranch = false
 	@Published var newStashMessage = ""
 	@Published private(set) var repositoryURL: URL?
 	@Published private(set) var changes: [WorkingTreeChange] = []
@@ -37,7 +43,10 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var isApplyingDiffLine = false
 	@Published var alertMessage: String?
 
-	private let repository: any GitRepository
+	private let contentUseCase: any RepositoryContentUseCase
+	private let changesUseCase: any RepositoryChangesUseCase
+	private let referencesUseCase: any RepositoryReferencesUseCase
+	private let stashesUseCase: any RepositoryStashesUseCase
 	private var refreshTask: Task<Void, Never>?
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var diffTask: Task<Void, Never>?
@@ -49,8 +58,17 @@ final class WorkspaceViewModel: ObservableObject {
 	private var requestedCommitDiffID: String?
 	private var contentLoadID: UUID?
 
-	init(repository: any GitRepository, repositoryURL: URL? = nil) {
-		self.repository = repository
+	init(
+		contentUseCase: any RepositoryContentUseCase,
+		changesUseCase: any RepositoryChangesUseCase,
+		referencesUseCase: any RepositoryReferencesUseCase,
+		stashesUseCase: any RepositoryStashesUseCase,
+		repositoryURL: URL? = nil
+	) {
+		self.contentUseCase = contentUseCase
+		self.changesUseCase = changesUseCase
+		self.referencesUseCase = referencesUseCase
+		self.stashesUseCase = stashesUseCase
 		self.repositoryURL = repositoryURL
 		isLoadingContent = repositoryURL != nil
 	}
@@ -95,19 +113,11 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var pushAction: RepositoryPushAction {
-		guard let currentBranch, operationState != .detachedHead else { return .unavailable }
-		if currentBranch.upstream != nil {
-			return .upstream
-		}
-		let remoteNames = remotes.map(\.name)
-		switch remoteNames.count {
-		case 0:
-			return .unavailable
-		case 1:
-			return .setUpstream(remoteName: remoteNames[0], branchName: currentBranch.name)
-		default:
-			return .chooseRemote(remoteNames: remoteNames, branchName: currentBranch.name)
-		}
+		referencesUseCase.pushAction(
+			currentBranch: currentBranch,
+			remotes: remotes,
+			operationState: operationState
+		)
 	}
 
 	var selectedStagedChanges: [WorkingTreeChange] {
@@ -199,6 +209,44 @@ final class WorkspaceViewModel: ObservableObject {
 		commitGraphItems.first { $0.id == selectedCommitID }?.commit
 	}
 
+	var selectedCommitFile: CommitDiffFile? {
+		guard !selectedCommitFiles.isEmpty else { return nil }
+		return selectedCommitFiles.first { $0.id == selectedCommitFileID }
+			?? selectedCommitFiles.first
+	}
+
+	var visibleTreeItems: [RepositoryTreeItem] {
+		RepositoryTreeLayoutBuilder.build(
+			nodes: fileTree,
+			expandedNodeIDs: expandedTreeNodeIDs
+		)
+	}
+
+	var selectedTreeItem: RepositoryTreeItem? {
+		visibleTreeItems.first { $0.id == selectedTreeNodeID }
+	}
+
+	var filteredStagedChanges: [WorkingTreeChange] {
+		filteredWorkingTreeChanges.filter(\.isStaged)
+	}
+
+	var filteredUnstagedChanges: [WorkingTreeChange] {
+		filteredWorkingTreeChanges.filter(\.hasWorkingTreeChange)
+	}
+
+	var filteredAmendChanges: [GitAmendChange] {
+		amendChanges.filter { matchesChangeFilter(path: $0.path) }
+	}
+
+	var discardConfirmationTitle: String {
+		guard let pendingDiscardChanges else { return "Discard Changes?" }
+		guard pendingDiscardChanges.count == 1, let change = pendingDiscardChanges.first else {
+			return "Discard Changes to \(pendingDiscardChanges.count) Files?"
+		}
+		let fileName = URL(fileURLWithPath: change.path).lastPathComponent
+		return "Discard Changes to “\(fileName)”?"
+	}
+
 	var selectedStash: GitStash? {
 		stashes.first { $0.id == selectedStashID }
 	}
@@ -236,6 +284,100 @@ final class WorkspaceViewModel: ObservableObject {
 		selectedSection = section
 	}
 
+	func didSelectCommit(_ commitID: String?) async {
+		await Task.yield()
+		guard !Task.isCancelled, selectedCommitID != commitID else { return }
+		selectedCommitID = commitID
+		selectedCommitFileID = nil
+		didChangeSelectedCommit()
+	}
+
+	func didSelectCommitFile(_ fileID: CommitDiffFile.ID?) async {
+		await Task.yield()
+		guard !Task.isCancelled, selectedCommitFileID != fileID else { return }
+		selectedCommitFileID = fileID
+	}
+
+	func didSelectChanges(_ selections: Set<WorkspaceChangeSelection>) async {
+		await Task.yield()
+		guard !Task.isCancelled, selectedChangeIDs != selections else { return }
+		selectedChangeIDs = selections
+		didChangeSelectedChanges()
+	}
+
+	func didPresentDiscardConfirmation(for changes: [WorkingTreeChange]) {
+		guard !changes.isEmpty else { return }
+		pendingDiscardChanges = changes
+	}
+
+	func didDismissDiscardConfirmation() {
+		pendingDiscardChanges = nil
+	}
+
+	func didConfirmDiscardChanges() {
+		guard let pendingDiscardChanges else { return }
+		self.pendingDiscardChanges = nil
+		didRequestDiscard(pendingDiscardChanges)
+	}
+
+	func didPresentNewBranch() {
+		newBranchName = ""
+		isPresentingNewBranch = true
+	}
+
+	func didDismissNewBranch() {
+		newBranchName = ""
+		isPresentingNewBranch = false
+	}
+
+	func didPrepareSidebar(repositoryID: RepositoryTab.ID) {
+		var groups = expandedSidebarGroups
+		groups.formUnion(
+			RepositorySidebarGroupKind.allCases.map {
+				RepositorySidebarGroup(repositoryID: repositoryID, kind: $0)
+			}
+		)
+		guard
+			let selectedSection,
+			let kind = RepositorySidebarGroupKind(section: selectedSection)
+		else {
+			if groups != expandedSidebarGroups {
+				expandedSidebarGroups = groups
+			}
+			return
+		}
+		groups.insert(RepositorySidebarGroup(repositoryID: repositoryID, kind: kind))
+		if groups != expandedSidebarGroups {
+			expandedSidebarGroups = groups
+		}
+	}
+
+	func setSidebarGroup(_ group: RepositorySidebarGroup, isExpanded: Bool) {
+		if isExpanded {
+			guard !expandedSidebarGroups.contains(group) else { return }
+			expandedSidebarGroups.insert(group)
+		} else {
+			guard expandedSidebarGroups.contains(group) else { return }
+			expandedSidebarGroups.remove(group)
+		}
+	}
+
+	func setTreeNode(_ nodeID: String, isExpanded: Bool) {
+		if isExpanded {
+			guard !expandedTreeNodeIDs.contains(nodeID) else { return }
+			expandedTreeNodeIDs.insert(nodeID)
+		} else {
+			guard expandedTreeNodeIDs.contains(nodeID) else { return }
+			expandedTreeNodeIDs.remove(nodeID)
+		}
+	}
+
+	func didSelectTreeNode(id: String?) async {
+		await Task.yield()
+		guard !Task.isCancelled, selectedTreeNodeID != id else { return }
+		didSelectTreeNode(requestTreeNode(id: id, in: fileTree))
+	}
+
 	func didChooseRepository(_ url: URL) {
 		refreshTask?.cancel()
 		let loadID = beginContentLoad()
@@ -243,17 +385,20 @@ final class WorkspaceViewModel: ObservableObject {
 			defer { finishContentLoad(id: loadID) }
 
 			do {
-				let root = try await repository.requestRepositoryRoot(at: url)
-				if repositoryURL != root {
+				if repositoryURL != url {
 					diffTask?.cancel()
 					commitDiffTask?.cancel()
 					selectedChangeIDs = []
 					selectedCommitID = nil
+					selectedCommitFileID = nil
+					selectedTreeNodeID = nil
+					expandedTreeNodeIDs = []
+					expandedSidebarGroups = []
 					clearDisplayedDiff()
 					clearDisplayedCommitDiff()
 				}
-				repositoryURL = root
-				try await requestAllContent(at: root)
+				repositoryURL = url
+				try await requestAllContent(at: url)
 			} catch is CancellationError {
 				return
 			} catch {
@@ -332,7 +477,7 @@ final class WorkspaceViewModel: ObservableObject {
 			diffTask = Task {
 				defer { finishDiffLoad(for: selection) }
 				do {
-					let requestedDiff = try await repository.requestDiff(
+					let requestedDiff = try await changesUseCase.loadDiff(
 						for: change,
 						source: source,
 						at: repositoryURL
@@ -354,7 +499,7 @@ final class WorkspaceViewModel: ObservableObject {
 			diffTask = Task {
 				defer { finishDiffLoad(for: selection) }
 				do {
-					let requestedDiff = try await repository.requestAmendDiff(
+					let requestedDiff = try await changesUseCase.loadAmendDiff(
 						for: change,
 						at: repositoryURL
 					)
@@ -373,6 +518,7 @@ final class WorkspaceViewModel: ObservableObject {
 			commitDiffTask?.cancel()
 			requestedCommitDiffID = nil
 			isLoadingCommitDiff = false
+			selectedCommitFileID = nil
 			clearDisplayedCommitDiff()
 			return
 		}
@@ -395,7 +541,7 @@ final class WorkspaceViewModel: ObservableObject {
 				}
 			}
 			do {
-				let requestedDiff = try await repository.requestCommitDiff(
+				let requestedDiff = try await changesUseCase.loadCommitDiff(
 					for: commit,
 					at: repositoryURL
 				)
@@ -404,6 +550,7 @@ final class WorkspaceViewModel: ObservableObject {
 				}.value
 				guard selectedCommitID == commit.id else { return }
 				selectedCommitFiles = requestedFiles
+				preserveSelectedCommitFile()
 				displayedCommitDiffID = commit.id
 			} catch is CancellationError {
 				return
@@ -423,7 +570,7 @@ final class WorkspaceViewModel: ObservableObject {
 		filePreview = .loading
 		filePreviewTask = Task {
 			do {
-				let data = try await repository.requestFileContents(
+				let data = try await contentUseCase.loadFileContents(
 					at: node.path,
 					in: repositoryURL
 				)
@@ -445,9 +592,7 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 		guard let repositoryURL, !stageableChanges.isEmpty else { return }
 		requestMutation {
-			for change in stageableChanges {
-				try await self.repository.requestStage(path: change.path, at: repositoryURL)
-			}
+			try await self.changesUseCase.stage(stageableChanges, at: repositoryURL)
 		}
 	}
 
@@ -458,9 +603,7 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 		guard let repositoryURL, !stagedChanges.isEmpty else { return }
 		requestMutation {
-			for change in stagedChanges {
-				try await self.repository.requestUnstage(path: change.path, at: repositoryURL)
-			}
+			try await self.changesUseCase.unstage(stagedChanges, at: repositoryURL)
 		}
 	}
 
@@ -469,12 +612,10 @@ final class WorkspaceViewModel: ObservableObject {
 		let amendChanges = amendChanges.filter { requestedIDs.contains($0.id) }
 		guard let repositoryURL, !amendChanges.isEmpty else { return }
 		requestMutation {
-			for change in amendChanges {
-				try await self.repository.requestUnstageFromAmend(
-					change: change,
-					at: repositoryURL
-				)
-			}
+			try await self.changesUseCase.unstageFromAmend(
+				amendChanges,
+				at: repositoryURL
+			)
 		}
 	}
 
@@ -489,7 +630,7 @@ final class WorkspaceViewModel: ObservableObject {
 			!isApplyingDiffLine
 		else { return }
 		requestDiffLineMutation {
-			try await self.repository.requestApplyDiffLine(
+			try await self.changesUseCase.applyDiffLine(
 				selection,
 				action: action,
 				for: change,
@@ -503,9 +644,7 @@ final class WorkspaceViewModel: ObservableObject {
 		let discardableChanges = changes.filter { requestedIDs.contains($0.id) }
 		guard let repositoryURL, !discardableChanges.isEmpty else { return }
 		requestMutation {
-			for change in discardableChanges {
-				try await self.repository.requestDiscard(change: change, at: repositoryURL)
-			}
+			try await self.changesUseCase.discard(discardableChanges, at: repositoryURL)
 		}
 	}
 
@@ -519,7 +658,7 @@ final class WorkspaceViewModel: ObservableObject {
 			: trimmedBody
 		let amend = isAmendingCommit
 		requestMutation {
-			try await self.repository.requestCommit(
+			let snapshot = try await self.changesUseCase.commit(
 				subject: subject,
 				body: body,
 				amend: amend,
@@ -528,6 +667,7 @@ final class WorkspaceViewModel: ObservableObject {
 			self.commitSubject = ""
 			self.commitBody = ""
 			self.isAmendingCommit = false
+			return snapshot
 		}
 	}
 
@@ -550,7 +690,10 @@ final class WorkspaceViewModel: ObservableObject {
 	func didRequestSwitchBranch() {
 		guard let repositoryURL, let branch = selectedBranch, !branch.isCurrent else { return }
 		requestMutation {
-			try await self.repository.requestSwitchBranch(named: branch.name, at: repositoryURL)
+			try await self.referencesUseCase.switchBranch(
+				named: branch.name,
+				at: repositoryURL
+			)
 		}
 	}
 
@@ -559,8 +702,13 @@ final class WorkspaceViewModel: ObservableObject {
 		let name = newBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !name.isEmpty else { return }
 		requestMutation {
-			try await self.repository.requestCreateBranch(named: name, at: repositoryURL)
+			let snapshot = try await self.referencesUseCase.createBranch(
+				named: name,
+				at: repositoryURL
+			)
 			self.newBranchName = ""
+			self.isPresentingNewBranch = false
+			return snapshot
 		}
 	}
 
@@ -570,7 +718,7 @@ final class WorkspaceViewModel: ObservableObject {
 			!branches.contains(where: { $0.name == remoteBranch.name })
 		else { return }
 		requestMutation {
-			try await self.repository.requestCreateTrackingBranch(
+			try await self.referencesUseCase.createTrackingBranch(
 				named: remoteBranch.name,
 				tracking: remoteBranch.fullName,
 				at: repositoryURL
@@ -581,7 +729,10 @@ final class WorkspaceViewModel: ObservableObject {
 	func didRequestDeleteBranch() {
 		guard let repositoryURL, let branch = selectedBranch, !branch.isCurrent else { return }
 		requestMutation {
-			try await self.repository.requestDeleteBranch(named: branch.name, at: repositoryURL)
+			try await self.referencesUseCase.deleteBranch(
+				named: branch.name,
+				at: repositoryURL
+			)
 		}
 	}
 
@@ -597,6 +748,7 @@ final class WorkspaceViewModel: ObservableObject {
 
 		clearDisplayedCommitDiff()
 		selectedCommitID = item.id
+		didChangeSelectedCommit()
 		selectedBranchID = branch.id
 		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
 		selectedSection = .history
@@ -611,6 +763,7 @@ final class WorkspaceViewModel: ObservableObject {
 
 		clearDisplayedCommitDiff()
 		selectedCommitID = item.id
+		didChangeSelectedCommit()
 		selectedRemoteID = branch.remoteName
 		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
 		selectedSection = .history
@@ -624,6 +777,7 @@ final class WorkspaceViewModel: ObservableObject {
 
 		clearDisplayedCommitDiff()
 		selectedCommitID = item.id
+		didChangeSelectedCommit()
 		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
 		selectedSection = .history
 	}
@@ -632,73 +786,78 @@ final class WorkspaceViewModel: ObservableObject {
 		guard let repositoryURL, !changes.isEmpty else { return }
 		let message = newStashMessage.trimmingCharacters(in: .whitespacesAndNewlines)
 		requestMutation {
-			try await self.repository.requestCreateStash(message: message, at: repositoryURL)
+			let snapshot = try await self.stashesUseCase.createStash(
+				message: message,
+				at: repositoryURL
+			)
 			self.newStashMessage = ""
+			return snapshot
 		}
 	}
 
 	func didRequestApplyStash() {
 		guard let repositoryURL, let stash = selectedStash else { return }
 		requestMutation {
-			try await self.repository.requestApplyStash(stash, at: repositoryURL)
+			try await self.stashesUseCase.applyStash(stash, at: repositoryURL)
 		}
 	}
 
 	func didRequestPopStash() {
 		guard let repositoryURL, let stash = selectedStash else { return }
 		requestMutation {
-			try await self.repository.requestPopStash(stash, at: repositoryURL)
+			try await self.stashesUseCase.popStash(stash, at: repositoryURL)
 		}
 	}
 
 	func didRequestDropStash() {
 		guard let repositoryURL, let stash = selectedStash else { return }
 		requestMutation {
-			try await self.repository.requestDropStash(stash, at: repositoryURL)
+			try await self.stashesUseCase.dropStash(stash, at: repositoryURL)
 		}
 	}
 
 	func didRequestPull() {
 		guard let repositoryURL else { return }
 		requestMutation {
-			try await self.repository.requestPull(at: repositoryURL)
+			try await self.referencesUseCase.pull(at: repositoryURL)
 		}
 	}
 
 	func didRequestFetchAll() {
 		guard let repositoryURL else { return }
 		requestMutation {
-			try await self.repository.requestFetchAll(at: repositoryURL)
+			try await self.referencesUseCase.fetchAll(at: repositoryURL)
 		}
 	}
 
 	func didRequestFetch(remoteName: String) {
 		guard let repositoryURL, remotes.contains(where: { $0.name == remoteName }) else { return }
 		requestMutation {
-			try await self.repository.requestFetch(remote: remoteName, at: repositoryURL)
+			try await self.referencesUseCase.fetch(
+				remote: remoteName,
+				at: repositoryURL
+			)
 		}
 	}
 
 	func didRequestPush(remoteName: String? = nil) {
 		guard let repositoryURL else { return }
-		let target: GitPushTarget
-		switch pushAction {
-		case .unavailable:
-			return
-		case .upstream:
-			target = .upstream
-		case .setUpstream(let remoteName, let branchName):
-			target = .setUpstream(remoteName: remoteName, branchName: branchName)
-		case .chooseRemote(let remoteNames, let branchName):
-			guard let remoteName, remoteNames.contains(remoteName) else { return }
-			target = .setUpstream(remoteName: remoteName, branchName: branchName)
-		}
+		guard pushAction != .unavailable else { return }
 		requestMutation {
-			try await self.repository.requestPush(target, at: repositoryURL)
+			try await self.referencesUseCase.push(
+				currentBranch: self.currentBranch,
+				remotes: self.remotes,
+				operationState: self.operationState,
+				selectedRemoteName: remoteName,
+				at: repositoryURL
+			)
 		}
 	}
 
-	private func requestMutation(_ operation: @escaping @MainActor () async throws -> Void) {
+	private func requestMutation(
+		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
+	) {
+		guard let expectedRepositoryURL = repositoryURL else { return }
 		automaticRefreshTask?.cancel()
 		refreshTask?.cancel()
 		refreshTask = Task {
@@ -706,11 +865,9 @@ final class WorkspaceViewModel: ObservableObject {
 			defer { isLoading = false }
 
 			do {
-				try await operation()
+				let snapshot = try await operation()
 				automaticRefreshTask?.cancel()
-				if let repositoryURL {
-					try await requestAllContent(at: repositoryURL)
-				}
+				try apply(snapshot, at: expectedRepositoryURL)
 				automaticRefreshTask?.cancel()
 			} catch is CancellationError {
 				return
@@ -721,7 +878,7 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	private func requestDiffLineMutation(
-		_ operation: @escaping @MainActor () async throws -> Void
+		_ operation: @escaping @MainActor () async throws -> [WorkingTreeChange]
 	) {
 		guard
 			selectedChangeIDs.count == 1,
@@ -737,12 +894,8 @@ final class WorkspaceViewModel: ObservableObject {
 			defer { isApplyingDiffLine = false }
 
 			do {
-				try await operation()
+				let refreshedChanges = try await operation()
 				guard let repositoryURL else { return }
-
-				let refreshedChanges = try await repository.requestWorkingTreeChanges(
-					at: repositoryURL
-				)
 				try Task.checkCancellation()
 
 				let availableSelections = availableWorkingTreeSelections(in: refreshedChanges)
@@ -768,7 +921,7 @@ final class WorkspaceViewModel: ObservableObject {
 				}
 				let refreshedDiff: String
 				if let refreshedChange, let refreshedSelectionValue {
-					refreshedDiff = try await repository.requestDiff(
+					refreshedDiff = try await changesUseCase.loadDiff(
 						for: refreshedChange,
 						source: refreshedSelectionValue.isStaged ? .staged : .unstaged,
 						at: repositoryURL
@@ -797,63 +950,48 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	private func requestAllContent(at repositoryURL: URL) async throws {
-		async let changes = repository.requestWorkingTreeChanges(at: repositoryURL)
-		async let amendChanges = repository.requestAmendChanges(at: repositoryURL)
-		async let commits = repository.requestCommitHistory(at: repositoryURL)
-		async let branches = repository.requestBranches(at: repositoryURL)
-		async let remotes = repository.requestRemotes(at: repositoryURL)
-		async let operationState = repository.requestOperationState(at: repositoryURL)
-		async let tags = repository.requestTags(at: repositoryURL)
-		async let stashes = repository.requestStashes(at: repositoryURL)
-		async let fileTree = repository.requestFileTree(at: repositoryURL)
+		let content = try await contentUseCase.loadSnapshot(at: repositoryURL)
+		try apply(content, at: repositoryURL)
+	}
 
-		let content = try await (
-			changes,
-			amendChanges,
-			commits,
-			branches,
-			remotes,
-			operationState,
-			tags,
-			stashes,
-			fileTree
-		)
+	private func apply(_ content: RepositorySnapshot, at repositoryURL: URL?) throws {
 		try Task.checkCancellation()
 		guard self.repositoryURL == repositoryURL else { throw CancellationError() }
 
-		let changesDidChange = self.changes != content.0 || self.amendChanges != content.1
+		let changesDidChange =
+			self.changes != content.changes || self.amendChanges != content.amendChanges
 		if changesDidChange {
 			diffTask?.cancel()
 			displayedDiffSelection = nil
 			requestedDiffSelection = nil
 			isLoadingDiff = false
 		}
-		if self.changes != content.0 {
-			self.changes = content.0
+		if self.changes != content.changes {
+			self.changes = content.changes
 		}
-		if self.amendChanges != content.1 {
-			self.amendChanges = content.1
+		if self.amendChanges != content.amendChanges {
+			self.amendChanges = content.amendChanges
 		}
-		if commitGraphItems.map(\.commit) != content.2 {
-			commitGraphItems = CommitGraphLayoutBuilder.build(commits: content.2)
+		if commitGraphItems.map(\.commit) != content.commits {
+			commitGraphItems = CommitGraphLayoutBuilder.build(commits: content.commits)
 		}
-		if self.branches != content.3 {
-			self.branches = content.3
+		if self.branches != content.branches {
+			self.branches = content.branches
 		}
-		if self.remotes != content.4 {
-			self.remotes = content.4
+		if self.remotes != content.remotes {
+			self.remotes = content.remotes
 		}
-		if self.operationState != content.5 {
-			self.operationState = content.5
+		if self.operationState != content.operationState {
+			self.operationState = content.operationState
 		}
-		if self.tags != content.6 {
-			self.tags = content.6
+		if self.tags != content.tags {
+			self.tags = content.tags
 		}
-		if self.stashes != content.7 {
-			self.stashes = content.7
+		if self.stashes != content.stashes {
+			self.stashes = content.stashes
 		}
-		if self.fileTree != content.8 {
-			self.fileTree = content.8
+		if self.fileTree != content.fileTree {
+			self.fileTree = content.fileTree
 		}
 		preserveSelections()
 	}
@@ -865,6 +1003,7 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 		if commitGraphItems.contains(where: { $0.id == selectedCommitID }) == false {
 			selectedCommitID = commitGraphItems.first?.id
+			selectedCommitFileID = nil
 		}
 		didChangeSelectedCommit()
 		if branches.contains(where: { $0.id == selectedBranchID }) == false {
@@ -970,6 +1109,7 @@ final class WorkspaceViewModel: ObservableObject {
 		if !selectedCommitFiles.isEmpty {
 			selectedCommitFiles = []
 		}
+		selectedCommitFileID = nil
 		displayedCommitDiffID = nil
 		requestedCommitDiffID = nil
 		isLoadingCommitDiff = false
@@ -981,6 +1121,27 @@ final class WorkspaceViewModel: ObservableObject {
 				reference == "HEAD" || reference.hasPrefix("HEAD -> ")
 			}
 		}?.commit ?? commitGraphItems.first?.commit
+	}
+
+	private var filteredWorkingTreeChanges: [WorkingTreeChange] {
+		displayedWorkingTreeChanges.filter { matchesChangeFilter(path: $0.path) }
+	}
+
+	private func matchesChangeFilter(path: String) -> Bool {
+		let query = changeFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !query.isEmpty else { return true }
+		return path.localizedCaseInsensitiveContains(query)
+	}
+
+	private func preserveSelectedCommitFile() {
+		guard !selectedCommitFiles.isEmpty else {
+			selectedCommitFileID = nil
+			return
+		}
+		guard selectedCommitFiles.contains(where: { $0.id == selectedCommitFileID }) else {
+			selectedCommitFileID = selectedCommitFiles.first?.id
+			return
+		}
 	}
 
 	private func requestTreeNode(

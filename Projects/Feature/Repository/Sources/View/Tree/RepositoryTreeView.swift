@@ -6,8 +6,6 @@ import SwiftUI
 struct RepositoryTreeView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@ObservedObject var viewModel: WorkspaceViewModel
-	@State private var expandedNodeIDs: Set<String> = []
-	@State private var selectedNodeID: String?
 	@FocusState private var isTreeFocused: Bool
 
 	var body: some View {
@@ -24,7 +22,7 @@ struct RepositoryTreeView: View {
 						.frame(minWidth: 220, idealWidth: 340, maxWidth: 520)
 
 					RepositoryFilePreviewPane(
-						node: selectedItem?.node,
+						node: viewModel.selectedTreeItem?.node,
 						preview: viewModel.filePreview
 					)
 					.frame(minWidth: 260, idealWidth: 620, maxWidth: .infinity)
@@ -33,19 +31,21 @@ struct RepositoryTreeView: View {
 		}
 		.navigationTitle("Tree")
 		.navigationSubtitle("Repository files")
-		.onChange(of: viewModel.repositoryURL) {
-			expandedNodeIDs = []
-			selectedNodeID = nil
-		}
 	}
 
 	private var treePane: some View {
-		List(visibleItems, selection: $selectedNodeID) { item in
+		List(viewModel.visibleTreeItems, selection: selectedTreeNodeBinding) { item in
 			RepositoryTreeRow(
 				item: item,
-				expandedNodeIDs: $expandedNodeIDs,
+				isExpanded: viewModel.expandedTreeNodeIDs.contains(item.id),
+				onToggleExpansion: {
+					viewModel.setTreeNode(
+						item.id,
+						isExpanded: !viewModel.expandedTreeNodeIDs.contains(item.id)
+					)
+				},
 				onSelect: {
-					selectedNodeID = item.id
+					Task { await viewModel.didSelectTreeNode(id: item.id) }
 					isTreeFocused = true
 				}
 			)
@@ -63,14 +63,9 @@ struct RepositoryTreeView: View {
 			RepositoryTreeHeader(statistics: statistics)
 		}
 		.safeAreaInset(edge: .bottom, spacing: 0) {
-			if let selectedItem {
-				RepositoryTreeSelectionBar(node: selectedItem.node)
+			if let selectedTreeItem = viewModel.selectedTreeItem {
+				RepositoryTreeSelectionBar(node: selectedTreeItem.node)
 			}
-		}
-		.task(id: selectedNodeID) {
-			try? await Task.sleep(for: .milliseconds(1))
-			guard !Task.isCancelled else { return }
-			viewModel.didSelectTreeNode(selectedItem?.node)
 		}
 		.task {
 			await Task.yield()
@@ -78,19 +73,17 @@ struct RepositoryTreeView: View {
 		}
 	}
 
-	private var visibleItems: [RepositoryTreeItem] {
-		RepositoryTreeLayoutBuilder.build(
-			nodes: viewModel.fileTree,
-			expandedNodeIDs: expandedNodeIDs
-		)
-	}
-
 	private var statistics: (directories: Int, files: Int) {
 		RepositoryTreeLayoutBuilder.statistics(in: viewModel.fileTree)
 	}
 
-	private var selectedItem: RepositoryTreeItem? {
-		visibleItems.first { $0.id == selectedNodeID }
+	private var selectedTreeNodeBinding: Binding<String?> {
+		Binding(
+			get: { viewModel.selectedTreeNodeID },
+			set: { nodeID in
+				Task { await viewModel.didSelectTreeNode(id: nodeID) }
+			}
+		)
 	}
 
 	private var treeAnimation: Animation {
@@ -101,16 +94,16 @@ struct RepositoryTreeView: View {
 
 	private func expandSelectedNode() -> KeyPress.Result {
 		guard
-			let selectedItem,
+			let selectedItem = viewModel.selectedTreeItem,
 			selectedItem.node.isDirectory,
-			!expandedNodeIDs.contains(selectedItem.id)
+			!viewModel.expandedTreeNodeIDs.contains(selectedItem.id)
 		else { return .ignored }
 
 		let selectedNodeID = selectedItem.id
 		Task { @MainActor in
 			await Task.yield()
 			withAnimation(treeAnimation) {
-				expandedNodeIDs.formUnion([selectedNodeID])
+				viewModel.setTreeNode(selectedNodeID, isExpanded: true)
 			}
 		}
 		return .handled
@@ -118,16 +111,16 @@ struct RepositoryTreeView: View {
 
 	private func collapseSelectedNode() -> KeyPress.Result {
 		guard
-			let selectedItem,
+			let selectedItem = viewModel.selectedTreeItem,
 			selectedItem.node.isDirectory,
-			expandedNodeIDs.contains(selectedItem.id)
+			viewModel.expandedTreeNodeIDs.contains(selectedItem.id)
 		else { return .ignored }
 
 		let selectedNodeID = selectedItem.id
 		Task { @MainActor in
 			await Task.yield()
 			withAnimation(treeAnimation) {
-				expandedNodeIDs.subtract([selectedNodeID])
+				viewModel.setTreeNode(selectedNodeID, isExpanded: false)
 			}
 		}
 		return .handled

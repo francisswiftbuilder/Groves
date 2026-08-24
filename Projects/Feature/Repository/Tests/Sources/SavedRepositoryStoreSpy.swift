@@ -37,5 +37,14 @@ final class SavedRepositoryStoreSpy: SavedRepositoryStore {
 	func requestSelectRepository(id: UUID?) throws {
 		selectedRepositoryID = id
 		selectionRequestIDs.append(id)
+		repositories = repositories.map { repository in
+			SavedRepository(
+				id: repository.id,
+				name: repository.name,
+				url: repository.url,
+				position: repository.position,
+				isSelected: repository.id == id
+			)
+		}
 	}
 }

@@ -3,8 +3,6 @@ import SwiftUI
 struct HistoryView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@ObservedObject var viewModel: WorkspaceViewModel
-	@State private var selectedCommitID: String?
-	@State private var selectedFileID: CommitDiffFile.ID?
 
 	var body: some View {
 		Group {
@@ -23,7 +21,7 @@ struct HistoryView: View {
 						.frame(maxWidth: .infinity)
 				} center: {
 					CommitDiffView(
-						file: selectedFile,
+						file: viewModel.selectedCommitFile,
 						changedFileCount: commitFiles.count,
 						isLoading: viewModel.isLoadingCommitDiff
 					)
@@ -34,7 +32,7 @@ struct HistoryView: View {
 						commit: viewModel.selectedCommit,
 						files: commitFiles,
 						isLoadingFiles: viewModel.isLoadingCommitDiff,
-						selectedFileID: $selectedFileID
+						selectedFileID: selectedCommitFileBinding
 					)
 					.frame(maxWidth: .infinity)
 				}
@@ -42,22 +40,6 @@ struct HistoryView: View {
 		}
 		.navigationTitle(viewModel.repositoryName)
 		.navigationSubtitle(viewModel.currentBranchStatus)
-		.onAppear {
-			selectedCommitID = viewModel.selectedCommitID
-			selectFirstFileIfNeeded()
-		}
-		.onChange(of: viewModel.selectedCommitID) { _, newValue in
-			selectedFileID = nil
-			if selectedCommitID != newValue {
-				selectedCommitID = newValue
-			}
-		}
-		.onChange(of: viewModel.selectedCommitFiles.map(\.id)) { _, _ in
-			selectFirstFileIfNeeded()
-		}
-		.task(id: selectedCommitID) {
-			await applyCommitSelection(selectedCommitID)
-		}
 	}
 
 	private var historyList: some View {
@@ -82,11 +64,11 @@ struct HistoryView: View {
 
 				Divider()
 
-				List(selection: $selectedCommitID) {
+				List(selection: selectedCommitBinding) {
 					ForEach(viewModel.commitGraphItems) { item in
 						CommitGraphRow(
 							item: item,
-							isSelected: item.id == selectedCommitID
+							isSelected: item.id == viewModel.selectedCommitID
 						)
 						.equatable()
 						.id(item.id)
@@ -108,27 +90,22 @@ struct HistoryView: View {
 		viewModel.selectedCommitFiles
 	}
 
-	private var selectedFile: CommitDiffFile? {
-		guard !commitFiles.isEmpty else { return nil }
-		return commitFiles.first { $0.id == selectedFileID } ?? commitFiles.first
+	private var selectedCommitBinding: Binding<String?> {
+		Binding(
+			get: { viewModel.selectedCommitID },
+			set: { commitID in
+				Task { await viewModel.didSelectCommit(commitID) }
+			}
+		)
 	}
 
-	private func selectFirstFileIfNeeded() {
-		guard !commitFiles.isEmpty else {
-			selectedFileID = nil
-			return
-		}
-		guard !commitFiles.contains(where: { $0.id == selectedFileID }) else { return }
-		selectedFileID = commitFiles.first?.id
-	}
-
-	private func applyCommitSelection(_ commitID: String?) async {
-		await Task.yield()
-		guard !Task.isCancelled, selectedCommitID == commitID else { return }
-		if viewModel.selectedCommitID != commitID {
-			viewModel.selectedCommitID = commitID
-		}
-		viewModel.didChangeSelectedCommit()
+	private var selectedCommitFileBinding: Binding<CommitDiffFile.ID?> {
+		Binding(
+			get: { viewModel.selectedCommitFileID },
+			set: { fileID in
+				Task { await viewModel.didSelectCommitFile(fileID) }
+			}
+		)
 	}
 
 	private func scrollToFocusedCommit(using proxy: ScrollViewProxy) async {

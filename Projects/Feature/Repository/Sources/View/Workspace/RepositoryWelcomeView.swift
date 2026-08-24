@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct RepositoryWelcomeView: View {
+	@ObservedObject var viewModel: RepositoryWindowViewModel
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
-	let onCloneRepository: (String) -> Void
-	@State private var remoteURL = ""
+	let onCloneRepository: () -> Void
 	@FocusState private var isRemoteURLFocused: Bool
 
 	var body: some View {
@@ -84,12 +84,15 @@ struct RepositoryWelcomeView: View {
 				systemImage: "arrow.triangle.branch"
 			)
 
-			TextField("https://github.com/owner/repository.git", text: $remoteURL)
-				.textFieldStyle(.roundedBorder)
-				.focused($isRemoteURLFocused)
-				.onSubmit(cloneRepository)
-				.disabled(isWorking)
-				.accessibilityLabel("Remote repository URL")
+			TextField(
+				"https://github.com/owner/repository.git",
+				text: $viewModel.cloneRemoteURL
+			)
+			.textFieldStyle(.roundedBorder)
+			.focused($isRemoteURLFocused)
+			.onSubmit(cloneRepository)
+			.disabled(isWorking)
+			.accessibilityLabel("Remote repository URL")
 
 			Button("Choose Location and Clone…", systemImage: "square.and.arrow.down") {
 				cloneRepository()
@@ -128,16 +131,12 @@ struct RepositoryWelcomeView: View {
 		}
 	}
 
-	private var trimmedRemoteURL: String {
-		remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
-	}
-
 	private var isCloneDisabled: Bool {
-		isWorking || trimmedRemoteURL.isEmpty
+		isWorking || viewModel.trimmedCloneRemoteURL.isEmpty
 	}
 
 	private func cloneRepository() {
 		guard isCloneDisabled == false else { return }
-		onCloneRepository(trimmedRemoteURL)
+		onCloneRepository()
 	}
 }
