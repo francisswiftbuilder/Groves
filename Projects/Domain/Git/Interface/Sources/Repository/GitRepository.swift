@@ -9,11 +9,16 @@ public protocol GitRepository: Sendable {
 	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch]
 	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote]
+	func requestOperationState(at repositoryURL: URL) async throws -> RepositoryOperationState
 	func requestTags(at repositoryURL: URL) async throws -> [GitTag]
 	func requestStashes(at repositoryURL: URL) async throws -> [GitStash]
 	func requestFileTree(at repositoryURL: URL) async throws -> [RepositoryTreeNode]
 	func requestFileContents(at path: String, in repositoryURL: URL) async throws -> Data
-	func requestDiff(for change: WorkingTreeChange, at repositoryURL: URL) async throws -> String
+	func requestDiff(
+		for change: WorkingTreeChange,
+		source: GitDiffSource,
+		at repositoryURL: URL
+	) async throws -> String
 	func requestAmendDiff(for change: GitAmendChange, at repositoryURL: URL) async throws
 		-> String
 	func requestStage(path: String, at repositoryURL: URL) async throws
@@ -29,6 +34,11 @@ public protocol GitRepository: Sendable {
 	func requestCommit(subject: String, body: String, amend: Bool, at repositoryURL: URL) async throws
 	func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateBranch(named name: String, at repositoryURL: URL) async throws
+	func requestCreateTrackingBranch(
+		named name: String,
+		tracking remoteBranch: String,
+		at repositoryURL: URL
+	) async throws
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateTag(named name: String, message: String, at repositoryURL: URL) async throws
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws
@@ -36,6 +46,8 @@ public protocol GitRepository: Sendable {
 	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
 	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws
 	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
+	func requestFetch(remote name: String, at repositoryURL: URL) async throws
+	func requestFetchAll(at repositoryURL: URL) async throws
 	func requestPull(at repositoryURL: URL) async throws
-	func requestPush(at repositoryURL: URL) async throws
+	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws
 }

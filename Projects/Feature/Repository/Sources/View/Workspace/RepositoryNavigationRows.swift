@@ -5,6 +5,7 @@ struct RepositoryNavigationRows: View {
 	@ObservedObject var workspace: WorkspaceViewModel
 	let repositoryID: RepositoryTab.ID
 	@Binding var expandedGroups: Set<RepositorySidebarGroup>
+	let onCreateBranch: () -> Void
 
 	var body: some View {
 		sectionRow(.tree)
@@ -30,7 +31,9 @@ struct RepositoryNavigationRows: View {
 									id: branch.id
 								)
 							)
-							.help("Show \(branch.fullName) in History")
+							.help(
+								"Click to show \(branch.fullName) in History. Double-click to track and switch."
+							)
 					}
 				} label: {
 					SidebarChildRow(title: remote.name, systemImage: "icloud", accessory: nil)
@@ -88,7 +91,7 @@ struct RepositoryNavigationRows: View {
 		) {
 			content()
 		} label: {
-			SidebarSectionRow(section: section, badgeCount: nil)
+			navigationGroupLabel(section, kind: kind)
 		}
 
 		if selectsSection {
@@ -96,6 +99,23 @@ struct RepositoryNavigationRows: View {
 				.tag(RepositorySidebarSelection.section(repositoryID: repositoryID, section: section))
 		} else {
 			disclosureGroup
+		}
+	}
+
+	@ViewBuilder
+	private func navigationGroupLabel(
+		_ section: WorkspaceSection,
+		kind: RepositorySidebarGroupKind
+	) -> some View {
+		if kind == .branches {
+			SidebarSectionRow(section: section, badgeCount: nil)
+				.contextMenu {
+					Button("New Branch…", systemImage: "plus") {
+						onCreateBranch()
+					}
+				}
+		} else {
+			SidebarSectionRow(section: section, badgeCount: nil)
 		}
 	}
 

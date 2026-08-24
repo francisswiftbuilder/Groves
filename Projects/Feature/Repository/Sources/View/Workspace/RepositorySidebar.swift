@@ -6,13 +6,15 @@ struct RepositorySidebar: View {
 	let repositoryID: RepositoryTab.ID
 	@Binding var selectedItem: RepositorySidebarSelection?
 	@State private var expandedGroups: Set<RepositorySidebarGroup> = []
+	@State private var isPresentingNewBranch = false
 
 	var body: some View {
 		List(selection: $selectedItem) {
 			RepositoryNavigationRows(
 				workspace: viewModel,
 				repositoryID: repositoryID,
-				expandedGroups: $expandedGroups
+				expandedGroups: $expandedGroups,
+				onCreateBranch: presentNewBranch
 			)
 			.padding(.horizontal, 10)
 		}
@@ -27,6 +29,20 @@ struct RepositorySidebar: View {
 			if let selectedSection = viewModel.selectedSection {
 				expandGroupIfNeeded(selectedSection, repositoryID: repositoryID)
 			}
+		}
+		.alert("New Branch", isPresented: $isPresentingNewBranch) {
+			TextField("Branch name", text: $viewModel.newBranchName)
+			Button("Cancel", role: .cancel) {
+				viewModel.newBranchName = ""
+			}
+			Button("Create") {
+				viewModel.didRequestCreateBranch()
+			}
+			.disabled(
+				viewModel.newBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+			)
+		} message: {
+			Text("Create and switch to a new branch from the current commit.")
 		}
 	}
 
@@ -72,7 +88,23 @@ struct RepositorySidebar: View {
 						viewModel.didRequestDropStash()
 					}
 				}
-			case .section, .remote, .remoteBranch, .tag:
+			case .remoteBranch(_, let id):
+				if let remoteBranch = viewModel.remoteBranches.first(where: { $0.id == id }) {
+					if let localBranch = localBranch(tracking: remoteBranch) {
+						Button(
+							"Switch to \(localBranch.name)",
+							systemImage: "arrow.triangle.branch"
+						) {
+							switchToRemoteBranch(remoteBranch)
+						}
+						.disabled(localBranch.isCurrent)
+					} else {
+						Button("Create Local Branch", systemImage: "arrow.down.to.line") {
+							switchToRemoteBranch(remoteBranch)
+						}
+					}
+				}
+			case .section, .remote, .tag:
 				EmptyView()
 			}
 		}
@@ -84,13 +116,36 @@ struct RepositorySidebar: View {
 		guard
 			selections.count == 1,
 			let selection = selections.first,
-			case .branch(_, let id) = selection,
-			selection.repositoryID == repositoryID,
-			let branch = viewModel.branches.first(where: { $0.id == id })
+			selection.repositoryID == repositoryID
 		else { return }
 
-		selectBranch(branch)
-		viewModel.didRequestSwitchBranch()
+		switch selection {
+		case .branch(_, let id):
+			guard let branch = viewModel.branches.first(where: { $0.id == id }) else { return }
+			selectBranch(branch)
+			viewModel.didRequestSwitchBranch()
+		case .remoteBranch(_, let id):
+			guard
+				let remoteBranch = viewModel.remoteBranches.first(where: { $0.id == id })
+			else { return }
+			switchToRemoteBranch(remoteBranch)
+		case .section, .remote, .tag, .stash:
+			return
+		}
+	}
+
+	private func switchToRemoteBranch(_ remoteBranch: GitRemoteBranch) {
+		if let localBranch = localBranch(tracking: remoteBranch) {
+			selectBranch(localBranch)
+			viewModel.didRequestSwitchBranch()
+		} else {
+			viewModel.didRequestCreateLocalBranch(from: remoteBranch)
+		}
+	}
+
+	private func localBranch(tracking remoteBranch: GitRemoteBranch) -> GitBranch? {
+		viewModel.branches.first { $0.upstream == remoteBranch.fullName }
+			?? viewModel.branches.first { $0.name == remoteBranch.name }
 	}
 
 	private func selectBranch(_ branch: GitBranch) {
@@ -101,6 +156,11 @@ struct RepositorySidebar: View {
 	private func selectStash(_ stash: GitStash) {
 		selectedItem = .stash(repositoryID: repositoryID, id: stash.id)
 		viewModel.selectedStashID = stash.id
+	}
+
+	private func presentNewBranch() {
+		viewModel.newBranchName = ""
+		isPresentingNewBranch = true
 	}
 
 	private func expandGroupIfNeeded(

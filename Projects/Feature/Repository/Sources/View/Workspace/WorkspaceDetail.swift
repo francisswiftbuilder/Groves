@@ -16,7 +16,7 @@ struct WorkspaceDetail: View {
 				message: "Fetching changes, history, branches, tags, and files."
 			)
 			.navigationTitle(viewModel.repositoryName)
-			.navigationSubtitle(viewModel.currentBranchName)
+			.navigationSubtitle(viewModel.currentBranchStatus)
 		} else {
 			switch viewModel.selectedSection ?? .changes {
 			case .changes:

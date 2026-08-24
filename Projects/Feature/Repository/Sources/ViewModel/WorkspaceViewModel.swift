@@ -22,6 +22,7 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var commitGraphItems: [CommitGraphItem] = []
 	@Published private(set) var branches: [GitBranch] = []
 	@Published private(set) var remotes: [GitRemote] = []
+	@Published private(set) var operationState: RepositoryOperationState = .normal
 	@Published private(set) var tags: [GitTag] = []
 	@Published private(set) var stashes: [GitStash] = []
 	@Published private(set) var fileTree: [RepositoryTreeNode] = []
@@ -38,6 +39,7 @@ final class WorkspaceViewModel: ObservableObject {
 
 	private let repository: any GitRepository
 	private var refreshTask: Task<Void, Never>?
+	private var automaticRefreshTask: Task<Void, Never>?
 	private var diffTask: Task<Void, Never>?
 	private var commitDiffTask: Task<Void, Never>?
 	private var filePreviewTask: Task<Void, Never>?
@@ -55,6 +57,7 @@ final class WorkspaceViewModel: ObservableObject {
 
 	deinit {
 		refreshTask?.cancel()
+		automaticRefreshTask?.cancel()
 		diffTask?.cancel()
 		commitDiffTask?.cancel()
 		filePreviewTask?.cancel()
@@ -65,15 +68,63 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var currentBranchName: String {
-		branches.first(where: \.isCurrent)?.name ?? "No Branch"
+		guard operationState != .detachedHead else { return "Detached HEAD" }
+		return currentBranch?.name ?? "No Branch"
+	}
+
+	var currentBranchStatus: String {
+		guard let currentBranch else { return operationStateTitle }
+		var components = [currentBranch.name]
+		if let upstream = currentBranch.upstream {
+			components.append(upstream)
+		}
+		if currentBranch.aheadCount > 0 {
+			components.append("↑\(currentBranch.aheadCount)")
+		}
+		if currentBranch.behindCount > 0 {
+			components.append("↓\(currentBranch.behindCount)")
+		}
+		if operationState != .normal {
+			components.append(operationStateTitle)
+		}
+		return components.joined(separator: " · ")
+	}
+
+	var currentBranch: GitBranch? {
+		branches.first(where: \.isCurrent)
+	}
+
+	var pushAction: RepositoryPushAction {
+		guard let currentBranch, operationState != .detachedHead else { return .unavailable }
+		if currentBranch.upstream != nil {
+			return .upstream
+		}
+		let remoteNames = remotes.map(\.name)
+		switch remoteNames.count {
+		case 0:
+			return .unavailable
+		case 1:
+			return .setUpstream(remoteName: remoteNames[0], branchName: currentBranch.name)
+		default:
+			return .chooseRemote(remoteNames: remoteNames, branchName: currentBranch.name)
+		}
+	}
+
+	var selectedStagedChanges: [WorkingTreeChange] {
+		changes.filter { selectedChangeIDs.contains(.staged($0.id)) }
+	}
+
+	var selectedUnstagedChanges: [WorkingTreeChange] {
+		changes.filter { selectedChangeIDs.contains(.unstaged($0.id)) }
 	}
 
 	var selectedChanges: [WorkingTreeChange] {
-		changes.filter { selectedChangeIDs.contains(.workingTree($0.id)) }
+		let selectedIDs = Set(selectedChangeIDs.map(\.changeID))
+		return changes.filter { selectedIDs.contains($0.id) }
 	}
 
 	var selectedStageableChanges: [WorkingTreeChange] {
-		selectedChanges.filter(\.hasWorkingTreeChange)
+		selectedUnstagedChanges.filter(\.hasWorkingTreeChange)
 	}
 
 	var displayedWorkingTreeChanges: [WorkingTreeChange] {
@@ -83,7 +134,33 @@ final class WorkspaceViewModel: ObservableObject {
 
 	var selectedChange: WorkingTreeChange? {
 		guard selectedChangeIDs.count == 1 else { return nil }
-		return selectedChanges.first
+		return changes.first { $0.id == selectedChangeIDs.first?.changeID }
+	}
+
+	var selectedDiffSource: GitDiffSource? {
+		guard selectedChangeIDs.count == 1, let selection = selectedChangeIDs.first else {
+			return nil
+		}
+		switch selection {
+		case .staged:
+			return .staged
+		case .unstaged:
+			return .unstaged
+		case .amend:
+			return nil
+		}
+	}
+
+	var selectedFileState: GitFileState? {
+		guard let selectedChange else { return selectedAmendChange?.state }
+		switch selectedDiffSource {
+		case .staged:
+			return selectedChange.indexState
+		case .unstaged:
+			return selectedChange.workingTreeState
+		case .none:
+			return nil
+		}
 	}
 
 	var selectedAmendChanges: [GitAmendChange] {
@@ -96,15 +173,11 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var selectedDiffLineAction: GitDiffLineAction? {
-		guard let selectedChange else { return nil }
-		if selectedChange.hasWorkingTreeChange,
-			selectedChange.workingTreeState == .modified
-		{
+		guard let selectedChange, let selectedDiffSource else { return nil }
+		if selectedDiffSource == .unstaged, selectedChange.workingTreeState == .modified {
 			return .stage
 		}
-		if !selectedChange.hasWorkingTreeChange,
-			selectedChange.indexState == .modified
-		{
+		if selectedDiffSource == .staged, selectedChange.indexState == .modified {
 			return .unstage
 		}
 		return nil
@@ -138,6 +211,25 @@ final class WorkspaceViewModel: ObservableObject {
 
 	var canAmendCommit: Bool {
 		commitGraphItems.isEmpty == false && !isLoading
+	}
+
+	private var operationStateTitle: String {
+		switch operationState {
+		case .normal:
+			return "No Branch"
+		case .detachedHead:
+			return "Detached HEAD"
+		case .mergeInProgress:
+			return "Merge in Progress"
+		case .rebaseInProgress:
+			return "Rebase in Progress"
+		case .cherryPickInProgress:
+			return "Cherry-pick in Progress"
+		case .revertInProgress:
+			return "Revert in Progress"
+		case .conflicted:
+			return "Conflicts"
+		}
 	}
 
 	func didSelectSection(_ section: WorkspaceSection) {
@@ -187,19 +279,13 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func monitorWorkingTreeChanges() async {
+	func monitorRepositoryChanges() async {
 		guard let repositoryURL else { return }
 
 		let events = RepositoryFileSystemMonitor.events(at: repositoryURL)
-		do {
-			try await refreshWorkingTreeChangesIfNeeded()
-		} catch is CancellationError {
-			return
-		} catch {}
-
-		var automaticRefreshTask: Task<Void, Never>?
 		defer {
 			automaticRefreshTask?.cancel()
+			automaticRefreshTask = nil
 		}
 
 		for await _ in events {
@@ -207,8 +293,9 @@ final class WorkspaceViewModel: ObservableObject {
 			automaticRefreshTask?.cancel()
 			automaticRefreshTask = Task { @MainActor [weak self] in
 				do {
-					try await Task.sleep(for: .milliseconds(350))
-					try await self?.refreshWorkingTreeChangesIfNeeded()
+					try await Task.sleep(for: .milliseconds(450))
+					guard let self, !self.isLoading, !self.isApplyingDiffLine else { return }
+					try await self.requestAllContent(at: repositoryURL)
 				} catch is CancellationError {
 					return
 				} catch {}
@@ -229,21 +316,27 @@ final class WorkspaceViewModel: ObservableObject {
 			return
 		}
 
-		if displayedDiffSelection != selection {
+		if displayedDiffSelection != nil, displayedDiffSelection != selection {
 			clearDisplayedDiff()
 		}
+		guard displayedDiffSelection != selection, requestedDiffSelection != selection else { return }
 		switch selection {
-		case .workingTree(let id):
+		case .staged(let id), .unstaged(let id):
 			guard let change = changes.first(where: { $0.id == id }) else {
 				clearDisplayedDiff()
 				return
 			}
+			let source: GitDiffSource = selection.isStaged ? .staged : .unstaged
 			requestedDiffSelection = selection
 			isLoadingDiff = true
 			diffTask = Task {
 				defer { finishDiffLoad(for: selection) }
 				do {
-					let requestedDiff = try await repository.requestDiff(for: change, at: repositoryURL)
+					let requestedDiff = try await repository.requestDiff(
+						for: change,
+						source: source,
+						at: repositoryURL
+					)
 					updateDisplayedDiff(requestedDiff, for: selection)
 				} catch is CancellationError {
 					return
@@ -471,6 +564,20 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	func didRequestCreateLocalBranch(from remoteBranch: GitRemoteBranch) {
+		guard
+			let repositoryURL,
+			!branches.contains(where: { $0.name == remoteBranch.name })
+		else { return }
+		requestMutation {
+			try await self.repository.requestCreateTrackingBranch(
+				named: remoteBranch.name,
+				tracking: remoteBranch.fullName,
+				at: repositoryURL
+			)
+		}
+	}
+
 	func didRequestDeleteBranch() {
 		guard let repositoryURL, let branch = selectedBranch, !branch.isCurrent else { return }
 		requestMutation {
@@ -558,14 +665,41 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func didRequestPush() {
+	func didRequestFetchAll() {
 		guard let repositoryURL else { return }
 		requestMutation {
-			try await self.repository.requestPush(at: repositoryURL)
+			try await self.repository.requestFetchAll(at: repositoryURL)
+		}
+	}
+
+	func didRequestFetch(remoteName: String) {
+		guard let repositoryURL, remotes.contains(where: { $0.name == remoteName }) else { return }
+		requestMutation {
+			try await self.repository.requestFetch(remote: remoteName, at: repositoryURL)
+		}
+	}
+
+	func didRequestPush(remoteName: String? = nil) {
+		guard let repositoryURL else { return }
+		let target: GitPushTarget
+		switch pushAction {
+		case .unavailable:
+			return
+		case .upstream:
+			target = .upstream
+		case .setUpstream(let remoteName, let branchName):
+			target = .setUpstream(remoteName: remoteName, branchName: branchName)
+		case .chooseRemote(let remoteNames, let branchName):
+			guard let remoteName, remoteNames.contains(remoteName) else { return }
+			target = .setUpstream(remoteName: remoteName, branchName: branchName)
+		}
+		requestMutation {
+			try await self.repository.requestPush(target, at: repositoryURL)
 		}
 	}
 
 	private func requestMutation(_ operation: @escaping @MainActor () async throws -> Void) {
+		automaticRefreshTask?.cancel()
 		refreshTask?.cancel()
 		refreshTask = Task {
 			isLoading = true
@@ -573,9 +707,11 @@ final class WorkspaceViewModel: ObservableObject {
 
 			do {
 				try await operation()
+				automaticRefreshTask?.cancel()
 				if let repositoryURL {
 					try await requestAllContent(at: repositoryURL)
 				}
+				automaticRefreshTask?.cancel()
 			} catch is CancellationError {
 				return
 			} catch {
@@ -587,6 +723,13 @@ final class WorkspaceViewModel: ObservableObject {
 	private func requestDiffLineMutation(
 		_ operation: @escaping @MainActor () async throws -> Void
 	) {
+		guard
+			selectedChangeIDs.count == 1,
+			let originalSelection = selectedChangeIDs.first,
+			let originalSource = selectedDiffSource
+		else { return }
+
+		automaticRefreshTask?.cancel()
 		refreshTask?.cancel()
 		diffTask?.cancel()
 		refreshTask = Task {
@@ -602,24 +745,32 @@ final class WorkspaceViewModel: ObservableObject {
 				)
 				try Task.checkCancellation()
 
-				let availableSelections = Set(
-					refreshedChanges.map { WorkspaceChangeSelection.workingTree($0.id) }
-				)
+				let availableSelections = availableWorkingTreeSelections(in: refreshedChanges)
 				var refreshedSelection = selectedChangeIDs.intersection(availableSelections)
-				if refreshedSelection.isEmpty, let firstChangeID = refreshedChanges.first?.id {
-					refreshedSelection = [.workingTree(firstChangeID)]
+				if refreshedSelection.isEmpty,
+					let fallbackChange = refreshedChanges.first(where: {
+						originalSource == .staged ? $0.isStaged : $0.hasWorkingTreeChange
+					})
+				{
+					refreshedSelection = [
+						originalSource == .staged
+							? .staged(fallbackChange.id)
+							: .unstaged(fallbackChange.id)
+					]
 				}
 
-				let refreshedChange =
+				let refreshedSelectionValue =
 					refreshedSelection.count == 1
-					? refreshedChanges.first {
-						refreshedSelection.contains(.workingTree($0.id))
-					}
+					? refreshedSelection.first
 					: nil
+				let refreshedChange = refreshedSelectionValue.flatMap { selection in
+					refreshedChanges.first { $0.id == selection.changeID }
+				}
 				let refreshedDiff: String
-				if let refreshedChange {
+				if let refreshedChange, let refreshedSelectionValue {
 					refreshedDiff = try await repository.requestDiff(
 						for: refreshedChange,
+						source: refreshedSelectionValue.isStaged ? .staged : .unstaged,
 						at: repositoryURL
 					)
 				} else {
@@ -632,8 +783,10 @@ final class WorkspaceViewModel: ObservableObject {
 				if diff != refreshedDiff {
 					diff = refreshedDiff
 				}
-				displayedDiffSelection = refreshedChange.map {
-					.workingTree($0.id)
+				displayedDiffSelection = refreshedSelectionValue
+				requestedDiffSelection = nil
+				if originalSelection != refreshedSelectionValue {
+					clearDiffLoad()
 				}
 			} catch is CancellationError {
 				return
@@ -649,6 +802,7 @@ final class WorkspaceViewModel: ObservableObject {
 		async let commits = repository.requestCommitHistory(at: repositoryURL)
 		async let branches = repository.requestBranches(at: repositoryURL)
 		async let remotes = repository.requestRemotes(at: repositoryURL)
+		async let operationState = repository.requestOperationState(at: repositoryURL)
 		async let tags = repository.requestTags(at: repositoryURL)
 		async let stashes = repository.requestStashes(at: repositoryURL)
 		async let fileTree = repository.requestFileTree(at: repositoryURL)
@@ -659,35 +813,49 @@ final class WorkspaceViewModel: ObservableObject {
 			commits,
 			branches,
 			remotes,
+			operationState,
 			tags,
 			stashes,
 			fileTree
 		)
-		self.changes = content.0
-		self.amendChanges = content.1
-		commitGraphItems = CommitGraphLayoutBuilder.build(commits: content.2)
-		self.branches = content.3
-		self.remotes = content.4
-		self.tags = content.5
-		self.stashes = content.6
-		self.fileTree = content.7
-		preserveSelections()
-	}
-
-	private func refreshWorkingTreeChangesIfNeeded() async throws {
-		guard let repositoryURL, !isLoading, !isApplyingDiffLine else { return }
-
-		let refreshedChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let refreshedAmendChanges =
-			isAmendingCommit
-			? try await repository.requestAmendChanges(at: repositoryURL)
-			: amendChanges
 		try Task.checkCancellation()
-		guard refreshedChanges != changes || refreshedAmendChanges != amendChanges else { return }
+		guard self.repositoryURL == repositoryURL else { throw CancellationError() }
 
-		changes = refreshedChanges
-		amendChanges = refreshedAmendChanges
-		preserveChangeSelection()
+		let changesDidChange = self.changes != content.0 || self.amendChanges != content.1
+		if changesDidChange {
+			diffTask?.cancel()
+			displayedDiffSelection = nil
+			requestedDiffSelection = nil
+			isLoadingDiff = false
+		}
+		if self.changes != content.0 {
+			self.changes = content.0
+		}
+		if self.amendChanges != content.1 {
+			self.amendChanges = content.1
+		}
+		if commitGraphItems.map(\.commit) != content.2 {
+			commitGraphItems = CommitGraphLayoutBuilder.build(commits: content.2)
+		}
+		if self.branches != content.3 {
+			self.branches = content.3
+		}
+		if self.remotes != content.4 {
+			self.remotes = content.4
+		}
+		if self.operationState != content.5 {
+			self.operationState = content.5
+		}
+		if self.tags != content.6 {
+			self.tags = content.6
+		}
+		if self.stashes != content.7 {
+			self.stashes = content.7
+		}
+		if self.fileTree != content.8 {
+			self.fileTree = content.8
+		}
+		preserveSelections()
 	}
 
 	private func preserveSelections() {
@@ -714,17 +882,21 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	private func preserveChangeSelection() {
-		var availableSelections = Set(
-			displayedWorkingTreeChanges.map { WorkspaceChangeSelection.workingTree($0.id) }
-		)
+		var availableSelections = availableWorkingTreeSelections(in: displayedWorkingTreeChanges)
 		if isAmendingCommit {
 			availableSelections.formUnion(
 				amendChanges.map { WorkspaceChangeSelection.amend($0.id) }
 			)
 		}
 		selectedChangeIDs.formIntersection(availableSelections)
-		if selectedChangeIDs.isEmpty, let firstChangeID = displayedWorkingTreeChanges.first?.id {
-			selectedChangeIDs = [.workingTree(firstChangeID)]
+		if selectedChangeIDs.isEmpty,
+			let firstStagedChange = displayedWorkingTreeChanges.first(where: \.isStaged)
+		{
+			selectedChangeIDs = [.staged(firstStagedChange.id)]
+		} else if selectedChangeIDs.isEmpty,
+			let firstUnstagedChange = displayedWorkingTreeChanges.first(where: \.hasWorkingTreeChange)
+		{
+			selectedChangeIDs = [.unstaged(firstUnstagedChange.id)]
 		} else if selectedChangeIDs.isEmpty,
 			isAmendingCommit,
 			let firstChangeID = amendChanges.first?.id
@@ -732,6 +904,21 @@ final class WorkspaceViewModel: ObservableObject {
 			selectedChangeIDs = [.amend(firstChangeID)]
 		}
 		didChangeSelectedChanges()
+	}
+
+	private func availableWorkingTreeSelections(
+		in changes: [WorkingTreeChange]
+	) -> Set<WorkspaceChangeSelection> {
+		var selections: Set<WorkspaceChangeSelection> = []
+		for change in changes {
+			if change.isStaged {
+				selections.insert(.staged(change.id))
+			}
+			if change.hasWorkingTreeChange {
+				selections.insert(.unstaged(change.id))
+			}
+		}
+		return selections
 	}
 
 	private func updateDisplayedDiff(

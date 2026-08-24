@@ -6,6 +6,96 @@ import XCTest
 
 @MainActor
 final class WorkspaceViewModelTests: XCTestCase {
+	func testStagedAndUnstagedSelectionsUseIndependentDiffSources() async throws {
+		let change = WorkingTreeChange(
+			path: "GalleryView.swift",
+			previousPath: nil,
+			indexState: .modified,
+			workingTreeState: .modified
+		)
+		let viewModel = WorkspaceViewModel(
+			repository: GitRepositoryStub(
+				changes: [change],
+				stagedDiff: "cached diff",
+				unstagedDiff: "working tree diff"
+			)
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.changes == [change] }
+
+		viewModel.selectedChangeIDs = [.staged(change.id)]
+		viewModel.didChangeSelectedChanges()
+		try await waitUntil { viewModel.diff == "cached diff" }
+		XCTAssertEqual(viewModel.selectedFileState, .modified)
+
+		viewModel.selectedChangeIDs = [.unstaged(change.id)]
+		viewModel.didChangeSelectedChanges()
+		try await waitUntil { viewModel.diff == "working tree diff" }
+		XCTAssertEqual(viewModel.selectedFileState, .modified)
+	}
+
+	func testPushActionUsesUpstreamOrModelsRemoteChoice() async throws {
+		let trackedBranch = GitBranch(
+			name: "main",
+			shortHash: "1234567",
+			upstream: "origin/main",
+			isCurrent: true
+		)
+		let untrackedBranch = GitBranch(
+			name: "feature/push",
+			shortHash: "7654321",
+			upstream: nil,
+			isCurrent: true
+		)
+		let origin = GitRemote(name: "origin", fetchURL: nil, pushURL: nil)
+		let upstream = GitRemote(name: "upstream", fetchURL: nil, pushURL: nil)
+
+		let trackedViewModel = WorkspaceViewModel(
+			repository: GitRepositoryStub(branches: [trackedBranch], remotes: [origin])
+		)
+		trackedViewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Tracked"))
+		try await waitUntil { trackedViewModel.currentBranch == trackedBranch }
+		XCTAssertEqual(trackedViewModel.pushAction, .upstream)
+
+		let singleRemoteViewModel = WorkspaceViewModel(
+			repository: GitRepositoryStub(branches: [untrackedBranch], remotes: [origin])
+		)
+		singleRemoteViewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Single"))
+		try await waitUntil { singleRemoteViewModel.currentBranch == untrackedBranch }
+		XCTAssertEqual(
+			singleRemoteViewModel.pushAction,
+			.setUpstream(remoteName: "origin", branchName: "feature/push")
+		)
+
+		let multipleRemoteViewModel = WorkspaceViewModel(
+			repository: GitRepositoryStub(
+				branches: [untrackedBranch],
+				remotes: [origin, upstream]
+			)
+		)
+		multipleRemoteViewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Multiple"))
+		try await waitUntil { multipleRemoteViewModel.currentBranch == untrackedBranch }
+		XCTAssertEqual(
+			multipleRemoteViewModel.pushAction,
+			.chooseRemote(
+				remoteNames: ["origin", "upstream"],
+				branchName: "feature/push"
+			)
+		)
+	}
+
+	func testRepositoryOperationStateIsLoadedIntoWorkspace() async throws {
+		let viewModel = WorkspaceViewModel(
+			repository: GitRepositoryStub(operationState: .rebaseInProgress)
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Rebase"))
+		try await waitUntil { viewModel.operationState == .rebaseInProgress }
+
+		XCTAssertEqual(viewModel.currentBranchStatus, "Rebase in Progress")
+	}
+
 	func testOpeningBranchFocusesLatestCommitInHistory() async throws {
 		let commits = (0...10).map { index in
 			GitCommit(

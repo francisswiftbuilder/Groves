@@ -18,7 +18,7 @@ struct RemoteActionBar: View {
 			.disabled(viewModel.selectedRemote == nil || viewModel.isLoading)
 
 			Button("Push", systemImage: "arrow.up") {
-				viewModel.didRequestPush()
+				viewModel.didRequestPush(remoteName: viewModel.selectedRemote?.name)
 			}
 			.disabled(viewModel.selectedRemote == nil || viewModel.isLoading)
 		}

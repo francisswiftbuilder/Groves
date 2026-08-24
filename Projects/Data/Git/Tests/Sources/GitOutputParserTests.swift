@@ -102,6 +102,18 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(branches[1].name, "feature/sidebar")
 	}
 
+	func testParseBranchesIncludesUpstreamTrackingCounts() {
+		let output = "main\tabc1234\t*\torigin/main\tahead 2, behind 3\n"
+
+		let branches = GitOutputParser.parseBranches(output)
+
+		XCTAssertEqual(branches.count, 1)
+		XCTAssertEqual(branches.first?.upstream, "origin/main")
+		XCTAssertEqual(branches.first?.aheadCount, 2)
+		XCTAssertEqual(branches.first?.behindCount, 3)
+		XCTAssertEqual(branches.first?.isCurrent, true)
+	}
+
 	func testParseStashesPreservesReferenceAndMessage() {
 		let output =
 			"stash@{0}\u{1f}1234567890abcdef\u{1f}On main: Sidebar work\u{1f}2026-08-20 15:00:00 +0900\u{1e}"
@@ -175,7 +187,7 @@ final class GitOutputParserTests: XCTestCase {
 		}
 	}
 
-	func testDiscardRestoresTrackedFileAndIndex() async throws {
+	func testDiscardRestoresUnstagedContentWithoutChangingIndex() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -191,8 +203,10 @@ final class GitOutputParserTests: XCTestCase {
 		try await repository.requestDiscard(change: change, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "original")
-		XCTAssertTrue(remainingChanges.isEmpty)
+		let remainingChange = try XCTUnwrap(remainingChanges.first)
+		XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "staged")
+		XCTAssertTrue(remainingChange.isStaged)
+		XCTAssertFalse(remainingChange.hasWorkingTreeChange)
 	}
 
 	func testDiscardDeletesUntrackedFile() async throws {
@@ -224,7 +238,11 @@ final class GitOutputParserTests: XCTestCase {
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let change = try XCTUnwrap(changes.first { $0.path == "untracked.txt" })
-		let diff = try await repository.requestDiff(for: change, at: repositoryURL)
+		let diff = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			at: repositoryURL
+		)
 
 		XCTAssertTrue(diff.contains("new file mode"))
 		XCTAssertTrue(diff.contains("--- /dev/null"))
@@ -244,10 +262,44 @@ final class GitOutputParserTests: XCTestCase {
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let change = try XCTUnwrap(changes.first { $0.path == "empty.txt" })
-		let diff = try await repository.requestDiff(for: change, at: repositoryURL)
+		let diff = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			at: repositoryURL
+		)
 
 		XCTAssertTrue(diff.contains("new file mode"))
 		XCTAssertTrue(diff.contains("index 0000000..e69de29"))
+	}
+
+	func testRequestDiffSeparatesStagedAndUnstagedContentForSameFile() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let fileURL = repositoryURL.appending(path: "tracked.txt")
+		try Data("staged\n".utf8).write(to: fileURL)
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try Data("unstaged\n".utf8).write(to: fileURL)
+
+		let repository = LocalGitRepository()
+		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		let change = try XCTUnwrap(changes.first)
+		let stagedDiff = try await repository.requestDiff(
+			for: change,
+			source: .staged,
+			at: repositoryURL
+		)
+		let unstagedDiff = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			at: repositoryURL
+		)
+
+		XCTAssertTrue(stagedDiff.contains("+staged"))
+		XCTAssertFalse(stagedDiff.contains("+unstaged"))
+		XCTAssertTrue(unstagedDiff.contains("-staged"))
+		XCTAssertTrue(unstagedDiff.contains("+unstaged"))
 	}
 
 	func testRequestCommitDiffReturnsCommittedFileChanges() async throws {
@@ -269,7 +321,7 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertTrue(diff.contains("+updated"))
 	}
 
-	func testRequestCommitDiffReturnsChangesIntroducedByMerge() async throws {
+	func testRequestCommitDiffDetectsMergeFromGitObject() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -293,8 +345,19 @@ final class GitOutputParserTests: XCTestCase {
 		let repository = LocalGitRepository()
 		let commits = try await repository.requestCommitHistory(at: repositoryURL)
 		let mergeCommit = try XCTUnwrap(commits.first { $0.parentHashes.count > 1 })
+		let commitWithoutParentMetadata = GitCommit(
+			hash: mergeCommit.hash,
+			shortHash: mergeCommit.shortHash,
+			parentHashes: [],
+			author: mergeCommit.author,
+			date: mergeCommit.date,
+			references: mergeCommit.references,
+			subject: mergeCommit.subject,
+			body: mergeCommit.body
+		)
+
 		let diff = try await repository.requestCommitDiff(
-			for: mergeCommit,
+			for: commitWithoutParentMetadata,
 			at: repositoryURL
 		)
 
@@ -337,7 +400,7 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertFalse(hashes.contains(internalBackupHash))
 	}
 
-	func testDiscardDeletesStagedAddedFile() async throws {
+	func testDiscardPreservesStagedAddedFile() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -352,11 +415,13 @@ final class GitOutputParserTests: XCTestCase {
 		try await repository.requestDiscard(change: change, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-		XCTAssertTrue(remainingChanges.isEmpty)
+		let remainingChange = try XCTUnwrap(remainingChanges.first)
+		XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+		XCTAssertTrue(remainingChange.isStaged)
+		XCTAssertFalse(remainingChange.hasWorkingTreeChange)
 	}
 
-	func testDiscardRestoresStagedRename() async throws {
+	func testDiscardPreservesStagedRename() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -372,9 +437,11 @@ final class GitOutputParserTests: XCTestCase {
 		try await repository.requestDiscard(change: change, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertEqual(try String(contentsOf: originalFileURL, encoding: .utf8), "original")
-		XCTAssertFalse(FileManager.default.fileExists(atPath: renamedFileURL.path))
-		XCTAssertTrue(remainingChanges.isEmpty)
+		let remainingChange = try XCTUnwrap(remainingChanges.first)
+		XCTAssertFalse(FileManager.default.fileExists(atPath: originalFileURL.path))
+		XCTAssertTrue(FileManager.default.fileExists(atPath: renamedFileURL.path))
+		XCTAssertTrue(remainingChange.isStaged)
+		XCTAssertFalse(remainingChange.hasWorkingTreeChange)
 	}
 
 	func testApplyDiffLineStagesOnlySelectedReplacement() async throws {
@@ -553,6 +620,183 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Trees.git")
 		XCTAssertEqual(remotes.first?.pushURL, "https://example.com/Trees.git")
 		XCTAssertEqual(remotes.first?.branches.map(\.fullName), ["origin/main"])
+	}
+
+	func testCreateAndDeleteLocalBranch() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let originalBranch = try requestGitOutput(
+			["branch", "--show-current"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		let originalHead = try requestGitOutput(
+			["rev-parse", "HEAD"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		let repository = LocalGitRepository()
+
+		try await repository.requestCreateBranch(named: "feature/local", at: repositoryURL)
+		let createdBranch = try requestGitOutput(
+			["branch", "--show-current"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		let createdHead = try requestGitOutput(
+			["rev-parse", "HEAD"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		XCTAssertEqual(createdBranch, "feature/local")
+		XCTAssertEqual(createdHead, originalHead)
+
+		try await repository.requestSwitchBranch(named: originalBranch, at: repositoryURL)
+		try await repository.requestDeleteBranch(named: "feature/local", at: repositoryURL)
+		let branches = try await repository.requestBranches(at: repositoryURL)
+		XCTAssertFalse(branches.contains(where: { $0.name == "feature/local" }))
+	}
+
+	func testCreateTrackingBranchFromRemoteBranch() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		try requestRunGit(
+			["remote", "add", "origin", "https://example.com/Trees.git"],
+			at: repositoryURL
+		)
+		let head = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try requestRunGit(
+			["update-ref", "refs/remotes/origin/feature/remote", head],
+			at: repositoryURL
+		)
+		let repository = LocalGitRepository()
+
+		try await repository.requestCreateTrackingBranch(
+			named: "feature/remote",
+			tracking: "origin/feature/remote",
+			at: repositoryURL
+		)
+
+		let branches = try await repository.requestBranches(at: repositoryURL)
+		let branch = try XCTUnwrap(branches.first(where: { $0.name == "feature/remote" }))
+		XCTAssertTrue(branch.isCurrent)
+		XCTAssertEqual(branch.upstream, "origin/feature/remote")
+	}
+
+	func testSetUpstreamPushAndFetchReportAheadAndBehindCounts() async throws {
+		let repositoryURL = try makeRepository()
+		let remoteURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesRemoteTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+		let peerURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesPeerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+			try? FileManager.default.removeItem(at: remoteURL)
+			try? FileManager.default.removeItem(at: peerURL)
+		}
+		try requestRunGit(["init", "--quiet", "--bare", remoteURL.path], at: repositoryURL)
+		try requestRunGit(["remote", "add", "origin", remoteURL.path], at: repositoryURL)
+		let branchName = try requestGitOutput(["branch", "--show-current"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let repository = LocalGitRepository()
+
+		try await repository.requestPush(
+			.setUpstream(remoteName: "origin", branchName: branchName),
+			at: repositoryURL
+		)
+		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
+		try requestRunGit(["config", "user.name", "Trees Peer"], at: peerURL)
+		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
+		try Data("remote".utf8).write(to: peerURL.appending(path: "remote.txt"))
+		try requestRunGit(["add", "remote.txt"], at: peerURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Remote commit"], at: peerURL)
+		try requestRunGit(["push", "--quiet"], at: peerURL)
+		try Data("local".utf8).write(to: repositoryURL.appending(path: "local.txt"))
+		try requestRunGit(["add", "local.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Local commit"], at: repositoryURL)
+
+		try await repository.requestFetch(remote: "origin", at: repositoryURL)
+		let branches = try await repository.requestBranches(at: repositoryURL)
+		let currentBranch = try XCTUnwrap(branches.first(where: \.isCurrent))
+
+		XCTAssertEqual(currentBranch.upstream, "origin/\(branchName)")
+		XCTAssertEqual(currentBranch.aheadCount, 1)
+		XCTAssertEqual(currentBranch.behindCount, 1)
+	}
+
+	func testFetchAllUpdatesRemoteTrackingReferences() async throws {
+		let repositoryURL = try makeRepository()
+		let remoteURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesFetchAllTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+		let peerURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesFetchAllPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+			try? FileManager.default.removeItem(at: remoteURL)
+			try? FileManager.default.removeItem(at: peerURL)
+		}
+		try requestRunGit(["init", "--quiet", "--bare", remoteURL.path], at: repositoryURL)
+		try requestRunGit(["remote", "add", "origin", remoteURL.path], at: repositoryURL)
+		let branchName = try requestGitOutput(["branch", "--show-current"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let repository = LocalGitRepository()
+		try await repository.requestPush(
+			.setUpstream(remoteName: "origin", branchName: branchName),
+			at: repositoryURL
+		)
+		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
+		try requestRunGit(["config", "user.name", "Trees Peer"], at: peerURL)
+		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
+		try Data("remote".utf8).write(to: peerURL.appending(path: "remote.txt"))
+		try requestRunGit(["add", "remote.txt"], at: peerURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Remote commit"], at: peerURL)
+		try requestRunGit(["push", "--quiet"], at: peerURL)
+		let expectedHash = try requestGitOutput(["rev-parse", "HEAD"], at: peerURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+
+		try await repository.requestFetchAll(at: repositoryURL)
+		let fetchedHash = try requestGitOutput(
+			["rev-parse", "refs/remotes/origin/\(branchName)"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+
+		XCTAssertEqual(fetchedHash, expectedHash)
+	}
+
+	func testRequestOperationStateReportsNormalAndDetachedHead() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let repository = LocalGitRepository()
+
+		let normalState = try await repository.requestOperationState(at: repositoryURL)
+		XCTAssertEqual(normalState, .normal)
+		try requestRunGit(["switch", "--detach"], at: repositoryURL)
+		let detachedState = try await repository.requestOperationState(at: repositoryURL)
+		XCTAssertEqual(detachedState, .detachedHead)
+	}
+
+	func testRequestOperationStatePrioritizesConflictedState() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let baseBranch = try requestGitOutput(["branch", "--show-current"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try requestRunGit(["switch", "-c", "conflict"], at: repositoryURL)
+		try Data("branch".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Branch change"], at: repositoryURL)
+		try requestRunGit(["switch", baseBranch], at: repositoryURL)
+		try Data("base".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Base change"], at: repositoryURL)
+
+		XCTAssertThrowsError(try requestRunGit(["merge", "conflict"], at: repositoryURL))
+		let operationState = try await LocalGitRepository().requestOperationState(at: repositoryURL)
+		XCTAssertEqual(operationState, .conflicted)
 	}
 
 	func testCreateAndDropStashIncludesUntrackedFiles() async throws {

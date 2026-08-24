@@ -21,7 +21,7 @@ struct ChangesView: View {
 				fileName: selectedFileName,
 				filePath: selectedFilePath,
 				fileState: selectedFileState,
-				isStaged: viewModel.selectedChange?.isStaged == true,
+				isStaged: viewModel.selectedDiffSource == .staged,
 				selectedCount: viewModel.selectedChangeIDs.count,
 				diff: viewModel.diff,
 				isLoading: viewModel.isLoadingDiff
@@ -29,7 +29,7 @@ struct ChangesView: View {
 			.frame(maxWidth: .infinity)
 		}
 		.navigationTitle(viewModel.repositoryName)
-		.navigationSubtitle(viewModel.currentBranchName)
+		.navigationSubtitle(viewModel.currentBranchStatus)
 		.safeAreaInset(edge: .bottom) {
 			CommitBar(viewModel: viewModel)
 		}
@@ -176,7 +176,7 @@ struct ChangesView: View {
 
 					if !filteredStagedChanges.isEmpty {
 						Section {
-							workingTreeRows(filteredStagedChanges)
+							workingTreeRows(filteredStagedChanges, source: .staged)
 						} header: {
 							ChangeListSectionHeader(
 								title: "Staged",
@@ -187,7 +187,7 @@ struct ChangesView: View {
 
 					if !filteredUnstagedChanges.isEmpty {
 						Section {
-							workingTreeRows(filteredUnstagedChanges)
+							workingTreeRows(filteredUnstagedChanges, source: .unstaged)
 						} header: {
 							ChangeListSectionHeader(
 								title: "Unstaged",
@@ -210,11 +210,15 @@ struct ChangesView: View {
 		}
 	}
 
-	private func workingTreeRows(_ changes: [WorkingTreeChange]) -> some View {
+	private func workingTreeRows(
+		_ changes: [WorkingTreeChange],
+		source: GitDiffSource
+	) -> some View {
 		ForEach(changes) { change in
 			ChangeRow(
 				change: change,
-				isStaged: change.isStaged,
+				state: source == .staged ? change.indexState : change.workingTreeState,
+				isStaged: source == .staged,
 				onSetStaged: { isStaged in
 					if isStaged {
 						viewModel.didRequestStage([change])
@@ -223,10 +227,10 @@ struct ChangesView: View {
 					}
 				}
 			)
-			.tag(WorkspaceChangeSelection.workingTree(change.id))
+			.tag(changeSelection(change, source: source))
 			.listRowSeparator(.hidden)
 			.contextMenu {
-				changeContextMenu(for: change)
+				changeContextMenu(for: change, source: source)
 			}
 		}
 	}
@@ -240,7 +244,7 @@ struct ChangesView: View {
 	}
 
 	private var filteredUnstagedChanges: [WorkingTreeChange] {
-		filteredWorkingTreeChanges.filter { !$0.isStaged }
+		filteredWorkingTreeChanges.filter(\.hasWorkingTreeChange)
 	}
 
 	private var filteredWorkingTreeChanges: [WorkingTreeChange] {
@@ -260,19 +264,26 @@ struct ChangesView: View {
 	}
 
 	private var selectedFileState: GitFileState? {
-		viewModel.selectedChange?.displayState ?? viewModel.selectedAmendChange?.state
+		viewModel.selectedFileState
 	}
 
 	private var selectedFileActionTitle: String? {
-		guard let change = viewModel.selectedChange else { return nil }
-		return change.hasWorkingTreeChange ? "Stage" : change.isStaged ? "Unstage" : nil
+		guard viewModel.selectedChange != nil else { return nil }
+		switch viewModel.selectedDiffSource {
+		case .staged:
+			return "Unstage"
+		case .unstaged:
+			return "Stage"
+		case .none:
+			return nil
+		}
 	}
 
 	private func applySelectedFileAction() {
 		guard let change = viewModel.selectedChange else { return }
-		if change.hasWorkingTreeChange {
+		if viewModel.selectedDiffSource == .unstaged {
 			viewModel.didRequestStage([change])
-		} else if change.isStaged {
+		} else if viewModel.selectedDiffSource == .staged {
 			viewModel.didRequestUnstage([change])
 		}
 	}
@@ -292,35 +303,38 @@ struct ChangesView: View {
 	}
 
 	@ViewBuilder
-	private func changeContextMenu(for change: WorkingTreeChange) -> some View {
-		let changes = contextChanges(for: change)
-		let stageableChanges = changes.filter(\.hasWorkingTreeChange)
-		let stagedChanges = changes.filter(\.isStaged)
+	private func changeContextMenu(
+		for change: WorkingTreeChange,
+		source: GitDiffSource
+	) -> some View {
+		let changes = contextChanges(for: change, source: source)
 
-		if !stageableChanges.isEmpty {
+		if source == .unstaged {
 			Button("Stage Changes", systemImage: "plus.circle") {
-				viewModel.didRequestStage(stageableChanges)
+				viewModel.didRequestStage(changes)
 			}
 			.disabled(viewModel.isLoading)
 		}
 
-		if !stagedChanges.isEmpty, !viewModel.isAmendingCommit {
+		if source == .staged, !viewModel.isAmendingCommit {
 			Button("Unstage Changes", systemImage: "minus.circle") {
-				viewModel.didRequestUnstage(stagedChanges)
+				viewModel.didRequestUnstage(changes)
 			}
 			.disabled(viewModel.isLoading)
 		}
 
-		Divider()
+		if source == .unstaged {
+			Divider()
 
-		Button(
-			"Discard Changes…",
-			systemImage: "trash",
-			role: .destructive
-		) {
-			pendingDiscardChanges = changes
+			Button(
+				"Discard Changes…",
+				systemImage: "trash",
+				role: .destructive
+			) {
+				pendingDiscardChanges = changes
+			}
+			.disabled(viewModel.isLoading)
 		}
-		.disabled(viewModel.isLoading)
 	}
 
 	@ViewBuilder
@@ -332,9 +346,22 @@ struct ChangesView: View {
 		.disabled(viewModel.isLoading)
 	}
 
-	private func contextChanges(for change: WorkingTreeChange) -> [WorkingTreeChange] {
-		guard viewModel.selectedChangeIDs.contains(.workingTree(change.id)) else { return [change] }
-		return viewModel.selectedChanges
+	private func contextChanges(
+		for change: WorkingTreeChange,
+		source: GitDiffSource
+	) -> [WorkingTreeChange] {
+		let selection = changeSelection(change, source: source)
+		guard viewModel.selectedChangeIDs.contains(selection) else { return [change] }
+		return source == .staged
+			? viewModel.selectedStagedChanges
+			: viewModel.selectedUnstagedChanges
+	}
+
+	private func changeSelection(
+		_ change: WorkingTreeChange,
+		source: GitDiffSource
+	) -> WorkspaceChangeSelection {
+		source == .staged ? .staged(change.id) : .unstaged(change.id)
 	}
 
 	private func contextAmendChanges(for change: GitAmendChange) -> [GitAmendChange] {

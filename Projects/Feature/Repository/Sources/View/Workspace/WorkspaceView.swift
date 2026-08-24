@@ -38,7 +38,7 @@ struct WorkspaceView: View {
 		)
 		.task(id: workingTreeMonitorID) {
 			guard scenePhase == .active else { return }
-			await viewModel.monitorWorkingTreeChanges()
+			await viewModel.monitorRepositoryChanges()
 		}
 	}
 

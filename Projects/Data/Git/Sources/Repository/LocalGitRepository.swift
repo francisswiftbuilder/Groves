@@ -139,25 +139,11 @@ public struct LocalGitRepository: GitRepository {
 
 	public func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String
 	{
-		if commit.parentHashes.count > 1, let firstParentHash = commit.parentHashes.first {
-			return try await runner.requestRun(
-				arguments: [
-					"diff",
-					"--no-color",
-					"--find-renames",
-					"--unified=3",
-					firstParentHash,
-					commit.hash,
-					"--",
-				],
-				at: repositoryURL
-			).standardOutput
-		}
-
 		return try await runner.requestRun(
 			arguments: [
 				"show",
 				"--format=",
+				"--diff-merges=first-parent",
 				"--no-color",
 				"--find-renames",
 				"--unified=3",
@@ -168,12 +154,67 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] {
-		let format = "%(refname:short)\t%(objectname:short)\t%(HEAD)\t%(upstream:short)"
+		let format =
+			"%(refname:short)\t%(objectname:short)\t%(HEAD)\t%(upstream:short)\t%(upstream:track,nobracket)"
 		let result = try await runner.requestRun(
 			arguments: ["for-each-ref", "--sort=-committerdate", "--format=\(format)", "refs/heads"],
 			at: repositoryURL
 		)
 		return GitOutputParser.parseBranches(result.standardOutput)
+	}
+
+	public func requestOperationState(at repositoryURL: URL) async throws
+		-> RepositoryOperationState
+	{
+		async let statusResult = runner.requestRun(
+			arguments: ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z"],
+			at: repositoryURL
+		)
+		async let markerResult = runner.requestRun(
+			arguments: [
+				"rev-parse",
+				"--git-path",
+				"MERGE_HEAD",
+				"--git-path",
+				"rebase-merge",
+				"--git-path",
+				"rebase-apply",
+				"--git-path",
+				"CHERRY_PICK_HEAD",
+				"--git-path",
+				"REVERT_HEAD",
+			],
+			at: repositoryURL
+		)
+
+		let results = try await (statusResult, markerResult)
+		let statusRecords = results.0.standardOutput.split(separator: "\0").map(String.init)
+		if statusRecords.contains(where: { $0.hasPrefix("u ") }) {
+			return .conflicted
+		}
+
+		let markerPaths = results.1.standardOutput.split(whereSeparator: \.isNewline).map(String.init)
+		guard markerPaths.count == 5 else { throw GitRepositoryError.invalidOutput }
+		let markerExists = markerPaths.map { markerPath in
+			FileManager.default.fileExists(atPath: resolvedGitPath(markerPath, at: repositoryURL).path)
+		}
+
+		if markerExists[0] {
+			return .mergeInProgress
+		}
+		if markerExists[1] || markerExists[2] {
+			return .rebaseInProgress
+		}
+		if markerExists[3] {
+			return .cherryPickInProgress
+		}
+		if markerExists[4] {
+			return .revertInProgress
+		}
+		if statusRecords.contains("# branch.head (detached)") {
+			return .detachedHead
+		}
+		return .normal
 	}
 
 	public func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] {
@@ -290,10 +331,14 @@ public struct LocalGitRepository: GitRepository {
 		}
 	}
 
-	public func requestDiff(for change: WorkingTreeChange, at repositoryURL: URL) async throws
+	public func requestDiff(
+		for change: WorkingTreeChange,
+		source: GitDiffSource,
+		at repositoryURL: URL
+	) async throws
 		-> String
 	{
-		if change.workingTreeState == .untracked {
+		if source == .unstaged, change.workingTreeState == .untracked {
 			return try await runner.requestRun(
 				arguments: ["diff", "--no-index", "--no-color", "--", "/dev/null", change.path],
 				at: repositoryURL,
@@ -301,7 +346,7 @@ public struct LocalGitRepository: GitRepository {
 			).standardOutput
 		}
 
-		if change.isStaged && !change.hasWorkingTreeChange {
+		if source == .staged {
 			return try await runner.requestRun(
 				arguments: ["diff", "--cached", "--no-color", "--", change.path],
 				at: repositoryURL
@@ -373,13 +418,6 @@ public struct LocalGitRepository: GitRepository {
 	public func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws {
 		let affectedPaths = [change.path, change.previousPath].compactMap { $0 }
 
-		if change.isStaged {
-			_ = try await runner.requestRun(
-				arguments: ["restore", "--staged", "--"] + affectedPaths,
-				at: repositoryURL
-			)
-		}
-
 		let trackedPathsResult = try await runner.requestRun(
 			arguments: ["ls-files", "-z", "--"] + affectedPaths,
 			at: repositoryURL
@@ -445,6 +483,17 @@ public struct LocalGitRepository: GitRepository {
 		_ = try await runner.requestRun(arguments: ["switch", "-c", name], at: repositoryURL)
 	}
 
+	public func requestCreateTrackingBranch(
+		named name: String,
+		tracking remoteBranch: String,
+		at repositoryURL: URL
+	) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["switch", "--track", "-c", name, remoteBranch],
+			at: repositoryURL
+		)
+	}
+
 	public func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws {
 		_ = try await runner.requestRun(arguments: ["branch", "-d", name], at: repositoryURL)
 	}
@@ -491,12 +540,34 @@ public struct LocalGitRepository: GitRepository {
 		)
 	}
 
+	public func requestFetch(remote name: String, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(arguments: ["fetch", name], at: repositoryURL)
+	}
+
+	public func requestFetchAll(at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(arguments: ["fetch", "--all"], at: repositoryURL)
+	}
+
 	public func requestPull(at repositoryURL: URL) async throws {
 		_ = try await runner.requestRun(arguments: ["pull", "--ff-only"], at: repositoryURL)
 	}
 
-	public func requestPush(at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(arguments: ["push"], at: repositoryURL)
+	public func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+		let arguments: [String]
+		switch target {
+		case .upstream:
+			arguments = ["push"]
+		case .setUpstream(let remoteName, let branchName):
+			arguments = ["push", "--set-upstream", remoteName, branchName]
+		}
+		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+	}
+
+	private func resolvedGitPath(_ path: String, at repositoryURL: URL) -> URL {
+		if path.hasPrefix("/") {
+			return URL(fileURLWithPath: path)
+		}
+		return repositoryURL.appending(path: path)
 	}
 
 	private func requestAmendBase(at repositoryURL: URL) async throws -> String? {

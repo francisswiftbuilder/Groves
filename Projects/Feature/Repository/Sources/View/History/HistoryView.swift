@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@ObservedObject var viewModel: WorkspaceViewModel
+	@State private var selectedCommitID: String?
 	@State private var selectedFileID: CommitDiffFile.ID?
 
 	var body: some View {
@@ -40,17 +41,22 @@ struct HistoryView: View {
 			}
 		}
 		.navigationTitle(viewModel.repositoryName)
-		.navigationSubtitle(viewModel.currentBranchName)
+		.navigationSubtitle(viewModel.currentBranchStatus)
 		.onAppear {
-			viewModel.didChangeSelectedCommit()
+			selectedCommitID = viewModel.selectedCommitID
 			selectFirstFileIfNeeded()
 		}
-		.onChange(of: viewModel.selectedCommitID) { _, _ in
+		.onChange(of: viewModel.selectedCommitID) { _, newValue in
 			selectedFileID = nil
-			viewModel.didChangeSelectedCommit()
+			if selectedCommitID != newValue {
+				selectedCommitID = newValue
+			}
 		}
 		.onChange(of: viewModel.selectedCommitFiles.map(\.id)) { _, _ in
 			selectFirstFileIfNeeded()
+		}
+		.task(id: selectedCommitID) {
+			await applyCommitSelection(selectedCommitID)
 		}
 	}
 
@@ -76,11 +82,11 @@ struct HistoryView: View {
 
 				Divider()
 
-				List(selection: $viewModel.selectedCommitID) {
+				List(selection: $selectedCommitID) {
 					ForEach(viewModel.commitGraphItems) { item in
 						CommitGraphRow(
 							item: item,
-							isSelected: item.id == viewModel.selectedCommitID
+							isSelected: item.id == selectedCommitID
 						)
 						.equatable()
 						.id(item.id)
@@ -114,6 +120,15 @@ struct HistoryView: View {
 		}
 		guard !commitFiles.contains(where: { $0.id == selectedFileID }) else { return }
 		selectedFileID = commitFiles.first?.id
+	}
+
+	private func applyCommitSelection(_ commitID: String?) async {
+		await Task.yield()
+		guard !Task.isCancelled, selectedCommitID == commitID else { return }
+		if viewModel.selectedCommitID != commitID {
+			viewModel.selectedCommitID = commitID
+		}
+		viewModel.didChangeSelectedCommit()
 	}
 
 	private func scrollToFocusedCommit(using proxy: ScrollViewProxy) async {

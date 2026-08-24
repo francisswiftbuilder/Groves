@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ChangeRow: View {
 	let change: WorkingTreeChange
+	let state: GitFileState
 	let isStaged: Bool
 	let onSetStaged: (Bool) -> Void
 
@@ -28,9 +29,9 @@ struct ChangeRow: View {
 
 			Spacer(minLength: 8)
 
-			Text(change.displayState.listSymbol)
+			Text(state.listSymbol)
 				.font(.caption.weight(.semibold).monospaced())
-				.foregroundStyle(change.displayState.listColor)
+				.foregroundStyle(state.listColor)
 				.frame(width: 16, alignment: .trailing)
 		}
 		.padding(.vertical, 4)

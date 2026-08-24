@@ -9,6 +9,8 @@ struct RepositoryTabsView: View {
 	@State private var isFolderImporterPresented = false
 	@State private var folderImportRequest: RepositoryFolderImportRequest?
 	@State private var sidebarSelection: RepositorySidebarSelection?
+	@State private var isPresentingNewBranch = false
+	@State private var newBranchName = ""
 
 	var body: some View {
 		Group {
@@ -38,7 +40,10 @@ struct RepositoryTabsView: View {
 		}
 		.toolbar {
 			if let repositoryTab {
-				RepositoryWorkspaceToolbar(viewModel: repositoryTab.workspace)
+				RepositoryWorkspaceToolbar(
+					viewModel: repositoryTab.workspace,
+					onCreateBranch: presentNewBranch
+				)
 			}
 		}
 		.toolbarRole(.editor)
@@ -66,6 +71,30 @@ struct RepositoryTabsView: View {
 				Text(viewModel.alertMessage ?? "")
 			}
 		)
+		.alert("New Branch", isPresented: $isPresentingNewBranch) {
+			if let repositoryTab {
+				TextField("Branch name", text: $newBranchName)
+				Button("Cancel", role: .cancel) {
+					newBranchName = ""
+				}
+				Button("Create") {
+					repositoryTab.workspace.newBranchName = newBranchName
+					repositoryTab.workspace.didRequestCreateBranch()
+				}
+				.disabled(
+					newBranchName
+						.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+				)
+			}
+		} message: {
+			Text("Create and switch to a new branch from the current branch.")
+		}
+	}
+
+	private func presentNewBranch() {
+		guard repositoryTab != nil else { return }
+		newBranchName = ""
+		isPresentingNewBranch = true
 	}
 
 	private func presentRepositoryImporter() {

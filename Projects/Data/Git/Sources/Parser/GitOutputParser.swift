@@ -115,14 +115,37 @@ enum GitOutputParser {
 	static func parseBranches(_ output: String) -> [GitBranch] {
 		output.split(whereSeparator: \.isNewline).compactMap { line in
 			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-			guard fields.count >= 4 else { return nil }
+			guard fields.count >= 5 else { return nil }
+			let trackingCounts = parseTrackingCounts(fields[4])
 			return GitBranch(
 				name: fields[0],
 				shortHash: fields[1],
 				upstream: fields[3].isEmpty ? nil : fields[3],
+				aheadCount: trackingCounts.ahead,
+				behindCount: trackingCounts.behind,
 				isCurrent: fields[2] == "*"
 			)
 		}
+	}
+
+	private static func parseTrackingCounts(_ value: String) -> (ahead: Int, behind: Int) {
+		var ahead = 0
+		var behind = 0
+
+		for component in value.split(separator: ",") {
+			let fields = component.split(whereSeparator: \.isWhitespace)
+			guard fields.count == 2, let count = Int(fields[1]) else { continue }
+			switch fields[0] {
+			case "ahead":
+				ahead = count
+			case "behind":
+				behind = count
+			default:
+				continue
+			}
+		}
+
+		return (ahead, behind)
 	}
 
 	static func parseRemotes(_ output: String) -> [GitRemote] {
