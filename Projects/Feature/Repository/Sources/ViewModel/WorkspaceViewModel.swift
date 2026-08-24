@@ -21,6 +21,11 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var isAmendingCommit = false
 	@Published var newBranchName = ""
 	@Published var isPresentingNewBranch = false
+	@Published var newTagName = ""
+	@Published var newTagMessage = ""
+	@Published private(set) var pendingTagCommit: GitCommit?
+	@Published private(set) var pendingTagDeletion: GitTag?
+	@Published private(set) var isPresentingForcePushConfirmation = false
 	@Published var newStashMessage = ""
 	@Published private(set) var repositoryURL: URL?
 	@Published private(set) var changes: [WorkingTreeChange] = []
@@ -57,6 +62,7 @@ final class WorkspaceViewModel: ObservableObject {
 	private var displayedCommitDiffID: String?
 	private var requestedCommitDiffID: String?
 	private var contentLoadID: UUID?
+	private var pendingForcePushRemoteName: String?
 
 	init(
 		contentUseCase: any RepositoryContentUseCase,
@@ -118,6 +124,18 @@ final class WorkspaceViewModel: ObservableObject {
 			remotes: remotes,
 			operationState: operationState
 		)
+	}
+
+	var forcePushConfirmationTitle: String {
+		"Force Push \(currentBranchName)?"
+	}
+
+	var forcePushConfirmationMessage: String {
+		let destination = pendingForcePushRemoteName ?? currentBranch?.upstream
+		guard let destination else {
+			return "The remote branch will be replaced if its lease is unchanged."
+		}
+		return "\(destination) will be replaced if its lease is unchanged."
 	}
 
 	var selectedStagedChanges: [WorkingTreeChange] {
@@ -247,6 +265,11 @@ final class WorkspaceViewModel: ObservableObject {
 		return "Discard Changes to “\(fileName)”?"
 	}
 
+	var deleteTagConfirmationTitle: String {
+		guard let pendingTagDeletion else { return "Delete Tag?" }
+		return "Delete “\(pendingTagDeletion.name)”?"
+	}
+
 	var selectedStash: GitStash? {
 		stashes.first { $0.id == selectedStashID }
 	}
@@ -335,6 +358,37 @@ final class WorkspaceViewModel: ObservableObject {
 	func didDismissNewBranch() {
 		newBranchName = ""
 		isPresentingNewBranch = false
+	}
+
+	func didPresentNewTag(for commit: GitCommit) {
+		newTagName = ""
+		newTagMessage = ""
+		pendingTagCommit = commit
+	}
+
+	func didDismissNewTag() {
+		newTagName = ""
+		newTagMessage = ""
+		pendingTagCommit = nil
+	}
+
+	func didPresentTagDeletion(_ tag: GitTag) {
+		pendingTagDeletion = tag
+	}
+
+	func didDismissTagDeletion() {
+		pendingTagDeletion = nil
+	}
+
+	func didConfirmTagDeletion(_ tag: GitTag) {
+		guard let repositoryURL else { return }
+		pendingTagDeletion = nil
+		requestMutation {
+			try await self.referencesUseCase.deleteTag(
+				named: tag.name,
+				at: repositoryURL
+			)
+		}
 	}
 
 	func didPrepareSidebar(repositoryID: RepositoryTab.ID) {
@@ -719,6 +773,25 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	func didRequestCreateTag() {
+		guard let repositoryURL, let commit = pendingTagCommit else { return }
+		let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
+		let message = newTagMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !name.isEmpty else { return }
+		requestMutation {
+			let snapshot = try await self.referencesUseCase.createTag(
+				named: name,
+				message: message,
+				commitHash: commit.hash,
+				at: repositoryURL
+			)
+			self.newTagName = ""
+			self.newTagMessage = ""
+			self.pendingTagCommit = nil
+			return snapshot
+		}
+	}
+
 	func didRequestCreateLocalBranch(from remoteBranch: GitRemoteBranch) {
 		guard
 			let repositoryURL,
@@ -871,6 +944,43 @@ final class WorkspaceViewModel: ObservableObject {
 				remotes: self.remotes,
 				operationState: self.operationState,
 				selectedRemoteName: remoteName,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didPresentForcePushConfirmation(remoteName: String? = nil) {
+		guard pushAction != .unavailable else { return }
+		pendingForcePushRemoteName = remoteName
+		isPresentingForcePushConfirmation = true
+	}
+
+	func didDismissForcePushConfirmation() {
+		pendingForcePushRemoteName = nil
+		isPresentingForcePushConfirmation = false
+	}
+
+	func didConfirmForcePush() {
+		guard let repositoryURL else { return }
+		guard pushAction != .unavailable else { return }
+		let remoteName = pendingForcePushRemoteName
+		didDismissForcePushConfirmation()
+		requestMutation {
+			try await self.referencesUseCase.forcePush(
+				currentBranch: self.currentBranch,
+				remotes: self.remotes,
+				operationState: self.operationState,
+				selectedRemoteName: remoteName,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didRequestPushTags(remoteName: String) {
+		guard let repositoryURL, remotes.contains(where: { $0.name == remoteName }) else { return }
+		requestMutation {
+			try await self.referencesUseCase.pushTags(
+				remote: remoteName,
 				at: repositoryURL
 			)
 		}

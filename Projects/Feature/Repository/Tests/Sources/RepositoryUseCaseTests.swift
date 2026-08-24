@@ -79,6 +79,67 @@ final class RepositoryUseCaseTests: XCTestCase {
 		)
 	}
 
+	func testForcePushUsesSelectedRemoteAndReturnsSnapshot() async throws {
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let recorder = GitRepositoryRecorder()
+		let branch = GitBranch(
+			name: "feature/force-push",
+			shortHash: "1234567",
+			upstream: nil,
+			isCurrent: true
+		)
+		let remotes = [
+			GitRemote(name: "origin", fetchURL: nil, pushURL: nil),
+			GitRemote(name: "upstream", fetchURL: nil, pushURL: nil),
+		]
+		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
+			repository: GitRepositoryStub(
+				recorder: recorder,
+				branches: [branch],
+				remotes: remotes
+			)
+		)
+
+		let snapshot = try await useCase.forcePush(
+			currentBranch: branch,
+			remotes: remotes,
+			operationState: .normal,
+			selectedRemoteName: "origin",
+			at: repositoryURL
+		)
+		let events = await recorder.recordedEvents()
+
+		XCTAssertEqual(snapshot.branches, [branch])
+		XCTAssertEqual(
+			events,
+			[.forcePush(.setUpstream(remoteName: "origin", branchName: branch.name))]
+		)
+	}
+
+	func testPushTagsUsesExplicitRemoteAndReturnsSnapshot() async throws {
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let recorder = GitRepositoryRecorder()
+		let tag = GitTag(
+			name: "release/1.0.0",
+			shortHash: "1234567",
+			targetHash: "1234567890abcdef",
+			date: nil,
+			subject: "Release 1.0.0"
+		)
+		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
+			repository: GitRepositoryStub(recorder: recorder, tags: [tag])
+		)
+
+		let snapshot = try await useCase.pushTags(
+			remote: "origin",
+			at: repositoryURL
+		)
+		let events = await recorder.recordedEvents()
+
+		XCTAssertEqual(snapshot.tags, [tag])
+		XCTAssertEqual(events, [.pushTags(remoteName: "origin")])
+	}
+
 	func testMergeBranchRunsMutationBeforeReturningFreshSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -109,5 +170,66 @@ final class RepositoryUseCaseTests: XCTestCase {
 
 		XCTAssertEqual(snapshot.branches, [currentBranch, mergeBranch])
 		XCTAssertEqual(events, [.merge(branchName: mergeBranch.name)])
+	}
+
+	func testCreateTagUsesExplicitCommitBeforeReturningFreshSnapshot() async throws {
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let recorder = GitRepositoryRecorder()
+		let commit = GitCommit(
+			hash: "1234567890abcdef",
+			shortHash: "1234567",
+			parentHashes: [],
+			author: "Trees Tests",
+			date: Date(timeIntervalSince1970: 0),
+			references: [],
+			subject: "Tagged commit",
+			body: ""
+		)
+		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
+			repository: GitRepositoryStub(recorder: recorder, commits: [commit])
+		)
+
+		let snapshot = try await useCase.createTag(
+			named: "release/1.0.0",
+			message: "Release 1.0.0",
+			commitHash: commit.hash,
+			at: repositoryURL
+		)
+		let events = await recorder.recordedEvents()
+
+		XCTAssertEqual(snapshot.commits, [commit])
+		XCTAssertEqual(
+			events,
+			[
+				.createTag(
+					name: "release/1.0.0",
+					message: "Release 1.0.0",
+					commitHash: commit.hash
+				)
+			]
+		)
+	}
+
+	func testDeleteTagReturnsFreshSnapshot() async throws {
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let recorder = GitRepositoryRecorder()
+		let branch = GitBranch(
+			name: "main",
+			shortHash: "1234567",
+			upstream: nil,
+			isCurrent: true
+		)
+		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
+			repository: GitRepositoryStub(recorder: recorder, branches: [branch])
+		)
+
+		let snapshot = try await useCase.deleteTag(
+			named: "release/1.0.0",
+			at: repositoryURL
+		)
+		let events = await recorder.recordedEvents()
+
+		XCTAssertEqual(snapshot.branches, [branch])
+		XCTAssertEqual(events, [.deleteTag(name: "release/1.0.0")])
 	}
 }

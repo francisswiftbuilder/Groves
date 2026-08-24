@@ -9,18 +9,16 @@ struct RepositoryWelcomeView: View {
 
 	var body: some View {
 		ScrollView {
-			VStack(spacing: 24) {
-				VStack(spacing: 12) {
+			VStack(spacing: 20) {
+				VStack(spacing: 10) {
 					Image(systemName: "point.3.connected.trianglepath.dotted")
-						.font(.system(size: 25, weight: .medium))
+						.font(.title2.weight(.medium))
 						.symbolRenderingMode(.hierarchical)
-						.foregroundStyle(.primary)
-						.frame(width: 52, height: 52)
-						.background(.quaternary, in: .circle)
+						.foregroundStyle(.secondary)
 						.accessibilityHidden(true)
 
 					Text("Open a Repository")
-						.font(.title.weight(.semibold))
+						.font(.title2.weight(.semibold))
 
 					Text("Open a repository on this Mac or clone one from a remote URL.")
 						.font(.callout)
@@ -36,40 +34,38 @@ struct RepositoryWelcomeView: View {
 				}
 
 				ViewThatFits(in: .horizontal) {
-					HStack(alignment: .top, spacing: 14) {
+					HStack(alignment: .top, spacing: 12) {
 						openRepositoryCard
 						cloneRepositoryCard
 					}
 
-					VStack(spacing: 14) {
+					VStack(spacing: 12) {
 						openRepositoryCard
 						cloneRepositoryCard
 					}
 				}
 			}
-			.frame(maxWidth: 680)
-			.padding(.horizontal, 32)
-			.padding(.vertical, 40)
+			.frame(maxWidth: 640)
+			.padding(.horizontal, 28)
+			.padding(.vertical, 32)
 			.containerRelativeFrame(.vertical, alignment: .center)
 		}
 		.scrollBounceBehavior(.basedOnSize)
 	}
 
 	private var openRepositoryCard: some View {
-		VStack(alignment: .leading, spacing: 14) {
+		VStack(alignment: .leading, spacing: 12) {
 			optionHeader(
 				title: "Local Repository",
 				description: "Choose an existing Git repository from Finder.",
 				systemImage: "folder"
 			)
 
-			Spacer(minLength: 10)
-
 			Button("Choose Repository…", systemImage: "folder.badge.plus") {
 				onOpenRepository()
 			}
 			.buttonStyle(.borderedProminent)
-			.controlSize(.large)
+			.controlSize(.regular)
 			.keyboardShortcut("o", modifiers: .command)
 			.disabled(isWorking)
 		}
@@ -77,7 +73,7 @@ struct RepositoryWelcomeView: View {
 	}
 
 	private var cloneRepositoryCard: some View {
-		VStack(alignment: .leading, spacing: 14) {
+		VStack(alignment: .leading, spacing: 12) {
 			optionHeader(
 				title: "Clone Repository",
 				description: "Download a remote Git repository to this Mac.",
@@ -98,7 +94,7 @@ struct RepositoryWelcomeView: View {
 				cloneRepository()
 			}
 			.buttonStyle(.borderedProminent)
-			.controlSize(.large)
+			.controlSize(.regular)
 			.disabled(isCloneDisabled)
 		}
 		.welcomeCard()
@@ -109,12 +105,12 @@ struct RepositoryWelcomeView: View {
 		description: String,
 		systemImage: String
 	) -> some View {
-		HStack(alignment: .top, spacing: 12) {
+		HStack(alignment: .top, spacing: 10) {
 			Image(systemName: systemImage)
-				.font(.system(size: 16, weight: .medium))
+				.font(.body.weight(.medium))
 				.symbolRenderingMode(.hierarchical)
-				.frame(width: 32, height: 32)
-				.background(.quaternary, in: .rect(cornerRadius: 8))
+				.foregroundStyle(.secondary)
+				.frame(width: 22, height: 22)
 				.accessibilityHidden(true)
 
 			VStack(alignment: .leading, spacing: 4) {

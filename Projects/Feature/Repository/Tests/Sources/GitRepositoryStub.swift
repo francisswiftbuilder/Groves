@@ -106,8 +106,17 @@ struct GitRepositoryStub: GitRepository {
 	func requestMergeBranch(named name: String, at repositoryURL: URL) async throws {
 		await recorder?.record(.merge(branchName: name))
 	}
-	func requestCreateTag(named name: String, message: String, at repositoryURL: URL) async throws {}
-	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {}
+	func requestCreateTag(
+		named name: String,
+		message: String,
+		commitHash: String,
+		at repositoryURL: URL
+	) async throws {
+		await recorder?.record(.createTag(name: name, message: message, commitHash: commitHash))
+	}
+	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {
+		await recorder?.record(.deleteTag(name: name))
+	}
 	func requestCreateStash(message: String, at repositoryURL: URL) async throws {}
 	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
 	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
@@ -118,6 +127,12 @@ struct GitRepositoryStub: GitRepository {
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		await recorder?.record(.push(target))
 	}
+	func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+		await recorder?.record(.forcePush(target))
+	}
+	func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
+		await recorder?.record(.pushTags(remoteName: name))
+	}
 }
 
 actor GitRepositoryRecorder {
@@ -126,7 +141,11 @@ actor GitRepositoryRecorder {
 		case clone(remoteURL: String, directoryURL: URL)
 		case stage(path: String)
 		case merge(branchName: String)
+		case createTag(name: String, message: String, commitHash: String)
+		case deleteTag(name: String)
 		case push(GitPushTarget)
+		case forcePush(GitPushTarget)
+		case pushTags(remoteName: String)
 	}
 
 	private var events: [Event] = []

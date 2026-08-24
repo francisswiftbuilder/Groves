@@ -116,11 +116,7 @@ struct RepositoryTabsView: View {
 	private var folderImporterPresentation: Binding<Bool> {
 		Binding(
 			get: { windowViewModel.isFolderImporterPresented },
-			set: { isPresented in
-				if !isPresented {
-					windowViewModel.didDismissFolderImporter()
-				}
-			}
+			set: { _ in }
 		)
 	}
 

@@ -517,14 +517,18 @@ public struct LocalGitRepository: GitRepository {
 	public func requestCreateTag(
 		named name: String,
 		message: String,
+		commitHash: String,
 		at repositoryURL: URL
 	) async throws {
-		let arguments = message.isEmpty ? ["tag", name] : ["tag", "-a", name, "-m", message]
+		let arguments =
+			message.isEmpty
+			? ["tag", name, commitHash]
+			: ["tag", "-a", name, "-m", message, commitHash]
 		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
 	}
 
 	public func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(arguments: ["tag", "-d", name], at: repositoryURL)
+		_ = try await runner.requestRun(arguments: ["tag", "-d", "--", name], at: repositoryURL)
 	}
 
 	public func requestCreateStash(message: String, at repositoryURL: URL) async throws {
@@ -569,6 +573,23 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(arguments: pushArguments(for: target), at: repositoryURL)
+	}
+
+	public func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+		var arguments = pushArguments(for: target)
+		arguments.insert("--force-with-lease", at: 1)
+		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+	}
+
+	public func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["push", name, "--tags"],
+			at: repositoryURL
+		)
+	}
+
+	private func pushArguments(for target: GitPushTarget) -> [String] {
 		let arguments: [String]
 		switch target {
 		case .upstream:
@@ -576,7 +597,7 @@ public struct LocalGitRepository: GitRepository {
 		case .setUpstream(let remoteName, let branchName):
 			arguments = ["push", "--set-upstream", remoteName, branchName]
 		}
-		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+		return arguments
 	}
 
 	private func resolvedGitPath(_ path: String, at repositoryURL: URL) -> URL {

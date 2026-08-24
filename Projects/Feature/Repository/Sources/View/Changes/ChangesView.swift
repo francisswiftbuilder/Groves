@@ -6,8 +6,8 @@ struct ChangesView: View {
 
 	var body: some View {
 		EqualWidthHSplitView(
-			proportions: [0.24, 0.53, 0.23],
-			minimumWidths: [180, 300, 210]
+			proportions: [0.27, 0.50, 0.23],
+			minimumWidths: [200, 300, 210]
 		) {
 			changesListPane
 				.frame(maxWidth: .infinity)
@@ -98,36 +98,34 @@ struct ChangesView: View {
 		HStack(alignment: .center) {
 			VStack(alignment: .leading, spacing: 2) {
 				Text("Changes")
-					.font(.title2.weight(.semibold))
+					.font(.headline)
 				Text(navigationSubtitle)
-					.font(.subheadline)
+					.font(.caption)
 					.foregroundStyle(.secondary)
 			}
 			Spacer(minLength: 8)
 		}
-		.padding(.horizontal, 16)
-		.frame(height: 64)
+		.padding(.horizontal, 12)
+		.frame(height: 52)
+		.background(.bar)
 	}
 
 	private var changesActionsHeader: some View {
 		HStack(alignment: .center, spacing: 10) {
-			Spacer(minLength: 16)
-			Button("Stage All") {
+			Text("Working Tree")
+				.font(.subheadline.weight(.semibold))
+
+			Spacer(minLength: 12)
+			Button("Stage All", systemImage: "plus.circle") {
 				viewModel.didRequestStage(stageAllChanges)
 			}
 			.buttonStyle(.bordered)
 			.controlSize(.small)
 			.disabled(stageAllChanges.isEmpty || viewModel.isLoading)
-
-			Button("Commit") {
-				viewModel.didRequestCommit()
-			}
-			.buttonStyle(.borderedProminent)
-			.controlSize(.small)
-			.disabled(!viewModel.canCommit)
 		}
-		.padding(.horizontal, 16)
-		.frame(height: 64)
+		.padding(.horizontal, 12)
+		.frame(height: 52)
+		.background(.bar)
 	}
 
 	private var changeList: some View {

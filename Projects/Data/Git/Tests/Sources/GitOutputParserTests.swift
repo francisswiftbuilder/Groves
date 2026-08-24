@@ -760,6 +760,67 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(currentBranch.behindCount, 1)
 	}
 
+	func testForcePushWithLeaseReplacesKnownRemoteHistory() async throws {
+		let repositoryURL = try makeRepository()
+		let remoteURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesForcePushTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+			try? FileManager.default.removeItem(at: remoteURL)
+		}
+		try requestRunGit(["init", "--quiet", "--bare", remoteURL.path], at: repositoryURL)
+		try requestRunGit(["remote", "add", "origin", remoteURL.path], at: repositoryURL)
+		let branchName = try requestGitOutput(["branch", "--show-current"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let repository = LocalGitRepository()
+		try await repository.requestPush(
+			.setUpstream(remoteName: "origin", branchName: branchName),
+			at: repositoryURL
+		)
+
+		try Data("remote history".utf8).write(to: repositoryURL.appending(path: "history.txt"))
+		try requestRunGit(["add", "history.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Remote history"], at: repositoryURL)
+		try await repository.requestPush(.upstream, at: repositoryURL)
+		try requestRunGit(["reset", "--hard", "HEAD^"], at: repositoryURL)
+		try Data("replacement".utf8).write(to: repositoryURL.appending(path: "replacement.txt"))
+		try requestRunGit(["add", "replacement.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Replacement history"], at: repositoryURL)
+
+		try await repository.requestForcePush(.upstream, at: repositoryURL)
+
+		let localHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let remoteHash = try requestGitOutput(
+			["--git-dir", remoteURL.path, "rev-parse", "refs/heads/\(branchName)"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		XCTAssertEqual(remoteHash, localHash)
+	}
+
+	func testPushTagsPublishesLocalTagsToRemote() async throws {
+		let repositoryURL = try makeRepository()
+		let remoteURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesPushTagsTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+			try? FileManager.default.removeItem(at: remoteURL)
+		}
+		try requestRunGit(["init", "--quiet", "--bare", remoteURL.path], at: repositoryURL)
+		try requestRunGit(["remote", "add", "origin", remoteURL.path], at: repositoryURL)
+		try requestRunGit(["tag", "release/1.0.0"], at: repositoryURL)
+
+		try await LocalGitRepository().requestPushTags(remote: "origin", at: repositoryURL)
+
+		let localHash = try requestGitOutput(["rev-parse", "release/1.0.0"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let remoteHash = try requestGitOutput(
+			["--git-dir", remoteURL.path, "rev-parse", "refs/tags/release/1.0.0"],
+			at: repositoryURL
+		).trimmingCharacters(in: .whitespacesAndNewlines)
+		XCTAssertEqual(remoteHash, localHash)
+	}
+
 	func testFetchAllUpdatesRemoteTrackingReferences() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -833,6 +894,46 @@ final class GitOutputParserTests: XCTestCase {
 		try await repository.requestMergeBranch(named: "conflict", at: repositoryURL)
 		let operationState = try await repository.requestOperationState(at: repositoryURL)
 		XCTAssertEqual(operationState, .conflicted)
+	}
+
+	func testCreateTagTargetsSpecifiedHistoricalCommit() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let historicalHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try Data("updated".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Update tracked file"], at: repositoryURL)
+		let headHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let repository = LocalGitRepository()
+
+		try await repository.requestCreateTag(
+			named: "historical-tag",
+			message: "",
+			commitHash: historicalHash,
+			at: repositoryURL
+		)
+		let tags = try await repository.requestTags(at: repositoryURL)
+
+		XCTAssertNotEqual(historicalHash, headHash)
+		XCTAssertEqual(tags.first(where: { $0.name == "historical-tag" })?.targetHash, historicalHash)
+	}
+
+	func testDeleteTagRemovesLocalTag() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		try requestRunGit(["tag", "release/1.0.0"], at: repositoryURL)
+		let repository = LocalGitRepository()
+
+		try await repository.requestDeleteTag(named: "release/1.0.0", at: repositoryURL)
+
+		let tags = try await repository.requestTags(at: repositoryURL)
+		XCTAssertFalse(tags.contains(where: { $0.name == "release/1.0.0" }))
 	}
 
 	func testCreateAndDropStashIncludesUntrackedFiles() async throws {

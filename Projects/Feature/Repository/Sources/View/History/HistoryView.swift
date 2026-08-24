@@ -14,8 +14,8 @@ struct HistoryView: View {
 				)
 			} else {
 				EqualWidthHSplitView(
-					proportions: [0.30, 0.46, 0.24],
-					minimumWidths: [220, 300, 210]
+					proportions: [0.36, 0.40, 0.24],
+					minimumWidths: [280, 300, 210]
 				) {
 					historyList
 						.frame(maxWidth: .infinity)
@@ -32,6 +32,7 @@ struct HistoryView: View {
 						commit: viewModel.selectedCommit,
 						files: commitFiles,
 						isLoadingFiles: viewModel.isLoadingCommitDiff,
+						remoteNames: remoteNames,
 						selectedFileID: selectedCommitFileBinding
 					)
 					.frame(maxWidth: .infinity)
@@ -45,22 +46,17 @@ struct HistoryView: View {
 	private var historyList: some View {
 		ScrollViewReader { proxy in
 			VStack(spacing: 0) {
-				HStack {
-					Menu {
-						Text("All branches are shown")
-					} label: {
-						Label("All Branches", systemImage: "chevron.down")
-							.labelStyle(.titleAndIcon)
-							.font(.subheadline.weight(.semibold))
-					}
-					.menuStyle(.borderlessButton)
-					Spacer()
-					Image(systemName: "slider.horizontal.3")
+				HStack(spacing: 8) {
+					Image(systemName: "point.3.connected.trianglepath.dotted")
 						.foregroundStyle(.secondary)
 						.accessibilityHidden(true)
+					Text("All Branches")
+						.font(.subheadline.weight(.semibold))
+					Spacer(minLength: 0)
 				}
-				.padding(.horizontal, 16)
-				.padding(.vertical, 12)
+				.padding(.horizontal, 12)
+				.frame(height: 44)
+				.background(.bar)
 
 				Divider()
 
@@ -68,7 +64,8 @@ struct HistoryView: View {
 					ForEach(viewModel.commitGraphItems) { item in
 						CommitGraphRow(
 							item: item,
-							isSelected: item.id == viewModel.selectedCommitID
+							isSelected: item.id == viewModel.selectedCommitID,
+							remoteNames: remoteNames
 						)
 						.equatable()
 						.id(item.id)
@@ -76,6 +73,11 @@ struct HistoryView: View {
 						.contentShape(.rect)
 						.listRowInsets(.init())
 						.listRowSeparator(.hidden)
+						.contextMenu {
+							Button("Create Tag…", systemImage: "tag") {
+								viewModel.didPresentNewTag(for: item.commit)
+							}
+						}
 					}
 				}
 				.listStyle(.plain)
@@ -88,6 +90,10 @@ struct HistoryView: View {
 
 	private var commitFiles: [CommitDiffFile] {
 		viewModel.selectedCommitFiles
+	}
+
+	private var remoteNames: Set<String> {
+		Set(viewModel.remotes.map(\.name))
 	}
 
 	private var selectedCommitBinding: Binding<String?> {

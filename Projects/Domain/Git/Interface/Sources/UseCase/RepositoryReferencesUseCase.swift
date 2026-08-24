@@ -19,8 +19,12 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		-> RepositorySnapshot
 	func mergeBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
-	func createTag(named name: String, message: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+	func createTag(
+		named name: String,
+		message: String,
+		commitHash: String,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot
 	func deleteTag(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	func fetch(remote name: String, at repositoryURL: URL) async throws -> RepositorySnapshot
@@ -33,4 +37,13 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		selectedRemoteName: String?,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot
+	func forcePush(
+		currentBranch: GitBranch?,
+		remotes: [GitRemote],
+		operationState: RepositoryOperationState,
+		selectedRemoteName: String?,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot
+	func pushTags(remote name: String, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
 }

@@ -5,6 +5,7 @@ struct CommitInspectorView: View {
 	let commit: GitCommit?
 	let files: [CommitDiffFile]
 	let isLoadingFiles: Bool
+	let remoteNames: Set<String>
 	@Binding var selectedFileID: CommitDiffFile.ID?
 
 	var body: some View {
@@ -29,8 +30,9 @@ struct CommitInspectorView: View {
 				.help("Share Commit Hash")
 			}
 		}
-		.padding(.horizontal, 16)
-		.padding(.vertical, 14)
+		.padding(.horizontal, 12)
+		.frame(height: 44)
+		.background(.bar)
 	}
 
 	@ViewBuilder
@@ -101,14 +103,21 @@ struct CommitInspectorView: View {
 	@ViewBuilder
 	private func commitReferences(_ commit: GitCommit) -> some View {
 		if !commit.references.isEmpty {
-			CommitInspectorSection("Branches") {
+			CommitInspectorSection("References") {
 				FlowLayout(spacing: 6) {
-					ForEach(commit.references, id: \.self) { reference in
-						CommitReferenceTag(reference: reference)
+					ForEach(references(for: commit)) { reference in
+						CommitReferenceTag(descriptor: reference)
 					}
 				}
 			}
 		}
+	}
+
+	private func references(for commit: GitCommit) -> [CommitGraphReferenceDescriptor] {
+		CommitGraphReferenceDescriptor.descriptors(
+			for: commit.references,
+			remoteNames: remoteNames
+		)
 	}
 
 	private var changedFiles: some View {

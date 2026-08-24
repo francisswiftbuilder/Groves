@@ -17,9 +17,10 @@ struct RemoteActionBar: View {
 			}
 			.disabled(viewModel.selectedRemote == nil || viewModel.isLoading)
 
-			Button("Push", systemImage: "arrow.up") {
-				viewModel.didRequestPush(remoteName: viewModel.selectedRemote?.name)
-			}
+			RepositoryPushMenu(
+				viewModel: viewModel,
+				preferredRemoteName: viewModel.selectedRemote?.name
+			)
 			.disabled(viewModel.selectedRemote == nil || viewModel.isLoading)
 		}
 		.padding(.horizontal, 12)

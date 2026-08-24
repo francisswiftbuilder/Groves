@@ -13,7 +13,6 @@ struct RepositorySidebar: View {
 				repositoryID: repositoryID,
 				onCreateBranch: viewModel.didPresentNewBranch
 			)
-			.padding(.horizontal, 10)
 		}
 		.listStyle(.sidebar)
 		.contextMenu(forSelectionType: RepositorySidebarSelection.self) { selections in
@@ -107,7 +106,13 @@ struct RepositorySidebar: View {
 						}
 					}
 				}
-			case .section, .remote, .tag:
+			case .tag(_, let id):
+				if let tag = viewModel.tags.first(where: { $0.id == id }) {
+					Button("Delete Tag", systemImage: "trash", role: .destructive) {
+						viewModel.didPresentTagDeletion(tag)
+					}
+				}
+			case .section, .remote:
 				EmptyView()
 			}
 		}

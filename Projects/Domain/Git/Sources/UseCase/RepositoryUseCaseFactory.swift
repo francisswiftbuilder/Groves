@@ -322,12 +322,16 @@ private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func createTag(named name: String, message: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
-	{
+	func createTag(
+		named name: String,
+		message: String,
+		commitHash: String,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot {
 		try await repository.requestCreateTag(
 			named: name,
 			message: message,
+			commitHash: commitHash,
 			at: repositoryURL
 		)
 		return try await content.loadSnapshot(at: repositoryURL)
@@ -362,7 +366,46 @@ private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		selectedRemoteName: String?,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		let target: GitPushTarget
+		let target = try pushTarget(
+			currentBranch: currentBranch,
+			remotes: remotes,
+			operationState: operationState,
+			selectedRemoteName: selectedRemoteName
+		)
+		try await repository.requestPush(target, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	func forcePush(
+		currentBranch: GitBranch?,
+		remotes: [GitRemote],
+		operationState: RepositoryOperationState,
+		selectedRemoteName: String?,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot {
+		let target = try pushTarget(
+			currentBranch: currentBranch,
+			remotes: remotes,
+			operationState: operationState,
+			selectedRemoteName: selectedRemoteName
+		)
+		try await repository.requestForcePush(target, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	func pushTags(remote name: String, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
+	{
+		try await repository.requestPushTags(remote: name, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	private func pushTarget(
+		currentBranch: GitBranch?,
+		remotes: [GitRemote],
+		operationState: RepositoryOperationState,
+		selectedRemoteName: String?
+	) throws -> GitPushTarget {
 		switch pushAction(
 			currentBranch: currentBranch,
 			remotes: remotes,
@@ -371,20 +414,18 @@ private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		case .unavailable:
 			throw GitRepositoryError.commandFailed("푸시할 브랜치 또는 리모트가 없습니다.")
 		case .upstream:
-			target = .upstream
+			return .upstream
 		case .setUpstream(let remoteName, let branchName):
-			target = .setUpstream(remoteName: remoteName, branchName: branchName)
+			return .setUpstream(remoteName: remoteName, branchName: branchName)
 		case .chooseRemote(let remoteNames, let branchName):
 			guard let selectedRemoteName, remoteNames.contains(selectedRemoteName) else {
 				throw GitRepositoryError.commandFailed("푸시할 리모트를 선택해 주세요.")
 			}
-			target = .setUpstream(
+			return .setUpstream(
 				remoteName: selectedRemoteName,
 				branchName: branchName
 			)
 		}
-		try await repository.requestPush(target, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
 	}
 }
 

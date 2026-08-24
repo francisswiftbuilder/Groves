@@ -21,6 +21,11 @@ struct ChangeRow: View {
 			.labelsHidden()
 			.toggleStyle(.checkbox)
 			.controlSize(.small)
+			.accessibilityLabel(
+				isStaged
+					? "Unstage \(URL(fileURLWithPath: change.path).lastPathComponent)"
+					: "Stage \(URL(fileURLWithPath: change.path).lastPathComponent)"
+			)
 
 			ChangeFileIcon(path: change.path)
 
@@ -35,6 +40,9 @@ struct ChangeRow: View {
 				.frame(width: 16, alignment: .trailing)
 		}
 		.padding(.vertical, 4)
-		.accessibilityElement(children: .combine)
+		.accessibilityElement(children: .contain)
+		.accessibilityLabel(
+			"\(URL(fileURLWithPath: change.path).lastPathComponent), \(state.inspectorTitle)"
+		)
 	}
 }

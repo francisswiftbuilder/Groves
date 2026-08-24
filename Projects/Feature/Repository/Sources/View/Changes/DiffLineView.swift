@@ -11,6 +11,7 @@ struct DiffLineView: View {
 
 	var body: some View {
 		HStack(spacing: 0) {
+			lineActionButton
 			lineNumber(line.oldLineNumber, isVisible: showsOldLineNumbers)
 			lineNumber(line.newLineNumber, isVisible: showsNewLineNumbers)
 			changeMarker
@@ -25,9 +26,6 @@ struct DiffLineView: View {
 				.fixedSize(horizontal: true, vertical: false)
 				.multilineTextAlignment(.leading)
 				.textSelection(.enabled)
-
-			Spacer(minLength: 12)
-			lineActionButton
 		}
 		.frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
 		.background {
@@ -77,13 +75,14 @@ struct DiffLineView: View {
 			.buttonStyle(.bordered)
 			.controlSize(.mini)
 			.tint(action.tint)
-			.frame(width: 76, height: 20)
+			.frame(width: 68, height: 20)
 			.disabled(isLoading)
 			.help(action.title)
 			.accessibilityLabel(action.title)
+			.accessibilityHint(line.sourceText)
 		} else {
 			Color.clear
-				.frame(width: 76, height: 20)
+				.frame(width: 68, height: 20)
 				.accessibilityHidden(true)
 		}
 	}

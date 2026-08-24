@@ -41,7 +41,12 @@ public protocol GitRepository: Sendable {
 	) async throws
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws
 	func requestMergeBranch(named name: String, at repositoryURL: URL) async throws
-	func requestCreateTag(named name: String, message: String, at repositoryURL: URL) async throws
+	func requestCreateTag(
+		named name: String,
+		message: String,
+		commitHash: String,
+		at repositoryURL: URL
+	) async throws
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws
 	func requestCreateStash(message: String, at repositoryURL: URL) async throws
 	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
@@ -51,4 +56,6 @@ public protocol GitRepository: Sendable {
 	func requestFetchAll(at repositoryURL: URL) async throws
 	func requestPull(at repositoryURL: URL) async throws
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws
+	func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws
+	func requestPushTags(remote name: String, at repositoryURL: URL) async throws
 }

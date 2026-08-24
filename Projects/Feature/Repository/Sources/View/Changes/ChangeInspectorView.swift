@@ -25,8 +25,9 @@ struct ChangeInspectorView: View {
 				.font(.subheadline.weight(.semibold))
 			Spacer()
 		}
-		.padding(.horizontal, 16)
-		.frame(height: 64)
+		.padding(.horizontal, 12)
+		.frame(height: 52)
+		.background(.bar)
 	}
 
 	@ViewBuilder

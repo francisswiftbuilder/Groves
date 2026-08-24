@@ -85,6 +85,56 @@ final class WorkspaceViewModelTests: XCTestCase {
 		)
 	}
 
+	func testForcePushRequiresConfirmationAndUsesCapturedRemote() async throws {
+		let recorder = GitRepositoryRecorder()
+		let branch = GitBranch(
+			name: "feature/force-push",
+			shortHash: "1234567",
+			upstream: nil,
+			isCurrent: true
+		)
+		let remotes = [
+			GitRemote(name: "origin", fetchURL: nil, pushURL: nil),
+			GitRemote(name: "upstream", fetchURL: nil, pushURL: nil),
+		]
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(
+				recorder: recorder,
+				branches: [branch],
+				remotes: remotes
+			)
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.currentBranch == branch }
+		viewModel.didPresentForcePushConfirmation(remoteName: "upstream")
+
+		XCTAssertTrue(viewModel.isPresentingForcePushConfirmation)
+		XCTAssertEqual(viewModel.forcePushConfirmationTitle, "Force Push feature/force-push?")
+
+		viewModel.didConfirmForcePush()
+
+		try await waitUntilRecorded(
+			.forcePush(.setUpstream(remoteName: "upstream", branchName: branch.name)),
+			by: recorder
+		)
+		XCTAssertFalse(viewModel.isPresentingForcePushConfirmation)
+	}
+
+	func testPushTagsUsesSelectedRemote() async throws {
+		let recorder = GitRepositoryRecorder()
+		let origin = GitRemote(name: "origin", fetchURL: nil, pushURL: nil)
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(recorder: recorder, remotes: [origin])
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.remotes == [origin] }
+		viewModel.didRequestPushTags(remoteName: origin.name)
+
+		try await waitUntilRecorded(.pushTags(remoteName: origin.name), by: recorder)
+	}
+
 	func testRepositoryOperationStateIsLoadedIntoWorkspace() async throws {
 		let viewModel = makeWorkspaceViewModel(
 			repository: GitRepositoryStub(operationState: .rebaseInProgress)
@@ -127,6 +177,83 @@ final class WorkspaceViewModelTests: XCTestCase {
 			.merge(branchName: mergeBranch.name),
 			by: recorder
 		)
+	}
+
+	func testCreateTagUsesExplicitContextMenuCommit() async throws {
+		let recorder = GitRepositoryRecorder()
+		let selectedCommit = GitCommit(
+			hash: "selected-commit-hash",
+			shortHash: "selected",
+			parentHashes: [],
+			author: "Trees Tests",
+			date: Date(timeIntervalSince1970: 1),
+			references: [],
+			subject: "Selected commit",
+			body: ""
+		)
+		let contextCommit = GitCommit(
+			hash: "context-commit-hash",
+			shortHash: "context",
+			parentHashes: [],
+			author: "Trees Tests",
+			date: Date(timeIntervalSince1970: 0),
+			references: [],
+			subject: "Context commit",
+			body: ""
+		)
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(
+				recorder: recorder,
+				commits: [selectedCommit, contextCommit]
+			)
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.commitGraphItems.count == 2 }
+		viewModel.selectedCommitID = selectedCommit.id
+		viewModel.didPresentNewTag(for: contextCommit)
+		viewModel.newTagName = "context-tag"
+		viewModel.newTagMessage = "Context tag message"
+		viewModel.didRequestCreateTag()
+
+		try await waitUntilRecorded(
+			.createTag(
+				name: "context-tag",
+				message: "Context tag message",
+				commitHash: contextCommit.hash
+			),
+			by: recorder
+		)
+		try await waitUntil { viewModel.pendingTagCommit == nil }
+
+		XCTAssertTrue(viewModel.newTagName.isEmpty)
+		XCTAssertTrue(viewModel.newTagMessage.isEmpty)
+	}
+
+	func testDeleteTagUsesExplicitContextMenuTag() async throws {
+		let recorder = GitRepositoryRecorder()
+		let tag = GitTag(
+			name: "release/1.0.0",
+			shortHash: "1234567",
+			targetHash: "1234567890abcdef",
+			date: nil,
+			subject: "Release 1.0.0"
+		)
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(recorder: recorder, tags: [tag])
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { viewModel.tags == [tag] }
+		viewModel.didPresentTagDeletion(tag)
+
+		XCTAssertEqual(viewModel.pendingTagDeletion, tag)
+		XCTAssertEqual(viewModel.deleteTagConfirmationTitle, "Delete “release/1.0.0”?")
+
+		viewModel.didConfirmTagDeletion(tag)
+
+		try await waitUntilRecorded(.deleteTag(name: tag.name), by: recorder)
+		try await waitUntil { viewModel.pendingTagDeletion == nil }
 	}
 
 	func testOpeningBranchFocusesLatestCommitInHistory() async throws {

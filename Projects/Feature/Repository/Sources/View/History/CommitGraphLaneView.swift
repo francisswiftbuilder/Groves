@@ -8,10 +8,12 @@ struct CommitGraphLaneView: View {
 	var body: some View {
 		Canvas { context, size in
 			let centerY = size.height / 2
+			let topEdgeY = -connectionOverlap
+			let bottomEdgeY = size.height + connectionOverlap
 
 			for segment in item.incomingSegments {
 				strokeConnection(
-					from: CGPoint(x: xPosition(for: segment.fromLane), y: 0),
+					from: CGPoint(x: xPosition(for: segment.fromLane), y: topEdgeY),
 					to: CGPoint(x: xPosition(for: segment.toLane), y: centerY),
 					colorIndex: segment.colorIndex,
 					in: &context
@@ -21,7 +23,7 @@ struct CommitGraphLaneView: View {
 			for segment in item.outgoingSegments {
 				strokeConnection(
 					from: CGPoint(x: xPosition(for: segment.fromLane), y: centerY),
-					to: CGPoint(x: xPosition(for: segment.toLane), y: size.height),
+					to: CGPoint(x: xPosition(for: segment.toLane), y: bottomEdgeY),
 					colorIndex: segment.colorIndex,
 					in: &context
 				)
@@ -121,5 +123,9 @@ struct CommitGraphLaneView: View {
 			lineCap: .round,
 			lineJoin: .round
 		)
+	}
+
+	private var connectionOverlap: CGFloat {
+		colorSchemeContrast == .increased ? 1.75 : 1.5
 	}
 }
