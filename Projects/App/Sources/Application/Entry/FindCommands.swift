@@ -1,11 +1,22 @@
 import AppKit
+import FeatureRepositoryInterface
 import SwiftUI
 
 struct FindCommands: Commands {
+	@FocusedValue(\.repositoryFindPresentation) private var repositoryFindPresentation
+
 	var body: some Commands {
 		CommandGroup(after: .textEditing) {
-			Button("Find…", action: showFindInterface)
+			Button("Find…", action: performFind)
 				.keyboardShortcut("f", modifiers: .command)
+		}
+	}
+
+	private func performFind() {
+		if let repositoryFindPresentation {
+			repositoryFindPresentation.wrappedValue = true
+		} else {
+			showFindInterface()
 		}
 	}
 

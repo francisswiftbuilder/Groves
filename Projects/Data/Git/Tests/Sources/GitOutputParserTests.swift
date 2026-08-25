@@ -317,6 +317,42 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertTrue(unstagedDiff.contains("+unstaged"))
 	}
 
+	func testRequestImageDiffSeparatesHeadIndexAndWorkingTreeData() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let fileURL = repositoryURL.appending(path: "preview.png")
+		let originalData = Data([0x89, 0x50, 0x4E, 0x47, 0x01])
+		let stagedData = Data([0x89, 0x50, 0x4E, 0x47, 0x02])
+		let workingTreeData = Data([0x89, 0x50, 0x4E, 0x47, 0x03])
+		try originalData.write(to: fileURL)
+		try requestRunGit(["add", "preview.png"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Add preview"], at: repositoryURL)
+		try stagedData.write(to: fileURL)
+		try requestRunGit(["add", "preview.png"], at: repositoryURL)
+		try workingTreeData.write(to: fileURL)
+
+		let repository = LocalGitRepository()
+		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		let change = try XCTUnwrap(changes.first { $0.path == "preview.png" })
+		let stagedDiff = try await repository.requestImageDiff(
+			for: change,
+			source: .staged,
+			at: repositoryURL
+		)
+		let unstagedDiff = try await repository.requestImageDiff(
+			for: change,
+			source: .unstaged,
+			at: repositoryURL
+		)
+
+		XCTAssertEqual(stagedDiff.before, originalData)
+		XCTAssertEqual(stagedDiff.after, stagedData)
+		XCTAssertEqual(unstagedDiff.before, stagedData)
+		XCTAssertEqual(unstagedDiff.after, workingTreeData)
+	}
+
 	func testRequestCommitDiffReturnsCommittedFileChanges() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -487,6 +523,30 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertFalse(workingTreeDiff.contains("+TWO"))
 		XCTAssertTrue(workingTreeDiff.contains("-four"))
 		XCTAssertTrue(workingTreeDiff.contains("+FOUR"))
+	}
+
+	func testWorkingTreeChangesRelatedToChangeOnlyReadsSelectedPaths() async throws {
+		let repositoryURL = try makeRepository()
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+		}
+		let otherFileURL = repositoryURL.appending(path: "other.txt")
+		try Data("original".utf8).write(to: otherFileURL)
+		try requestRunGit(["add", "other.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Add another file"], at: repositoryURL)
+
+		try Data("tracked change".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try Data("other change".utf8).write(to: otherFileURL)
+
+		let repository = LocalGitRepository()
+		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		let trackedChange = try XCTUnwrap(changes.first { $0.path == "tracked.txt" })
+		let relatedChanges = try await repository.requestWorkingTreeChanges(
+			relatedTo: trackedChange,
+			at: repositoryURL
+		)
+
+		XCTAssertEqual(relatedChanges.map(\.path), ["tracked.txt"])
 	}
 
 	func testApplyDiffLineUnstagesOnlySelectedReplacement() async throws {
@@ -1300,6 +1360,207 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(try requestGitOutput(["rev-list", "--count", "HEAD"], at: repositoryURL), "2\n")
 	}
 
+	func testApplyDiffHunkStagesAndDiscardsSelectedHunks() async throws {
+		let repositoryURL = try makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let originalLines = (1...16).map { "line \($0)" }
+		try Data((originalLines.joined(separator: "\n") + "\n").utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Add hunk fixture"], at: repositoryURL)
+		var changedLines = originalLines
+		changedLines[1] = "line TWO"
+		changedLines[13] = "line FOURTEEN"
+		try Data((changedLines.joined(separator: "\n") + "\n").utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+
+		let repository = LocalGitRepository()
+		var changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		var change = try XCTUnwrap(changes.first)
+		let diff = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			options: GitDiffOptions(),
+			at: repositoryURL
+		)
+		let selections = diffHunkSelections(in: diff)
+		XCTAssertEqual(selections.count, 2)
+
+		try await repository.requestApplyDiffHunk(
+			try XCTUnwrap(selections.first),
+			action: .stage,
+			for: change,
+			options: GitDiffOptions(),
+			at: repositoryURL
+		)
+		var indexContents = try requestGitOutput(["show", ":tracked.txt"], at: repositoryURL)
+		XCTAssertTrue(indexContents.contains("line TWO"))
+		XCTAssertTrue(indexContents.contains("line 14"))
+
+		changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		change = try XCTUnwrap(changes.first)
+		let remainingDiff = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			options: GitDiffOptions(),
+			at: repositoryURL
+		)
+		let remainingSelection = try XCTUnwrap(diffHunkSelections(in: remainingDiff).first)
+		try await repository.requestApplyDiffHunk(
+			remainingSelection,
+			action: .discard,
+			for: change,
+			options: GitDiffOptions(),
+			at: repositoryURL
+		)
+
+		let workingContents = try String(
+			contentsOf: repositoryURL.appending(path: "tracked.txt"),
+			encoding: .utf8
+		)
+		indexContents = try requestGitOutput(["show", ":tracked.txt"], at: repositoryURL)
+		XCTAssertTrue(workingContents.contains("line TWO"))
+		XCTAssertTrue(workingContents.contains("line 14"))
+		XCTAssertFalse(workingContents.contains("line FOURTEEN"))
+		XCTAssertEqual(workingContents, indexContents)
+	}
+
+	func testApplyDiffHunkUnstagesOnlySelectedHunk() async throws {
+		let repositoryURL = try makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let originalLines = (1...16).map { "line \($0)" }
+		try Data((originalLines.joined(separator: "\n") + "\n").utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Add unstage fixture"], at: repositoryURL)
+		var changedLines = originalLines
+		changedLines[1] = "line TWO"
+		changedLines[13] = "line FOURTEEN"
+		try Data((changedLines.joined(separator: "\n") + "\n").utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+
+		let repository = LocalGitRepository()
+		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		let change = try XCTUnwrap(changes.first)
+		let stagedDiff = try await repository.requestDiff(
+			for: change,
+			source: .staged,
+			options: GitDiffOptions(),
+			at: repositoryURL
+		)
+		let selection = try XCTUnwrap(diffHunkSelections(in: stagedDiff).first)
+		try await repository.requestApplyDiffHunk(
+			selection,
+			action: .unstage,
+			for: change,
+			options: GitDiffOptions(),
+			at: repositoryURL
+		)
+
+		let indexContents = try requestGitOutput(["show", ":tracked.txt"], at: repositoryURL)
+		XCTAssertTrue(indexContents.contains("line 2"))
+		XCTAssertFalse(indexContents.contains("line TWO"))
+		XCTAssertTrue(indexContents.contains("line FOURTEEN"))
+	}
+
+	func testDiffOptionsControlContextAndWhitespace() async throws {
+		let repositoryURL = try makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let originalLines = (1...20).map { "line \($0)" }
+		try Data((originalLines.joined(separator: "\n") + "\n").utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Add context fixture"], at: repositoryURL)
+		var changedLines = originalLines
+		changedLines[9] = "line TEN"
+		try Data((changedLines.joined(separator: "\n") + "\n").utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+
+		let repository = LocalGitRepository()
+		var changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		var change = try XCTUnwrap(changes.first)
+		let zeroContext = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			options: GitDiffOptions(contextLineCount: 0),
+			at: repositoryURL
+		)
+		let sixLineContext = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			options: GitDiffOptions(contextLineCount: 6),
+			at: repositoryURL
+		)
+		XCTAssertGreaterThan(
+			sixLineContext.split(whereSeparator: \.isNewline).count,
+			zeroContext.split(whereSeparator: \.isNewline).count)
+
+		try Data("line    TEN\n".utf8).write(
+			to: repositoryURL.appending(path: "tracked.txt")
+		)
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Add whitespace fixture"], at: repositoryURL)
+		try Data("line TEN\n".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		change = try XCTUnwrap(changes.first)
+		let ignoredWhitespace = try await repository.requestDiff(
+			for: change,
+			source: .unstaged,
+			options: GitDiffOptions(ignoresWhitespace: true),
+			at: repositoryURL
+		)
+		XCTAssertTrue(ignoredWhitespace.isEmpty)
+	}
+
+	func testConflictContentLoadsStagesAndAcceptsBoth() async throws {
+		let repositoryURL = try makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let currentBranch = try currentBranch(at: repositoryURL)
+		let baseHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try Data("current\n".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Current change"], at: repositoryURL)
+		try requestRunGit(["switch", "--quiet", "-c", "incoming", baseHash], at: repositoryURL)
+		try Data("incoming\n".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
+		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Incoming change"], at: repositoryURL)
+		try requestRunGit(["switch", "--quiet", currentBranch], at: repositoryURL)
+		try? requestRunGit(["merge", "incoming"], at: repositoryURL)
+
+		let repository = LocalGitRepository()
+		let state = try await repository.requestOperationState(at: repositoryURL)
+		let conflict = try XCTUnwrap(state.conflicts.first)
+		let content = try await repository.requestConflictContent(
+			for: conflict,
+			at: repositoryURL
+		)
+		XCTAssertEqual(content.current, "current\n")
+		XCTAssertEqual(content.incoming, "incoming\n")
+		XCTAssertEqual(content.hunks.count, 1)
+		XCTAssertTrue(content.hasConflictMarkers)
+
+		try await repository.requestResolveConflictHunk(
+			try XCTUnwrap(content.hunks.first),
+			in: conflict,
+			using: .both,
+			at: repositoryURL
+		)
+		let resolved = try await repository.requestConflictContent(
+			for: conflict,
+			at: repositoryURL
+		)
+		XCTAssertEqual(resolved.workingTree, "current\nincoming\n")
+		XCTAssertFalse(resolved.hasConflictMarkers)
+	}
+
 	private func makeRepository() throws -> URL {
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.appending(path: "TreesDiscardTests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -1314,6 +1575,18 @@ final class GitOutputParserTests: XCTestCase {
 		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Initial commit"], at: repositoryURL)
 		return repositoryURL
+	}
+
+	private func diffHunkSelections(in diff: String) -> [GitDiffHunkSelection] {
+		diff.split(whereSeparator: \.isNewline).compactMap { line in
+			guard line.hasPrefix("@@ ") else { return nil }
+			let components = line.split(separator: " ")
+			guard components.count >= 3,
+				let oldStart = Int(components[1].dropFirst().split(separator: ",")[0]),
+				let newStart = Int(components[2].dropFirst().split(separator: ",")[0])
+			else { return nil }
+			return GitDiffHunkSelection(oldStartLine: oldStart, newStartLine: newStart)
+		}
 	}
 
 	private func currentBranch(at repositoryURL: URL) throws -> String {

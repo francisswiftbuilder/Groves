@@ -1,9 +1,17 @@
+import DomainGitInterface
 import SwiftUI
 
 struct CommitDiffView: View {
+	@StateObject private var viewerModel = DiffViewerModel()
+	@Binding var options: GitDiffOptions
+	@Binding var presentationMode: DiffPresentationMode
 	let file: CommitDiffFile?
+	let imageDiff: GitImageDiff?
+	let beforeImageTitle: String
+	let afterImageTitle: String
 	let changedFileCount: Int
 	let isLoading: Bool
+	let onOptionsChanged: () -> Void
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -16,6 +24,9 @@ struct CommitDiffView: View {
 				diffFooter(file: file)
 			}
 		}
+		.task(id: file?.diff) {
+			await viewerModel.update(diff: file?.diff ?? "")
+		}
 	}
 
 	private func diffFooter(file: CommitDiffFile) -> some View {
@@ -25,7 +36,9 @@ struct CommitDiffView: View {
 				Text("\(changedFileCount) files changed")
 					.foregroundStyle(.secondary)
 				Spacer(minLength: 16)
-				CommitDiffStatistics(file: file)
+				if !isImageFile {
+					CommitDiffStatistics(file: file)
+				}
 			}
 			.font(.caption)
 			.padding(.horizontal, 16)
@@ -38,16 +51,28 @@ struct CommitDiffView: View {
 	private var diffHeader: some View {
 		if let file {
 			VStack(alignment: .leading, spacing: 12) {
-				Text(file.path.replacingOccurrences(of: "/", with: " / "))
-					.font(.subheadline)
-					.foregroundStyle(.secondary)
-					.lineLimit(1)
+				HStack(spacing: 8) {
+					Text(file.path.replacingOccurrences(of: "/", with: " / "))
+						.font(.subheadline)
+						.foregroundStyle(.secondary)
+						.lineLimit(1)
+					Spacer(minLength: 8)
+					if !isImageFile {
+						DiffOptionsMenu(
+							options: $options,
+							presentationMode: $presentationMode,
+							onChange: onOptionsChanged
+						)
+					}
+				}
 
 				HStack(spacing: 8) {
 					Text("File changed")
 						.font(.subheadline.weight(.medium))
 					Spacer()
-					CommitDiffStatistics(file: file)
+					if !isImageFile {
+						CommitDiffStatistics(file: file)
+					}
 				}
 			}
 			.padding(.horizontal, 16)
@@ -57,6 +82,11 @@ struct CommitDiffView: View {
 				Text("Changes")
 					.font(.subheadline.weight(.semibold))
 				Spacer()
+				DiffOptionsMenu(
+					options: $options,
+					presentationMode: $presentationMode,
+					onChange: onOptionsChanged
+				)
 			}
 			.padding(.horizontal, 16)
 			.padding(.vertical, 14)
@@ -65,35 +95,41 @@ struct CommitDiffView: View {
 
 	@ViewBuilder
 	private var diffContent: some View {
-		if isLoading {
+		if isLoading || viewerModel.isParsing {
 			LoadingStateView(
 				title: "Loading Commit Diff",
 				message: "Reading the files changed by this commit."
 			)
 		} else if file != nil {
-			if diffLines.isEmpty {
+			if let imageDiff {
+				ImageDiffView(
+					diff: imageDiff,
+					beforeTitle: beforeImageTitle,
+					afterTitle: afterImageTitle
+				)
+			} else if isImageFile {
+				EmptyStateView(
+					title: "Image Preview Unavailable",
+					message: "Neither revision contains a supported image.",
+					systemImage: "photo.badge.exclamationmark"
+				)
+			} else if viewerModel.document.lines.isEmpty {
 				EmptyStateView(
 					title: "No Text Diff",
 					message: "This commit changed a file without a text diff.",
 					systemImage: "doc"
 				)
 			} else {
-				GeometryReader { geometry in
-					ScrollView([.horizontal, .vertical]) {
-						VStack(alignment: .leading, spacing: 0) {
-							ForEach(diffLines) { line in
-								CommitDiffLineView(
-									line: line,
-									showsOldLineNumbers: showsOldLineNumbers,
-									showsNewLineNumbers: showsNewLineNumbers
-								)
-							}
-						}
-						.padding(.vertical, 8)
-						.frame(minWidth: max(geometry.size.width, 0), alignment: .leading)
-					}
-					.defaultScrollAnchor(.topLeading)
-				}
+				DiffViewer(
+					document: viewerModel.document,
+					presentationMode: presentationMode,
+					filePath: file?.path,
+					lineAction: nil,
+					hunkActions: [],
+					isApplyingAction: false,
+					onApplyLine: { _, _ in },
+					onApplyHunk: { _, _ in }
+				)
 			}
 		} else {
 			EmptyStateView(
@@ -104,16 +140,7 @@ struct CommitDiffView: View {
 		}
 	}
 
-	private var diffLines: [DiffLine] {
-		guard let file else { return [] }
-		return DiffParser.parse(file.diff).filter { $0.kind != .metadata }
-	}
-
-	private var showsOldLineNumbers: Bool {
-		diffLines.contains { $0.oldLineNumber != nil }
-	}
-
-	private var showsNewLineNumbers: Bool {
-		diffLines.contains { $0.newLineNumber != nil }
+	private var isImageFile: Bool {
+		file.map { DiffImageFileSupport.isSupported(path: $0.path) } == true
 	}
 }

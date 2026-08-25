@@ -13,15 +13,28 @@ enum CommitDiffFileParser {
 
 		return sections.enumerated().compactMap { index, section in
 			guard let path = path(in: section) else { return nil }
+			let previousPath = previousPath(in: section, currentPath: path)
 			let lines = DiffParser.parseSourceLines(section)
 			return CommitDiffFile(
 				id: "\(index)-\(path)",
 				path: path,
+				previousPath: previousPath,
 				diff: section,
 				additions: lines.count { $0.kind == .addition },
 				deletions: lines.count { $0.kind == .deletion }
 			)
 		}
+	}
+
+	private static func previousPath(in section: String, currentPath: String) -> String? {
+		let lines = section.split(separator: "\n", omittingEmptySubsequences: false)
+		if let renamedPath = lines.first(where: { $0.hasPrefix("rename from ") }) {
+			let path = String(renamedPath.dropFirst("rename from ".count))
+			return path == currentPath ? nil : path
+		}
+		guard let oldPath = lines.first(where: { $0.hasPrefix("--- a/") }) else { return nil }
+		let path = String(oldPath.dropFirst(6))
+		return path == currentPath ? nil : path
 	}
 
 	private static func path(in section: String) -> String? {

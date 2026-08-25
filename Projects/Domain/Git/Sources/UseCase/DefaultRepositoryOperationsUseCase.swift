@@ -47,6 +47,28 @@ struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
+	func loadConflictContent(
+		for conflict: GitConflict,
+		at repositoryURL: URL
+	) async throws -> GitConflictContent {
+		try await repository.requestConflictContent(for: conflict, at: repositoryURL)
+	}
+
+	func resolveHunk(
+		_ hunk: GitConflictHunk,
+		in conflict: GitConflict,
+		using resolution: GitConflictHunkResolution,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot {
+		try await repository.requestResolveConflictHunk(
+			hunk,
+			in: conflict,
+			using: resolution,
+			at: repositoryURL
+		)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
 	func markResolved(path: String, at repositoryURL: URL) async throws -> RepositorySnapshot {
 		try await repository.requestMarkConflictResolved(path: path, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)

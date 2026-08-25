@@ -13,6 +13,14 @@ public struct LocalGitRepository: GitRepository {
 		self.runner = runner
 	}
 
+	private func diffOptionArguments(_ options: GitDiffOptions) -> [String] {
+		var arguments = ["--unified=\(options.contextLineCount ?? 999_999)"]
+		if options.ignoresWhitespace {
+			arguments.append("--ignore-all-space")
+		}
+		return arguments
+	}
+
 	public func requestRepositoryRoot(at url: URL) async throws -> URL {
 		do {
 			let result = try await runner.requestRun(
@@ -54,14 +62,34 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] {
+		try await requestWorkingTreeChanges(paths: [], at: repositoryURL)
+	}
+
+	public func requestWorkingTreeChanges(
+		relatedTo change: WorkingTreeChange,
+		at repositoryURL: URL
+	) async throws -> [WorkingTreeChange] {
+		let paths = [change.path, change.previousPath].compactMap { $0 }
+		return try await requestWorkingTreeChanges(paths: paths, at: repositoryURL)
+	}
+
+	private func requestWorkingTreeChanges(
+		paths: [String],
+		at repositoryURL: URL
+	) async throws -> [WorkingTreeChange] {
+		var arguments = [
+			"--no-optional-locks",
+			"status",
+			"--porcelain=v1",
+			"-z",
+			"--untracked-files=all",
+		]
+		if !paths.isEmpty {
+			arguments.append("--")
+			arguments.append(contentsOf: paths)
+		}
 		let result = try await runner.requestRun(
-			arguments: [
-				"--no-optional-locks",
-				"status",
-				"--porcelain=v1",
-				"-z",
-				"--untracked-files=all",
-			],
+			arguments: arguments,
 			at: repositoryURL
 		)
 		return GitOutputParser.parseWorkingTreeChanges(result.standardOutput).map { change in
@@ -138,8 +166,11 @@ public struct LocalGitRepository: GitRepository {
 		}
 	}
 
-	public func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String
-	{
+	public func requestCommitDiff(
+		for commit: GitCommit,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String {
 		return try await runner.requestRun(
 			arguments: [
 				"show",
@@ -147,19 +178,20 @@ public struct LocalGitRepository: GitRepository {
 				"--diff-merges=first-parent",
 				"--no-color",
 				"--find-renames",
-				"--unified=3",
-				commit.hash,
-			],
+			] + diffOptionArguments(options) + [commit.hash],
 			at: repositoryURL
 		).standardOutput
 	}
 
-	public func requestStashDiff(for stash: GitStash, at repositoryURL: URL) async throws -> String {
+	public func requestStashDiff(
+		for stash: GitStash,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String {
 		try await runner.requestRun(
 			arguments: [
 				"stash", "show", "--include-untracked", "--patch", "--no-color", "--find-renames",
-				stash.reference,
-			],
+			] + diffOptionArguments(options) + [stash.reference],
 			at: repositoryURL
 		).standardOutput
 	}
@@ -349,13 +381,15 @@ public struct LocalGitRepository: GitRepository {
 	public func requestDiff(
 		for change: WorkingTreeChange,
 		source: GitDiffSource,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws
 		-> String
 	{
 		if source == .unstaged, change.workingTreeState == .untracked {
 			return try await runner.requestRun(
-				arguments: ["diff", "--no-index", "--no-color", "--", "/dev/null", change.path],
+				arguments: ["diff", "--no-index", "--no-color"] + diffOptionArguments(options)
+					+ ["--", "/dev/null", change.path],
 				at: repositoryURL,
 				acceptedTerminationStatuses: [0, 1]
 			).standardOutput
@@ -363,26 +397,126 @@ public struct LocalGitRepository: GitRepository {
 
 		if source == .staged {
 			return try await runner.requestRun(
-				arguments: ["diff", "--cached", "--no-color", "--", change.path],
+				arguments: ["diff", "--cached", "--no-color"] + diffOptionArguments(options)
+					+ ["--", change.path],
 				at: repositoryURL
 			).standardOutput
 		}
 
 		return try await runner.requestRun(
-			arguments: ["diff", "--no-color", "--", change.path],
+			arguments: ["diff", "--no-color"] + diffOptionArguments(options) + ["--", change.path],
 			at: repositoryURL
 		).standardOutput
 	}
 
-	public func requestAmendDiff(for change: GitAmendChange, at repositoryURL: URL) async throws
-		-> String
-	{
+	public func requestAmendDiff(
+		for change: GitAmendChange,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String {
 		guard let base = try await requestAmendBase(at: repositoryURL) else { return "" }
 		let paths = [change.path, change.previousPath].compactMap { $0 }
 		return try await runner.requestRun(
-			arguments: ["diff", "--cached", "--no-color", "--find-renames", base, "--"] + paths,
+			arguments: ["diff", "--cached", "--no-color", "--find-renames"]
+				+ diffOptionArguments(options) + [base, "--"] + paths,
 			at: repositoryURL
 		).standardOutput
+	}
+
+	public func requestImageDiff(
+		for change: WorkingTreeChange,
+		source: GitDiffSource,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		let previousPath = change.previousPath ?? change.path
+		switch source {
+		case .staged:
+			async let before = requestBlobData(
+				revision: "HEAD",
+				path: previousPath,
+				at: repositoryURL
+			)
+			async let after = requestBlobData(
+				revision: "",
+				path: change.path,
+				at: repositoryURL
+			)
+			return await GitImageDiff(before: before, after: after)
+		case .unstaged:
+			async let before = requestBlobData(
+				revision: "",
+				path: previousPath,
+				at: repositoryURL
+			)
+			async let after = requestWorkingTreeData(path: change.path, at: repositoryURL)
+			return await GitImageDiff(before: before, after: after)
+		}
+	}
+
+	public func requestAmendImageDiff(
+		for change: GitAmendChange,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		let base = try await requestAmendBase(at: repositoryURL)
+		async let before = requestBlobData(
+			revision: base,
+			path: change.previousPath ?? change.path,
+			at: repositoryURL
+		)
+		async let after = requestBlobData(
+			revision: "",
+			path: change.path,
+			at: repositoryURL
+		)
+		return await GitImageDiff(before: before, after: after)
+	}
+
+	public func requestCommitImageDiff(
+		for commit: GitCommit,
+		path: String,
+		previousPath: String?,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		async let before = requestBlobData(
+			revision: commit.parentHashes.first,
+			path: previousPath ?? path,
+			at: repositoryURL
+		)
+		async let after = requestBlobData(
+			revision: commit.hash,
+			path: path,
+			at: repositoryURL
+		)
+		return await GitImageDiff(before: before, after: after)
+	}
+
+	public func requestStashImageDiff(
+		for stash: GitStash,
+		path: String,
+		previousPath: String?,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		async let before = requestBlobData(
+			revision: "\(stash.reference)^1",
+			path: previousPath ?? path,
+			at: repositoryURL
+		)
+		let trackedAfter = await requestBlobData(
+			revision: stash.reference,
+			path: path,
+			at: repositoryURL
+		)
+		let after: Data?
+		if let trackedAfter {
+			after = trackedAfter
+		} else {
+			after = await requestBlobData(
+				revision: "\(stash.reference)^3",
+				path: path,
+				at: repositoryURL
+			)
+		}
+		return await GitImageDiff(before: before, after: after)
 	}
 
 	public func requestStage(path: String, at repositoryURL: URL) async throws {
@@ -423,6 +557,45 @@ public struct LocalGitRepository: GitRepository {
 			at: repositoryURL
 		).standardOutput
 		let patch = try GitLinePatchBuilder.makePatch(from: diff, selection: selection)
+		_ = try await runner.requestRun(
+			arguments: applyArguments,
+			at: repositoryURL,
+			standardInput: patch
+		)
+	}
+
+	public func requestApplyDiffHunk(
+		_ selection: GitDiffHunkSelection,
+		action: GitDiffHunkAction,
+		for change: WorkingTreeChange,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws {
+		let diffArguments: [String]
+		let applyArguments: [String]
+		switch action {
+		case .stage:
+			diffArguments =
+				["diff", "--no-color"] + diffOptionArguments(options)
+				+ ["--", change.path]
+			applyArguments = ["apply", "--cached", "--whitespace=nowarn", "-"]
+		case .unstage:
+			diffArguments =
+				["diff", "--cached", "--no-color"] + diffOptionArguments(options)
+				+ ["--", change.path]
+			applyArguments = ["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
+		case .discard:
+			diffArguments =
+				["diff", "--no-color"] + diffOptionArguments(options)
+				+ ["--", change.path]
+			applyArguments = ["apply", "--reverse", "--whitespace=nowarn", "-"]
+		}
+
+		let diff = try await runner.requestRun(
+			arguments: diffArguments,
+			at: repositoryURL
+		).standardOutput
+		let patch = try GitHunkPatchBuilder.makePatch(from: diff, selection: selection)
 		_ = try await runner.requestRun(
 			arguments: applyArguments,
 			at: repositoryURL,
@@ -617,8 +790,89 @@ public struct LocalGitRepository: GitRepository {
 		try await requestMarkConflictResolved(path: conflict.path, at: repositoryURL)
 	}
 
+	public func requestConflictContent(
+		for conflict: GitConflict,
+		at repositoryURL: URL
+	) async throws -> GitConflictContent {
+		async let baseData = requestConflictStageData(
+			1,
+			exists: conflict.hasBase,
+			path: conflict.path,
+			at: repositoryURL
+		)
+		async let currentData = requestConflictStageData(
+			2,
+			exists: conflict.hasOurs,
+			path: conflict.path,
+			at: repositoryURL
+		)
+		async let incomingData = requestConflictStageData(
+			3,
+			exists: conflict.hasTheirs,
+			path: conflict.path,
+			at: repositoryURL
+		)
+		let workingTreeData = try? await requestFileContents(
+			at: conflict.path,
+			in: repositoryURL
+		)
+		let stageContents = await (baseData, currentData, incomingData)
+		let base = stageContents.0.flatMap { String(data: $0, encoding: .utf8) }
+		let current = stageContents.1.flatMap { String(data: $0, encoding: .utf8) }
+		let incoming = stageContents.2.flatMap { String(data: $0, encoding: .utf8) }
+		let workingTree = workingTreeData.flatMap { String(data: $0, encoding: .utf8) }
+		return GitConflictContent(
+			base: base,
+			current: current,
+			incoming: incoming,
+			workingTree: workingTree,
+			hunks: workingTree.map(GitConflictMarkerParser.parse) ?? [],
+			baseData: stageContents.0,
+			currentData: stageContents.1,
+			incomingData: stageContents.2,
+			workingTreeData: workingTreeData
+		)
+	}
+
+	public func requestResolveConflictHunk(
+		_ hunk: GitConflictHunk,
+		in conflict: GitConflict,
+		using resolution: GitConflictHunkResolution,
+		at repositoryURL: URL
+	) async throws {
+		let data = try await requestFileContents(at: conflict.path, in: repositoryURL)
+		guard let contents = String(data: data, encoding: .utf8) else {
+			throw GitRepositoryError.invalidOutput
+		}
+		let resolvedContents = try GitConflictMarkerParser.resolve(
+			hunk.index,
+			using: resolution,
+			in: contents
+		)
+		let rootURL = repositoryURL.standardizedFileURL.resolvingSymlinksInPath()
+		let fileURL = repositoryURL.appending(path: conflict.path).standardizedFileURL
+		guard fileURL.path.hasPrefix(rootURL.path + "/") else {
+			throw GitRepositoryError.invalidFilePath
+		}
+		try Data(resolvedContents.utf8).write(to: fileURL, options: .atomic)
+	}
+
 	public func requestMarkConflictResolved(path: String, at repositoryURL: URL) async throws {
 		_ = try await runner.requestRun(arguments: ["add", "-A", "--", path], at: repositoryURL)
+	}
+
+	private func requestConflictStageData(
+		_ stage: Int,
+		exists: Bool,
+		path: String,
+		at repositoryURL: URL
+	) async -> Data? {
+		guard exists else { return nil }
+		return await requestBlobData(
+			revision: ":\(stage)",
+			path: path,
+			at: repositoryURL
+		)
 	}
 
 	public func requestPerformOperationAction(
@@ -944,5 +1198,26 @@ public struct LocalGitRepository: GitRepository {
 			standardInput: ""
 		)
 		return emptyTree.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+
+	private func requestBlobData(
+		revision: String?,
+		path: String,
+		at repositoryURL: URL
+	) async -> Data? {
+		guard let revision else { return nil }
+		let object = revision.isEmpty ? ":\(path)" : "\(revision):\(path)"
+		guard
+			let result = try? await runner.requestRun(
+				arguments: ["show", object],
+				at: repositoryURL
+			)
+		else { return nil }
+		guard result.standardOutputData.count <= Self.maximumPreviewByteCount else { return nil }
+		return result.standardOutputData
+	}
+
+	private func requestWorkingTreeData(path: String, at repositoryURL: URL) async -> Data? {
+		try? await requestFileContents(at: path, in: repositoryURL)
 	}
 }

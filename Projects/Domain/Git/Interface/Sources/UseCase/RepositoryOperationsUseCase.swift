@@ -17,6 +17,16 @@ public protocol RepositoryOperationsUseCase: Sendable {
 		using resolution: GitConflictResolution,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot
+	func loadConflictContent(
+		for conflict: GitConflict,
+		at repositoryURL: URL
+	) async throws -> GitConflictContent
+	func resolveHunk(
+		_ hunk: GitConflictHunk,
+		in conflict: GitConflict,
+		using resolution: GitConflictHunkResolution,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot
 	func markResolved(path: String, at repositoryURL: URL) async throws -> RepositorySnapshot
 	func perform(
 		_ action: RepositoryOperationAction,

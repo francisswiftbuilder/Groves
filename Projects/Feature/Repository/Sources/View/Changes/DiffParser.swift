@@ -23,7 +23,12 @@ enum DiffParser {
 						oldLineNumber: nil,
 						newLineNumber: nil,
 						kind: .hunk,
-						selection: nil
+						selection: nil,
+						hunkSelection: GitDiffHunkSelection(
+							oldStartLine: hunkStart.old,
+							newStartLine: hunkStart.new
+						),
+						changedRange: nil
 					)
 				)
 				continue
@@ -44,7 +49,9 @@ enum DiffParser {
 						oldLineNumber: currentOldLineNumber,
 						newLineNumber: nil,
 						kind: .deletion,
-						selection: nil
+						selection: nil,
+						hunkSelection: nil,
+						changedRange: nil
 					)
 				)
 				oldLineNumber = currentOldLineNumber + 1
@@ -59,7 +66,9 @@ enum DiffParser {
 						oldLineNumber: nil,
 						newLineNumber: currentNewLineNumber,
 						kind: .addition,
-						selection: nil
+						selection: nil,
+						hunkSelection: nil,
+						changedRange: nil
 					)
 				)
 				newLineNumber = currentNewLineNumber + 1
@@ -74,7 +83,9 @@ enum DiffParser {
 						oldLineNumber: currentOldLineNumber,
 						newLineNumber: currentNewLineNumber,
 						kind: .context,
-						selection: nil
+						selection: nil,
+						hunkSelection: nil,
+						changedRange: nil
 					)
 				)
 				oldLineNumber = currentOldLineNumber + 1
@@ -118,6 +129,12 @@ enum DiffParser {
 				lines[deletionIndex].selection = selection
 				lines[additionIndex].selection = selection
 				lines[deletionIndex].showsAction = true
+				let changedRanges = changedRanges(
+					old: lines[deletionIndex].sourceText,
+					new: lines[additionIndex].sourceText
+				)
+				lines[deletionIndex].changedRange = changedRanges.old
+				lines[additionIndex].changedRange = changedRanges.new
 			}
 
 			for deletionIndex in deletionIndices.dropFirst(pairedCount) {
@@ -144,6 +161,52 @@ enum DiffParser {
 		line.kind == .addition || line.kind == .deletion
 	}
 
+	private static func changedRanges(
+		old: String,
+		new: String
+	) -> (old: DiffTextRange?, new: DiffTextRange?) {
+		let oldCharacters = Array(old)
+		let newCharacters = Array(new)
+		let sharedCount = min(oldCharacters.count, newCharacters.count)
+		var prefixCount = 0
+		while prefixCount < sharedCount,
+			oldCharacters[prefixCount] == newCharacters[prefixCount]
+		{
+			prefixCount += 1
+		}
+
+		var suffixCount = 0
+		while suffixCount < sharedCount - prefixCount,
+			oldCharacters[oldCharacters.count - suffixCount - 1]
+				== newCharacters[newCharacters.count - suffixCount - 1]
+		{
+			suffixCount += 1
+		}
+
+		return (
+			makeChangedRange(
+				characterCount: oldCharacters.count,
+				prefixCount: prefixCount,
+				suffixCount: suffixCount
+			),
+			makeChangedRange(
+				characterCount: newCharacters.count,
+				prefixCount: prefixCount,
+				suffixCount: suffixCount
+			)
+		)
+	}
+
+	private static func makeChangedRange(
+		characterCount: Int,
+		prefixCount: Int,
+		suffixCount: Int
+	) -> DiffTextRange? {
+		let length = characterCount - prefixCount - suffixCount
+		guard length > 0 else { return nil }
+		return DiffTextRange(location: prefixCount, length: length)
+	}
+
 	private static func metadataLine(number: Int, text: String) -> DiffLine {
 		DiffLine(
 			number: number,
@@ -151,7 +214,9 @@ enum DiffParser {
 			oldLineNumber: nil,
 			newLineNumber: nil,
 			kind: .metadata,
-			selection: nil
+			selection: nil,
+			hunkSelection: nil,
+			changedRange: nil
 		)
 	}
 

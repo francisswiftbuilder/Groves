@@ -22,9 +22,16 @@ struct HistoryView: View {
 						.frame(maxWidth: .infinity)
 				} center: {
 					CommitDiffView(
+						options: $viewModel.diffOptions,
+						presentationMode: $viewModel.diffPresentationMode,
 						file: viewModel.selectedCommitFile,
+						imageDiff: viewModel.commitImageDiff,
+						beforeImageTitle: "Parent",
+						afterImageTitle: "Commit",
 						changedFileCount: commitFiles.count,
 						isLoading: viewModel.isLoadingCommitDiff
+							|| viewModel.isLoadingCommitImageDiff,
+						onOptionsChanged: viewModel.didChangeDiffOptions
 					)
 					.id(viewModel.selectedCommitID)
 					.frame(maxWidth: .infinity)

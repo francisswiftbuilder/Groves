@@ -4,6 +4,7 @@ import SwiftUI
 struct StashesView: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
 	@State private var selectedFileID: CommitDiffFile.ID?
+	@State private var parsedFiles: [CommitDiffFile] = []
 
 	var body: some View {
 		Group {
@@ -27,7 +28,7 @@ struct StashesView: View {
 					}
 					.listStyle(.inset)
 				} center: {
-					List(files, selection: $selectedFileID) { file in
+					List(files, selection: selectedFileBinding) { file in
 						CommitChangedFileRow(file: file)
 							.tag(file.id)
 							.listRowSeparator(.hidden)
@@ -35,9 +36,15 @@ struct StashesView: View {
 					.listStyle(.plain)
 				} trailing: {
 					CommitDiffView(
+						options: $viewModel.diffOptions,
+						presentationMode: $viewModel.diffPresentationMode,
 						file: selectedFile,
+						imageDiff: viewModel.stashImageDiff,
+						beforeImageTitle: "Base",
+						afterImageTitle: "Stash",
 						changedFileCount: files.count,
-						isLoading: false
+						isLoading: viewModel.isLoadingStashImageDiff,
+						onOptionsChanged: viewModel.didChangeDiffOptions
 					)
 				}
 			}
@@ -50,6 +57,18 @@ struct StashesView: View {
 					viewModel.didPresentStashDrop(stash)
 				}
 			}
+		}
+		.task(id: viewModel.stashDiff) {
+			let diff = viewModel.stashDiff
+			let files = await Task.detached(priority: .userInitiated) {
+				CommitDiffFileParser.parse(diff)
+			}.value
+			guard !Task.isCancelled else { return }
+			parsedFiles = files
+			if !files.contains(where: { $0.id == selectedFileID }) {
+				selectedFileID = files.first?.id
+			}
+			viewModel.didSelectStashFile(selectedFile)
 		}
 	}
 
@@ -64,10 +83,22 @@ struct StashesView: View {
 	}
 
 	private var files: [CommitDiffFile] {
-		CommitDiffFileParser.parse(viewModel.stashDiff)
+		parsedFiles
 	}
 
 	private var selectedFile: CommitDiffFile? {
 		files.first { $0.id == selectedFileID } ?? files.first
+	}
+
+	private var selectedFileBinding: Binding<CommitDiffFile.ID?> {
+		Binding(
+			get: { selectedFileID },
+			set: { fileID in
+				selectedFileID = fileID
+				viewModel.didSelectStashFile(
+					files.first { $0.id == fileID } ?? files.first
+				)
+			}
+		)
 	}
 }

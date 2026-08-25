@@ -3,6 +3,8 @@ import Foundation
 
 enum PendingRepositoryConfirmation {
 	case discard([WorkingTreeChange])
+	case discardHunk(GitDiffHunkSelection, WorkingTreeChange, GitDiffOptions)
+	case markConflictResolved(GitConflict)
 	case deleteBranch(GitBranch)
 	case deleteTag(GitTag)
 	case dropStash(GitStash)
@@ -20,6 +22,11 @@ enum PendingRepositoryConfirmation {
 			}
 			let fileName = URL(fileURLWithPath: change.path).lastPathComponent
 			return "Discard Changes to “\(fileName)”"
+		case .discardHunk(_, let change, _):
+			let fileName = URL(fileURLWithPath: change.path).lastPathComponent
+			return "Discard Hunk in “\(fileName)”"
+		case .markConflictResolved:
+			return "Mark Conflict as Resolved?"
 		case .deleteBranch(let branch):
 			return "Delete “\(branch.name)”"
 		case .deleteTag(let tag):
@@ -43,6 +50,11 @@ enum PendingRepositoryConfirmation {
 		switch self {
 		case .discard:
 			return "Uncommitted changes in the selected files will be permanently discarded."
+		case .discardHunk:
+			return "The changes in this hunk will be permanently discarded from the working file."
+		case .markConflictResolved:
+			return
+				"Conflict markers are still present in this file. Git will accept the file as resolved anyway."
 		case .deleteBranch(let branch):
 			return "The local branch “\(branch.name)” will be deleted. Remote branches are not affected."
 		case .deleteTag(let tag):
@@ -78,6 +90,8 @@ enum PendingRepositoryConfirmation {
 	var actionTitle: String {
 		switch self {
 		case .discard: return "Discard Changes"
+		case .discardHunk: return "Discard Hunk"
+		case .markConflictResolved: return "Mark Resolved Anyway"
 		case .deleteBranch: return "Delete Branch"
 		case .deleteTag: return "Delete Tag"
 		case .dropStash: return "Delete Stash"

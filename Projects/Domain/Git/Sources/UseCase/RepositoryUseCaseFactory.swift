@@ -187,19 +187,72 @@ private struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 	func loadDiff(
 		for change: WorkingTreeChange,
 		source: GitDiffSource,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> String {
-		try await repository.requestDiff(for: change, source: source, at: repositoryURL)
+		try await repository.requestDiff(
+			for: change,
+			source: source,
+			options: options,
+			at: repositoryURL
+		)
 	}
 
-	func loadAmendDiff(for change: GitAmendChange, at repositoryURL: URL) async throws
-		-> String
-	{
-		try await repository.requestAmendDiff(for: change, at: repositoryURL)
+	func loadAmendDiff(
+		for change: GitAmendChange,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String {
+		try await repository.requestAmendDiff(
+			for: change,
+			options: options,
+			at: repositoryURL
+		)
 	}
 
-	func loadCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String {
-		try await repository.requestCommitDiff(for: commit, at: repositoryURL)
+	func loadCommitDiff(
+		for commit: GitCommit,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String {
+		try await repository.requestCommitDiff(
+			for: commit,
+			options: options,
+			at: repositoryURL
+		)
+	}
+
+	func loadImageDiff(
+		for change: WorkingTreeChange,
+		source: GitDiffSource,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		try await repository.requestImageDiff(
+			for: change,
+			source: source,
+			at: repositoryURL
+		)
+	}
+
+	func loadAmendImageDiff(
+		for change: GitAmendChange,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		try await repository.requestAmendImageDiff(for: change, at: repositoryURL)
+	}
+
+	func loadCommitImageDiff(
+		for commit: GitCommit,
+		path: String,
+		previousPath: String?,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		try await repository.requestCommitImageDiff(
+			for: commit,
+			path: path,
+			previousPath: previousPath,
+			at: repositoryURL
+		)
 	}
 
 	func stage(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
@@ -241,7 +294,30 @@ private struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 			for: change,
 			at: repositoryURL
 		)
-		return try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		return try await repository.requestWorkingTreeChanges(
+			relatedTo: change,
+			at: repositoryURL
+		)
+	}
+
+	func applyDiffHunk(
+		_ selection: GitDiffHunkSelection,
+		action: GitDiffHunkAction,
+		for change: WorkingTreeChange,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> [WorkingTreeChange] {
+		try await repository.requestApplyDiffHunk(
+			selection,
+			action: action,
+			for: change,
+			options: options,
+			at: repositoryURL
+		)
+		return try await repository.requestWorkingTreeChanges(
+			relatedTo: change,
+			at: repositoryURL
+		)
 	}
 
 	func discard(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
@@ -511,8 +587,28 @@ private struct DefaultRepositoryStashesUseCase: RepositoryStashesUseCase {
 	let repository: any GitRepository
 	let content: any RepositoryContentUseCase
 
-	func loadDiff(for stash: GitStash, at repositoryURL: URL) async throws -> String {
-		try await repository.requestStashDiff(for: stash, at: repositoryURL)
+	func loadDiff(for stash: GitStash, options: GitDiffOptions, at repositoryURL: URL) async throws
+		-> String
+	{
+		try await repository.requestStashDiff(
+			for: stash,
+			options: options,
+			at: repositoryURL
+		)
+	}
+
+	func loadImageDiff(
+		for stash: GitStash,
+		path: String,
+		previousPath: String?,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		try await repository.requestStashImageDiff(
+			for: stash,
+			path: path,
+			previousPath: previousPath,
+			at: repositoryURL
+		)
 	}
 
 	func createStash(message: String, includeUntracked: Bool, at repositoryURL: URL) async throws

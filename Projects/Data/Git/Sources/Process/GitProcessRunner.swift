@@ -61,7 +61,11 @@ actor GitProcessRunner {
 			)
 		}
 
-		return GitCommandResult(standardOutput: standardOutput, standardError: standardError)
+		return GitCommandResult(
+			standardOutputData: standardOutputData,
+			standardOutput: standardOutput,
+			standardError: standardError
+		)
 	}
 
 	private func requestTerminationStatus(

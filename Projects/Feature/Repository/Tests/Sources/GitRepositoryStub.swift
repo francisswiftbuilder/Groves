@@ -56,8 +56,16 @@ struct GitRepositoryStub: GitRepository {
 	}
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] { [] }
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { commits }
-	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String { "" }
-	func requestStashDiff(for stash: GitStash, at repositoryURL: URL) async throws -> String { "" }
+	func requestCommitDiff(
+		for commit: GitCommit,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String { "" }
+	func requestStashDiff(
+		for stash: GitStash,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String { "" }
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] { branches }
 	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] { remotes }
 	func requestOperationState(at repositoryURL: URL) async throws -> RepositoryOperationState {
@@ -70,14 +78,46 @@ struct GitRepositoryStub: GitRepository {
 	func requestDiff(
 		for change: WorkingTreeChange,
 		source: GitDiffSource,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> String {
 		source == .staged ? stagedDiff : unstagedDiff
 	}
-	func requestAmendDiff(for change: GitAmendChange, at repositoryURL: URL) async throws
-		-> String
-	{
+	func requestAmendDiff(
+		for change: GitAmendChange,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws -> String {
 		""
+	}
+	func requestImageDiff(
+		for change: WorkingTreeChange,
+		source: GitDiffSource,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		GitImageDiff(before: nil, after: nil)
+	}
+	func requestAmendImageDiff(
+		for change: GitAmendChange,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		GitImageDiff(before: nil, after: nil)
+	}
+	func requestCommitImageDiff(
+		for commit: GitCommit,
+		path: String,
+		previousPath: String?,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		GitImageDiff(before: nil, after: nil)
+	}
+	func requestStashImageDiff(
+		for stash: GitStash,
+		path: String,
+		previousPath: String?,
+		at repositoryURL: URL
+	) async throws -> GitImageDiff {
+		GitImageDiff(before: nil, after: nil)
 	}
 	func requestStage(path: String, at repositoryURL: URL) async throws {
 		await recorder?.record(.stage(path: path))
@@ -87,6 +127,13 @@ struct GitRepositoryStub: GitRepository {
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		at repositoryURL: URL
+	) async throws {}
+	func requestApplyDiffHunk(
+		_ selection: GitDiffHunkSelection,
+		action: GitDiffHunkAction,
+		for change: WorkingTreeChange,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws {}
 	func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws {}
@@ -118,6 +165,18 @@ struct GitRepositoryStub: GitRepository {
 	func requestResolveConflict(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
+		at repositoryURL: URL
+	) async throws {}
+	func requestConflictContent(
+		for conflict: GitConflict,
+		at repositoryURL: URL
+	) async throws -> GitConflictContent {
+		GitConflictContent(base: nil, current: nil, incoming: nil, workingTree: nil, hunks: [])
+	}
+	func requestResolveConflictHunk(
+		_ hunk: GitConflictHunk,
+		in conflict: GitConflict,
+		using resolution: GitConflictHunkResolution,
 		at repositoryURL: URL
 	) async throws {}
 	func requestMarkConflictResolved(path: String, at repositoryURL: URL) async throws {}

@@ -34,8 +34,13 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published var pendingRemoteRename: GitRemote?
 	@Published var newStashMessage = ""
 	@Published var includeUntrackedInStash = true
+	@Published var diffOptions = GitDiffOptions()
+	@Published var diffPresentationMode: DiffPresentationMode = .sideBySide
 	@Published private(set) var stashDiff = ""
-	@Published private(set) var conflictContents: String?
+	@Published private(set) var imageDiff: GitImageDiff?
+	@Published private(set) var commitImageDiff: GitImageDiff?
+	@Published private(set) var stashImageDiff: GitImageDiff?
+	@Published private(set) var conflictContent: GitConflictContent?
 	@Published private(set) var conflictPreviewUnavailable = false
 	@Published private(set) var repositoryURL: URL?
 	@Published private(set) var changes: [WorkingTreeChange] = []
@@ -55,6 +60,8 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var isLoadingContent: Bool
 	@Published private(set) var isLoadingDiff = false
 	@Published private(set) var isLoadingCommitDiff = false
+	@Published private(set) var isLoadingCommitImageDiff = false
+	@Published private(set) var isLoadingStashImageDiff = false
 	@Published private(set) var isApplyingDiffLine = false
 	@Published var alertMessage: String?
 
@@ -68,6 +75,8 @@ final class WorkspaceViewModel: ObservableObject {
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var diffTask: Task<Void, Never>?
 	private var commitDiffTask: Task<Void, Never>?
+	private var commitImageDiffTask: Task<Void, Never>?
+	private var stashImageDiffTask: Task<Void, Never>?
 	private var filePreviewTask: Task<Void, Never>?
 	private var displayedDiffSelection: WorkspaceChangeSelection?
 	private var requestedDiffSelection: WorkspaceChangeSelection?
@@ -99,6 +108,8 @@ final class WorkspaceViewModel: ObservableObject {
 		automaticRefreshTask?.cancel()
 		diffTask?.cancel()
 		commitDiffTask?.cancel()
+		commitImageDiffTask?.cancel()
+		stashImageDiffTask?.cancel()
 		filePreviewTask?.cancel()
 	}
 
@@ -217,28 +228,36 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var oursConflictLabel: String {
+		"Resolve Entire File Using \(currentConflictLabel)"
+	}
+
+	var currentConflictLabel: String {
 		switch operationState.operation?.kind {
 		case .rebase:
-			return "Use Target Branch"
+			return "Target Branch"
 		case .cherryPick:
-			return "Use Current Branch"
+			return "Current Branch"
 		case .revert:
-			return "Use Current Branch"
+			return "Current Branch"
 		case .merge, .none:
-			return "Use Current"
+			return "Current"
 		}
 	}
 
 	var theirsConflictLabel: String {
+		"Resolve Entire File Using \(incomingConflictLabel)"
+	}
+
+	var incomingConflictLabel: String {
 		switch operationState.operation?.kind {
 		case .rebase:
-			return "Use Replayed Commit"
+			return "Replayed Commit"
 		case .cherryPick:
-			return "Use Picked Commit"
+			return "Picked Commit"
 		case .revert:
-			return "Use Reverted Result"
+			return "Reverted Result"
 		case .merge, .none:
-			return "Use Incoming"
+			return "Incoming"
 		}
 	}
 
@@ -262,6 +281,17 @@ final class WorkspaceViewModel: ObservableObject {
 			return .unstage
 		}
 		return nil
+	}
+
+	var selectedDiffHunkActions: [GitDiffHunkAction] {
+		switch selectedDiffLineAction {
+		case .stage:
+			return selectedChange?.workingTreeState == .modified ? [.stage, .discard] : [.stage]
+		case .unstage:
+			return [.unstage]
+		case .none:
+			return []
+		}
 	}
 
 	var selectedBranch: GitBranch? {
@@ -398,6 +428,7 @@ final class WorkspaceViewModel: ObservableObject {
 		await Task.yield()
 		guard !Task.isCancelled, selectedCommitFileID != fileID else { return }
 		selectedCommitFileID = fileID
+		didChangeSelectedCommitImageDiff()
 	}
 
 	func didSelectChanges(_ selections: Set<WorkspaceChangeSelection>) async {
@@ -417,7 +448,7 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didConfirmDiscardChanges() {
-		guard let pendingDiscardChanges else { return }
+		guard pendingDiscardChanges != nil else { return }
 		didConfirmPendingRepositoryConfirmation()
 	}
 
@@ -466,6 +497,19 @@ final class WorkspaceViewModel: ObservableObject {
 		switch confirmation {
 		case .discard(let changes):
 			didRequestDiscard(changes)
+		case .discardHunk(let selection, let change, let options):
+			guard let repositoryURL else { return }
+			requestDiffLineMutation(replacing: change) {
+				try await self.changesUseCase.applyDiffHunk(
+					selection,
+					action: .discard,
+					for: change,
+					options: options,
+					at: repositoryURL
+				)
+			}
+		case .markConflictResolved(let conflict):
+			requestMarkConflictResolved(conflict)
 		case .deleteBranch(let branch):
 			requestDeleteBranch(branch)
 		case .deleteTag(let tag):
@@ -660,12 +704,22 @@ final class WorkspaceViewModel: ObservableObject {
 			diffTask = Task {
 				defer { finishDiffLoad(for: selection) }
 				do {
-					let requestedDiff = try await changesUseCase.loadDiff(
-						for: change,
-						source: source,
-						at: repositoryURL
-					)
-					updateDisplayedDiff(requestedDiff, for: selection)
+					if DiffImageFileSupport.isSupported(path: change.path) {
+						let requestedImageDiff = try await changesUseCase.loadImageDiff(
+							for: change,
+							source: source,
+							at: repositoryURL
+						)
+						updateDisplayedImageDiff(requestedImageDiff, for: selection)
+					} else {
+						let requestedDiff = try await changesUseCase.loadDiff(
+							for: change,
+							source: source,
+							options: diffOptions,
+							at: repositoryURL
+						)
+						updateDisplayedDiff(requestedDiff, for: selection)
+					}
 				} catch is CancellationError {
 					return
 				} catch {
@@ -682,11 +736,20 @@ final class WorkspaceViewModel: ObservableObject {
 			diffTask = Task {
 				defer { finishDiffLoad(for: selection) }
 				do {
-					let requestedDiff = try await changesUseCase.loadAmendDiff(
-						for: change,
-						at: repositoryURL
-					)
-					updateDisplayedDiff(requestedDiff, for: selection)
+					if DiffImageFileSupport.isSupported(path: change.path) {
+						let requestedImageDiff = try await changesUseCase.loadAmendImageDiff(
+							for: change,
+							at: repositoryURL
+						)
+						updateDisplayedImageDiff(requestedImageDiff, for: selection)
+					} else {
+						let requestedDiff = try await changesUseCase.loadAmendDiff(
+							for: change,
+							options: diffOptions,
+							at: repositoryURL
+						)
+						updateDisplayedDiff(requestedDiff, for: selection)
+					}
 				} catch is CancellationError {
 					return
 				} catch {
@@ -703,19 +766,25 @@ final class WorkspaceViewModel: ObservableObject {
 			diffTask = Task {
 				defer { finishDiffLoad(for: selection) }
 				do {
-					let data = try await contentUseCase.loadFileContents(
-						at: path,
-						in: repositoryURL
+					guard let operationsUseCase,
+						let conflict = conflicts.first(where: { $0.path == path })
+					else { return }
+					let content = try await operationsUseCase.loadConflictContent(
+						for: conflict,
+						at: repositoryURL
 					)
 					guard selectedChangeIDs == Set([selection]) else { return }
-					conflictContents = String(data: data, encoding: .utf8)
-					conflictPreviewUnavailable = conflictContents == nil
-					updateDisplayedDiff(conflictContents ?? "", for: selection)
+					conflictContent = content
+					conflictPreviewUnavailable =
+						content.workingTreeData == nil
+						&& content.currentData == nil
+						&& content.incomingData == nil
+					updateDisplayedDiff(content.workingTree ?? "", for: selection)
 				} catch is CancellationError {
 					return
 				} catch {
 					guard selectedChangeIDs == Set([selection]) else { return }
-					conflictContents = nil
+					conflictContent = nil
 					conflictPreviewUnavailable = true
 					updateDisplayedDiff("", for: selection)
 				}
@@ -753,6 +822,7 @@ final class WorkspaceViewModel: ObservableObject {
 			do {
 				let requestedDiff = try await changesUseCase.loadCommitDiff(
 					for: commit,
+					options: diffOptions,
 					at: repositoryURL
 				)
 				let requestedFiles = await Task.detached(priority: .userInitiated) {
@@ -762,6 +832,7 @@ final class WorkspaceViewModel: ObservableObject {
 				selectedCommitFiles = requestedFiles
 				preserveSelectedCommitFile()
 				displayedCommitDiffID = commit.id
+				didChangeSelectedCommitImageDiff()
 			} catch is CancellationError {
 				return
 			} catch {
@@ -839,13 +910,50 @@ final class WorkspaceViewModel: ObservableObject {
 			selectedDiffLineAction == action,
 			!isApplyingDiffLine
 		else { return }
-		requestDiffLineMutation {
+		requestDiffLineMutation(replacing: change) {
 			try await self.changesUseCase.applyDiffLine(
 				selection,
 				action: action,
 				for: change,
 				at: repositoryURL
 			)
+		}
+	}
+
+	func didRequestApplyDiffHunk(
+		_ selection: GitDiffHunkSelection,
+		action: GitDiffHunkAction
+	) {
+		guard
+			let repositoryURL,
+			let change = selectedChange,
+			selectedDiffHunkActions.contains(action),
+			!isApplyingDiffLine
+		else { return }
+		if action == .discard {
+			pendingRepositoryConfirmation = .discardHunk(selection, change, diffOptions)
+			return
+		}
+		requestDiffLineMutation(replacing: change) {
+			try await self.changesUseCase.applyDiffHunk(
+				selection,
+				action: action,
+				for: change,
+				options: self.diffOptions,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didChangeDiffOptions() {
+		displayedDiffSelection = nil
+		requestedDiffSelection = nil
+		displayedCommitDiffID = nil
+		requestedCommitDiffID = nil
+		didChangeSelectedChanges()
+		didChangeSelectedCommit()
+		if let selectedStashID {
+			didSelectStash(selectedStashID)
 		}
 	}
 
@@ -1127,7 +1235,64 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	func didResolveConflictHunk(
+		_ hunk: GitConflictHunk,
+		in conflict: GitConflict,
+		using resolution: GitConflictHunkResolution
+	) {
+		guard let repositoryURL, let operationsUseCase, !isLoading else { return }
+		requestMutation {
+			let snapshot = try await operationsUseCase.resolveHunk(
+				hunk,
+				in: conflict,
+				using: resolution,
+				at: repositoryURL
+			)
+			let content = try await operationsUseCase.loadConflictContent(
+				for: conflict,
+				at: repositoryURL
+			)
+			self.conflictContent = content
+			self.conflictPreviewUnavailable =
+				content.workingTreeData == nil
+				&& content.currentData == nil
+				&& content.incomingData == nil
+			self.diff = content.workingTree ?? ""
+			return snapshot
+		}
+	}
+
 	func didMarkConflictResolved(_ conflict: GitConflict) {
+		guard let repositoryURL, let operationsUseCase, !isLoading else { return }
+		refreshTask?.cancel()
+		refreshTask = Task {
+			isLoading = true
+			defer { isLoading = false }
+			do {
+				let content = try await operationsUseCase.loadConflictContent(
+					for: conflict,
+					at: repositoryURL
+				)
+				conflictContent = content
+				if content.hasConflictMarkers {
+					pendingRepositoryConfirmation = .markConflictResolved(conflict)
+					return
+				}
+				let snapshot = try await operationsUseCase.markResolved(
+					path: conflict.path,
+					at: repositoryURL
+				)
+				try apply(snapshot, at: repositoryURL)
+				didChangeSelectedChanges()
+			} catch is CancellationError {
+				return
+			} catch {
+				alertMessage = error.localizedDescription
+			}
+		}
+	}
+
+	private func requestMarkConflictResolved(_ conflict: GitConflict) {
 		guard let repositoryURL, let operationsUseCase else { return }
 		requestMutation {
 			try await operationsUseCase.markResolved(path: conflict.path, at: repositoryURL)
@@ -1251,15 +1416,50 @@ final class WorkspaceViewModel: ObservableObject {
 	func didSelectStash(_ stashID: String?) {
 		selectedStashID = stashID
 		stashDiff = ""
+		stashImageDiffTask?.cancel()
+		stashImageDiff = nil
+		isLoadingStashImageDiff = false
 		guard let repositoryURL, let stash = selectedStash else { return }
 		Task {
 			do {
 				let requestedDiff = try await stashesUseCase.loadDiff(
 					for: stash,
+					options: diffOptions,
 					at: repositoryURL
 				)
 				guard selectedStashID == stash.id else { return }
 				stashDiff = requestedDiff
+			} catch is CancellationError {
+				return
+			} catch {
+				alertMessage = error.localizedDescription
+			}
+		}
+	}
+
+	func didSelectStashFile(_ file: CommitDiffFile?) {
+		stashImageDiffTask?.cancel()
+		stashImageDiff = nil
+		isLoadingStashImageDiff = false
+		guard
+			let repositoryURL,
+			let stash = selectedStash,
+			let file,
+			DiffImageFileSupport.isSupported(path: file.path)
+		else { return }
+
+		isLoadingStashImageDiff = true
+		stashImageDiffTask = Task {
+			defer { isLoadingStashImageDiff = false }
+			do {
+				let requestedImageDiff = try await stashesUseCase.loadImageDiff(
+					for: stash,
+					path: file.path,
+					previousPath: file.previousPath,
+					at: repositoryURL
+				)
+				guard selectedStashID == stash.id else { return }
+				stashImageDiff = requestedImageDiff
 			} catch is CancellationError {
 				return
 			} catch {
@@ -1441,6 +1641,7 @@ final class WorkspaceViewModel: ObservableObject {
 				let snapshot = try await operation()
 				automaticRefreshTask?.cancel()
 				try apply(snapshot, at: expectedRepositoryURL)
+				didChangeSelectedChanges()
 				automaticRefreshTask?.cancel()
 			} catch is CancellationError {
 				return
@@ -1457,6 +1658,7 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	private func requestDiffLineMutation(
+		replacing originalChange: WorkingTreeChange,
 		_ operation: @escaping @MainActor () async throws -> [WorkingTreeChange]
 	) {
 		guard
@@ -1473,9 +1675,13 @@ final class WorkspaceViewModel: ObservableObject {
 			defer { isApplyingDiffLine = false }
 
 			do {
-				let refreshedChanges = try await operation()
+				let refreshedRelatedChanges = try await operation()
 				guard let repositoryURL else { return }
 				try Task.checkCancellation()
+				let refreshedChanges = mergingWorkingTreeChanges(
+					refreshedRelatedChanges,
+					replacing: originalChange
+				)
 
 				let availableSelections = availableWorkingTreeSelections(in: refreshedChanges)
 				var refreshedSelection = selectedChangeIDs.intersection(availableSelections)
@@ -1503,6 +1709,7 @@ final class WorkspaceViewModel: ObservableObject {
 					refreshedDiff = try await changesUseCase.loadDiff(
 						for: refreshedChange,
 						source: refreshedSelectionValue.isStaged ? .staged : .unstaged,
+						options: diffOptions,
 						at: repositoryURL
 					)
 				} else {
@@ -1526,6 +1733,27 @@ final class WorkspaceViewModel: ObservableObject {
 				alertMessage = error.localizedDescription
 			}
 		}
+	}
+
+	private func mergingWorkingTreeChanges(
+		_ refreshedChanges: [WorkingTreeChange],
+		replacing originalChange: WorkingTreeChange
+	) -> [WorkingTreeChange] {
+		let relatedPaths = Set([originalChange.path, originalChange.previousPath].compactMap { $0 })
+		let insertionIndex =
+			changes.firstIndex { change in
+				let paths = Set([change.path, change.previousPath].compactMap { $0 })
+				return !relatedPaths.isDisjoint(with: paths)
+			} ?? changes.endIndex
+		var mergedChanges = changes.filter { change in
+			let paths = Set([change.path, change.previousPath].compactMap { $0 })
+			return relatedPaths.isDisjoint(with: paths)
+		}
+		mergedChanges.insert(
+			contentsOf: refreshedChanges,
+			at: min(insertionIndex, mergedChanges.endIndex)
+		)
+		return mergedChanges
 	}
 
 	private func requestAllContent(at repositoryURL: URL) async throws {
@@ -1650,6 +1878,17 @@ final class WorkspaceViewModel: ObservableObject {
 		if diff != requestedDiff {
 			diff = requestedDiff
 		}
+		imageDiff = nil
+		displayedDiffSelection = selection
+	}
+
+	private func updateDisplayedImageDiff(
+		_ requestedImageDiff: GitImageDiff,
+		for selection: WorkspaceChangeSelection
+	) {
+		guard selectedChangeIDs == Set([selection]) else { return }
+		diff = ""
+		imageDiff = requestedImageDiff
 		displayedDiffSelection = selection
 	}
 
@@ -1683,8 +1922,9 @@ final class WorkspaceViewModel: ObservableObject {
 		if !diff.isEmpty {
 			diff = ""
 		}
+		imageDiff = nil
 		displayedDiffSelection = nil
-		conflictContents = nil
+		conflictContent = nil
 		conflictPreviewUnavailable = false
 		clearDiffLoad()
 	}
@@ -1694,6 +1934,9 @@ final class WorkspaceViewModel: ObservableObject {
 			selectedCommitFiles = []
 		}
 		selectedCommitFileID = nil
+		commitImageDiffTask?.cancel()
+		commitImageDiff = nil
+		isLoadingCommitImageDiff = false
 		displayedCommitDiffID = nil
 		requestedCommitDiffID = nil
 		isLoadingCommitDiff = false
@@ -1728,6 +1971,39 @@ final class WorkspaceViewModel: ObservableObject {
 		guard selectedCommitFiles.contains(where: { $0.id == selectedCommitFileID }) else {
 			selectedCommitFileID = selectedCommitFiles.first?.id
 			return
+		}
+	}
+
+	private func didChangeSelectedCommitImageDiff() {
+		commitImageDiffTask?.cancel()
+		commitImageDiff = nil
+		isLoadingCommitImageDiff = false
+		guard
+			let repositoryURL,
+			let commit = selectedCommit,
+			let file = selectedCommitFile,
+			DiffImageFileSupport.isSupported(path: file.path)
+		else { return }
+
+		isLoadingCommitImageDiff = true
+		commitImageDiffTask = Task {
+			defer { isLoadingCommitImageDiff = false }
+			do {
+				let requestedImageDiff = try await changesUseCase.loadCommitImageDiff(
+					for: commit,
+					path: file.path,
+					previousPath: file.previousPath,
+					at: repositoryURL
+				)
+				guard selectedCommitID == commit.id, selectedCommitFile?.id == file.id else {
+					return
+				}
+				commitImageDiff = requestedImageDiff
+			} catch is CancellationError {
+				return
+			} catch {
+				alertMessage = error.localizedDescription
+			}
 		}
 	}
 

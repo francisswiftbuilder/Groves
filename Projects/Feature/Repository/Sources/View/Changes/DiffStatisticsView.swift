@@ -2,25 +2,19 @@ import DomainGitInterface
 import SwiftUI
 
 struct DiffStatisticsView: View {
-	let diffLines: [DiffLine]
+	let document: DiffDocument
 
 	var body: some View {
 		HStack(spacing: 8) {
-			Text("+\(additionCount)")
+			Text("+\(document.additionCount)")
 				.foregroundStyle(.green)
-			Text("−\(deletionCount)")
+			Text("−\(document.deletionCount)")
 				.foregroundStyle(.red)
 		}
 		.font(.caption.weight(.semibold).monospacedDigit())
 		.accessibilityElement(children: .combine)
-		.accessibilityLabel("\(additionCount) additions, \(deletionCount) deletions")
-	}
-
-	private var additionCount: Int {
-		diffLines.count { $0.kind == .addition }
-	}
-
-	private var deletionCount: Int {
-		diffLines.count { $0.kind == .deletion }
+		.accessibilityLabel(
+			"\(document.additionCount) additions, \(document.deletionCount) deletions"
+		)
 	}
 }

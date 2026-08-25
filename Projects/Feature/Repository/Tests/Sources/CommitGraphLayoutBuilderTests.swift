@@ -208,6 +208,54 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 		XCTAssertEqual(lines.map(\.sourceText), ["old", "new", "context"])
 	}
 
+	func testDiffParserPreservesHunkSelectionAndIntraLineRanges() throws {
+		let diff = """
+			diff --git a/App.swift b/App.swift
+			--- a/App.swift
+			+++ b/App.swift
+			@@ -40,2 +40,2 @@
+			-let timeout = 30
+			+let timeout = 60
+			 context
+			"""
+
+		let lines = DiffParser.parse(diff)
+		let hunk = try XCTUnwrap(lines.first { $0.kind == .hunk })
+		let deletion = try XCTUnwrap(lines.first { $0.kind == .deletion })
+		let addition = try XCTUnwrap(lines.first { $0.kind == .addition })
+
+		XCTAssertEqual(
+			hunk.hunkSelection,
+			GitDiffHunkSelection(oldStartLine: 40, newStartLine: 40)
+		)
+		XCTAssertEqual(deletion.changedRange, DiffTextRange(location: 14, length: 1))
+		XCTAssertEqual(addition.changedRange, DiffTextRange(location: 14, length: 1))
+	}
+
+	func testSideBySideBuilderAlignsReplacementAndContextLines() throws {
+		let diff = """
+			@@ -1,3 +1,3 @@
+			 unchanged
+			-old value
+			+new value
+			 trailing
+			"""
+
+		let rows = DiffSideBySideBuilder.build(
+			from: DiffDocument(lines: DiffParser.parse(diff))
+		)
+		let replacement = try XCTUnwrap(
+			rows.first { $0.oldLine?.kind == .deletion || $0.newLine?.kind == .addition }
+		)
+		let contextRows = rows.filter { $0.oldLine?.kind == .context }
+
+		XCTAssertEqual(replacement.oldLine?.sourceText, "old value")
+		XCTAssertEqual(replacement.newLine?.sourceText, "new value")
+		XCTAssertEqual(contextRows.count, 2)
+		XCTAssertEqual(contextRows.first?.oldLine?.oldLineNumber, 1)
+		XCTAssertEqual(contextRows.first?.newLine?.newLineNumber, 1)
+	}
+
 	func testCommitDiffFileParserSeparatesChangedFiles() {
 		let diff = """
 			diff --git a/Sources/First.swift b/Sources/First.swift

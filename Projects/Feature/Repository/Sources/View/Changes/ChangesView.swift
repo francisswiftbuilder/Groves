@@ -57,17 +57,23 @@ struct ChangesView: View {
 				ConflictPreview(viewModel: viewModel, conflict: conflict)
 			} else {
 				DiffView(
+					options: $viewModel.diffOptions,
+					presentationMode: $viewModel.diffPresentationMode,
 					diff: viewModel.diff,
+					imageDiff: viewModel.imageDiff,
 					changedFileCount: viewModel.changes.count,
 					fileName: selectedFileName,
 					filePath: selectedFilePath,
 					fileState: selectedFileState,
 					fileActionTitle: selectedFileActionTitle,
 					lineAction: viewModel.selectedDiffLineAction,
+					hunkActions: viewModel.selectedDiffHunkActions,
 					isLoadingDiff: viewModel.isLoadingDiff,
 					isApplyingAction: viewModel.isApplyingDiffLine,
+					onOptionsChanged: viewModel.didChangeDiffOptions,
 					onApplyFileAction: applySelectedFileAction,
-					onApplyLine: viewModel.didRequestApplyDiffLine
+					onApplyLine: viewModel.didRequestApplyDiffLine,
+					onApplyHunk: viewModel.didRequestApplyDiffHunk
 				)
 			}
 		}
