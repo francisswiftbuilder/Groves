@@ -42,6 +42,14 @@ final class AppDIContainer: RepositoryDIDependencies {
 		RepositoryUseCaseFactory.makeStashesUseCase(repository: repository)
 	}
 
+	func makeRepositoryOperationsUseCase() -> any RepositoryOperationsUseCase {
+		RepositoryUseCaseFactory.makeOperationsUseCase(repository: repository)
+	}
+
+	func makeRepositoryExternalEditorOpener() -> any RepositoryExternalEditorOpening {
+		WorkspaceExternalEditorOpener()
+	}
+
 	func makeRepositoryRootView(repositoryID: Binding<UUID?>) -> AnyView {
 		repositoryDIContainer.makeRootView(repositoryID: repositoryID)
 	}

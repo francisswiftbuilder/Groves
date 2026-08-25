@@ -6,6 +6,7 @@ actor GitProcessRunner {
 		arguments: [String],
 		at repositoryURL: URL,
 		standardInput: String? = nil,
+		environment: [String: String] = [:],
 		acceptedTerminationStatuses: Set<Int32> = [0]
 	) async throws -> GitCommandResult {
 		let fileManager = FileManager.default
@@ -35,6 +36,7 @@ actor GitProcessRunner {
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
 		process.arguments = ["git", "-C", repositoryURL.path] + arguments
+		process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
 		process.standardOutput = standardOutputHandle
 		process.standardError = standardErrorHandle
 		process.standardInput = standardInputHandle

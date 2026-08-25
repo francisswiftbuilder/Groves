@@ -41,6 +41,31 @@ enum GitOutputParser {
 		return mergeWorkingTreeChanges(changes)
 	}
 
+	static func parseConflicts(_ output: String) -> [GitConflict] {
+		output
+			.split(separator: "\0", omittingEmptySubsequences: true)
+			.compactMap { record in
+				guard record.hasPrefix("u ") else { return nil }
+				let fields = record.split(
+					maxSplits: 10,
+					omittingEmptySubsequences: true,
+					whereSeparator: \.isWhitespace
+				).map(String.init)
+				guard
+					fields.count == 11,
+					let kind = GitConflictKind(rawValue: fields[1])
+				else { return nil }
+				return GitConflict(
+					path: fields[10],
+					kind: kind,
+					hasBase: hasStageObject(fields[7]),
+					hasOurs: hasStageObject(fields[8]),
+					hasTheirs: hasStageObject(fields[9])
+				)
+			}
+			.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+	}
+
 	static func parseAmendChanges(_ output: String) -> [GitAmendChange] {
 		let records = output.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
 		var changes: [GitAmendChange] = []
@@ -85,16 +110,19 @@ enum GitOutputParser {
 			.compactMap { record in
 				let fields = record.split(
 					separator: "\u{1f}",
-					maxSplits: 7,
+					maxSplits: 11,
 					omittingEmptySubsequences: false
 				).map(String.init)
-				guard fields.count >= 8 else { return nil }
-				guard let date = formatter.date(from: fields[4]) ?? fallbackFormatter.date(from: fields[4])
+				guard fields.count >= 12 else { return nil }
+				guard
+					let date = formatter.date(from: fields[5]) ?? fallbackFormatter.date(from: fields[5]),
+					let committedDate = formatter.date(from: fields[8])
+						?? fallbackFormatter.date(from: fields[8])
 				else {
 					return nil
 				}
 
-				let references = fields[5]
+				let references = fields[9]
 					.split(separator: ",")
 					.map { $0.trimmingCharacters(in: .whitespaces) }
 					.filter { !$0.isEmpty }
@@ -104,10 +132,14 @@ enum GitOutputParser {
 					shortHash: fields[1],
 					parentHashes: fields[2].split(separator: " ").map(String.init),
 					author: fields[3],
+					authorEmail: fields[4],
 					date: date,
+					committer: fields[6],
+					committerEmail: fields[7],
+					committedDate: committedDate,
 					references: references,
-					subject: fields[6].trimmingCharacters(in: .newlines),
-					body: fields[7].trimmingCharacters(in: .newlines)
+					subject: fields[10].trimmingCharacters(in: .newlines),
+					body: fields[11].trimmingCharacters(in: .newlines)
 				)
 			}
 	}
@@ -277,6 +309,10 @@ enum GitOutputParser {
 		default:
 			return .unchanged
 		}
+	}
+
+	private static func hasStageObject(_ hash: String) -> Bool {
+		hash.contains(where: { $0 != "0" })
 	}
 
 	private static func mergeWorkingTreeChanges(

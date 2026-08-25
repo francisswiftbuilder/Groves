@@ -1,3 +1,4 @@
+import DomainGitInterface
 import SwiftUI
 
 struct HistoryView: View {
@@ -74,9 +75,30 @@ struct HistoryView: View {
 						.listRowInsets(.init())
 						.listRowSeparator(.hidden)
 						.contextMenu {
+							Button("Cherry-pick", systemImage: "arrow.triangle.branch") {
+								request(.cherryPick(item.commit))
+							}
+							.disabled(!viewModel.operationState.isIdle || viewModel.isLoading)
+
+							Button("Revert", systemImage: "arrow.uturn.backward") {
+								request(.revert(item.commit))
+							}
+							.disabled(!viewModel.operationState.isIdle || viewModel.isLoading)
+
 							Button("Create Tag…", systemImage: "tag") {
 								viewModel.didPresentNewTag(for: item.commit)
 							}
+
+							Divider()
+
+							Button("Reset Current Branch to…", systemImage: "arrow.counterclockwise") {
+								viewModel.didPresentReset(item.commit)
+							}
+							.disabled(
+								!viewModel.operationState.isIdle
+									|| viewModel.operationState.isDetached
+									|| viewModel.isLoading
+							)
 						}
 					}
 				}
@@ -129,5 +151,9 @@ struct HistoryView: View {
 		} else {
 			proxy.scrollTo(request.commitID, anchor: .center)
 		}
+	}
+
+	private func request(_ action: PendingMainlineAction) {
+		viewModel.didPresentCommitAction(action)
 	}
 }

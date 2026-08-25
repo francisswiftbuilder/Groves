@@ -115,7 +115,8 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] {
-		let format = "%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1f%b%x1e"
+		let format =
+			"%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cn%x1f%ce%x1f%cI%x1f%D%x1f%s%x1f%b%x1e"
 		do {
 			let result = try await runner.requestRun(
 				arguments: [
@@ -148,6 +149,16 @@ public struct LocalGitRepository: GitRepository {
 				"--find-renames",
 				"--unified=3",
 				commit.hash,
+			],
+			at: repositoryURL
+		).standardOutput
+	}
+
+	public func requestStashDiff(for stash: GitStash, at repositoryURL: URL) async throws -> String {
+		try await runner.requestRun(
+			arguments: [
+				"stash", "show", "--include-untracked", "--patch", "--no-color", "--find-renames",
+				stash.reference,
 			],
 			at: repositoryURL
 		).standardOutput
@@ -189,9 +200,7 @@ public struct LocalGitRepository: GitRepository {
 
 		let results = try await (statusResult, markerResult)
 		let statusRecords = results.0.standardOutput.split(separator: "\0").map(String.init)
-		if statusRecords.contains(where: { $0.hasPrefix("u ") }) {
-			return .conflicted
-		}
+		let conflicts = GitOutputParser.parseConflicts(results.0.standardOutput)
 
 		let markerPaths = results.1.standardOutput.split(whereSeparator: \.isNewline).map(String.init)
 		guard markerPaths.count == 5 else { throw GitRepositoryError.invalidOutput }
@@ -199,22 +208,28 @@ public struct LocalGitRepository: GitRepository {
 			FileManager.default.fileExists(atPath: resolvedGitPath(markerPath, at: repositoryURL).path)
 		}
 
+		let head: RepositoryHeadState =
+			statusRecords.contains("# branch.head (detached)") ? .detached : .attached
+		let operation: RepositoryOperation?
 		if markerExists[0] {
-			return .mergeInProgress
+			operation = RepositoryOperation(kind: .merge)
+		} else if markerExists[1] || markerExists[2] {
+			operation = RepositoryOperation(
+				kind: .rebase,
+				progress: requestRebaseProgress(
+					at: markerExists[1]
+						? resolvedGitPath(markerPaths[1], at: repositoryURL)
+						: resolvedGitPath(markerPaths[2], at: repositoryURL)
+				)
+			)
+		} else if markerExists[3] {
+			operation = RepositoryOperation(kind: .cherryPick)
+		} else if markerExists[4] {
+			operation = RepositoryOperation(kind: .revert)
+		} else {
+			operation = nil
 		}
-		if markerExists[1] || markerExists[2] {
-			return .rebaseInProgress
-		}
-		if markerExists[3] {
-			return .cherryPickInProgress
-		}
-		if markerExists[4] {
-			return .revertInProgress
-		}
-		if statusRecords.contains("# branch.head (detached)") {
-			return .detachedHead
-		}
-		return .normal
+		return RepositoryOperationState(head: head, operation: operation, conflicts: conflicts)
 	}
 
 	public func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] {
@@ -475,11 +490,21 @@ public struct LocalGitRepository: GitRepository {
 		)
 	}
 
+	public func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["commit", "--amend", "--no-edit"],
+			at: repositoryURL,
+			environment: operationEnvironment
+		)
+	}
+
 	public func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(arguments: ["switch", name], at: repositoryURL)
 	}
 
 	public func requestCreateBranch(named name: String, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(arguments: ["switch", "-c", name], at: repositoryURL)
 	}
 
@@ -488,6 +513,7 @@ public struct LocalGitRepository: GitRepository {
 		tracking remoteBranch: String,
 		at repositoryURL: URL
 	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(
 			arguments: ["switch", "--track", "-c", name, remoteBranch],
 			at: repositoryURL
@@ -495,10 +521,21 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(arguments: ["branch", "-d", name], at: repositoryURL)
 	}
 
+	public func requestRenameBranch(
+		named name: String,
+		to newName: String,
+		at repositoryURL: URL
+	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		_ = try await runner.requestRun(arguments: ["branch", "-m", name, newName], at: repositoryURL)
+	}
+
 	public func requestMergeBranch(named name: String, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		do {
 			_ = try await runner.requestRun(
 				arguments: ["merge", "--no-edit", "--", name],
@@ -508,10 +545,142 @@ public struct LocalGitRepository: GitRepository {
 			throw CancellationError()
 		} catch {
 			let operationState = try? await requestOperationState(at: repositoryURL)
-			guard operationState == .conflicted || operationState == .mergeInProgress else {
+			guard operationState?.operation?.kind == .merge || operationState?.hasConflicts == true else {
 				throw error
 			}
 		}
+	}
+
+	public func requestRebase(onto branchName: String, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		try await requestOperationStart(
+			arguments: ["rebase", branchName],
+			expectedOperation: .rebase,
+			at: repositoryURL
+		)
+	}
+
+	public func requestCherryPick(
+		commitHash: String,
+		mainline: Int?,
+		at repositoryURL: URL
+	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		var arguments = ["cherry-pick"]
+		if let mainline {
+			arguments.append(contentsOf: ["--mainline", String(mainline)])
+		}
+		arguments.append(commitHash)
+		try await requestOperationStart(
+			arguments: arguments,
+			expectedOperation: .cherryPick,
+			at: repositoryURL
+		)
+	}
+
+	public func requestRevert(
+		commitHash: String,
+		mainline: Int?,
+		at repositoryURL: URL
+	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		var arguments = ["revert", "--no-edit"]
+		if let mainline {
+			arguments.append(contentsOf: ["--mainline", String(mainline)])
+		}
+		arguments.append(commitHash)
+		try await requestOperationStart(
+			arguments: arguments,
+			expectedOperation: .revert,
+			at: repositoryURL
+		)
+	}
+
+	public func requestResolveConflict(
+		_ conflict: GitConflict,
+		using resolution: GitConflictResolution,
+		at repositoryURL: URL
+	) async throws {
+		let hasSelectedStage = resolution == .ours ? conflict.hasOurs : conflict.hasTheirs
+		if hasSelectedStage {
+			let option = resolution == .ours ? "--ours" : "--theirs"
+			_ = try await runner.requestRun(
+				arguments: ["checkout", option, "--", conflict.path],
+				at: repositoryURL
+			)
+		} else {
+			_ = try await runner.requestRun(
+				arguments: ["rm", "-f", "--", conflict.path],
+				at: repositoryURL
+			)
+		}
+		try await requestMarkConflictResolved(path: conflict.path, at: repositoryURL)
+	}
+
+	public func requestMarkConflictResolved(path: String, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(arguments: ["add", "-A", "--", path], at: repositoryURL)
+	}
+
+	public func requestPerformOperationAction(
+		_ action: RepositoryOperationAction,
+		for operation: RepositoryOperationKind,
+		at repositoryURL: URL
+	) async throws {
+		let command: String
+		switch operation {
+		case .merge:
+			command = "merge"
+		case .rebase:
+			command = "rebase"
+		case .cherryPick:
+			command = "cherry-pick"
+		case .revert:
+			command = "revert"
+		}
+		let option: String
+		switch action {
+		case .continue:
+			option = "--continue"
+		case .skip:
+			guard operation != .merge else {
+				throw GitRepositoryError.commandFailed("Merge cannot skip a commit.")
+			}
+			option = "--skip"
+		case .abort:
+			option = "--abort"
+		}
+		do {
+			_ = try await runner.requestRun(
+				arguments: [command, option],
+				at: repositoryURL,
+				environment: operationEnvironment
+			)
+		} catch is CancellationError {
+			throw CancellationError()
+		} catch {
+			let state = try? await requestOperationState(at: repositoryURL)
+			guard action != .abort, state?.operation?.kind == operation || state?.hasConflicts == true
+			else {
+				throw error
+			}
+		}
+	}
+
+	public func requestReset(
+		to commitHash: String,
+		mode: GitResetMode,
+		at repositoryURL: URL
+	) async throws {
+		let state = try await requestOperationState(at: repositoryURL)
+		guard state.isIdle, !state.isDetached else {
+			throw GitRepositoryError.commandFailed(
+				"Reset is unavailable while HEAD is detached or an operation is in progress."
+			)
+		}
+		_ = try await runner.requestRun(
+			arguments: ["reset", "--\(mode.rawValue)", commitHash],
+			at: repositoryURL
+		)
 	}
 
 	public func requestCreateTag(
@@ -531,8 +700,16 @@ public struct LocalGitRepository: GitRepository {
 		_ = try await runner.requestRun(arguments: ["tag", "-d", "--", name], at: repositoryURL)
 	}
 
-	public func requestCreateStash(message: String, at repositoryURL: URL) async throws {
-		var arguments = ["stash", "push", "--include-untracked"]
+	public func requestCreateStash(
+		message: String,
+		includeUntracked: Bool = true,
+		at repositoryURL: URL
+	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		var arguments = ["stash", "push"]
+		if includeUntracked {
+			arguments.append("--include-untracked")
+		}
 		if !message.isEmpty {
 			arguments.append(contentsOf: ["--message", message])
 		}
@@ -540,14 +717,16 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(
+		try await requestEnsureIdle(at: repositoryURL)
+		try await requestStashMutation(
 			arguments: ["stash", "apply", "--index", stash.reference],
 			at: repositoryURL
 		)
 	}
 
 	public func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(
+		try await requestEnsureIdle(at: repositoryURL)
+		try await requestStashMutation(
 			arguments: ["stash", "pop", "--index", stash.reference],
 			at: repositoryURL
 		)
@@ -569,22 +748,72 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestPull(at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(arguments: ["pull", "--ff-only"], at: repositoryURL)
 	}
 
 	public func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(arguments: pushArguments(for: target), at: repositoryURL)
 	}
 
 	public func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		var arguments = pushArguments(for: target)
 		arguments.insert("--force-with-lease", at: 1)
 		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
 	}
 
 	public func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(
 			arguments: ["push", name, "--tags"],
+			at: repositoryURL
+		)
+	}
+
+	public func requestAddRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["remote", "add", name, fetchURL], at: repositoryURL)
+		try await requestSetPushURL(pushURL, for: name, at: repositoryURL)
+	}
+
+	public func requestRenameRemote(
+		named name: String,
+		to newName: String,
+		at repositoryURL: URL
+	) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["remote", "rename", name, newName], at: repositoryURL)
+	}
+
+	public func requestUpdateRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws {
+		_ = try await runner.requestRun(
+			arguments: ["remote", "set-url", name, fetchURL], at: repositoryURL)
+		try await requestSetPushURL(pushURL, for: name, at: repositoryURL)
+	}
+
+	public func requestDeleteRemote(named name: String, at repositoryURL: URL) async throws {
+		_ = try await runner.requestRun(arguments: ["remote", "remove", name], at: repositoryURL)
+	}
+
+	public func requestDeleteRemoteBranch(
+		_ branch: GitRemoteBranch,
+		at repositoryURL: URL
+	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: ["push", branch.remoteName, "--delete", branch.name],
 			at: repositoryURL
 		)
 	}
@@ -605,6 +834,90 @@ public struct LocalGitRepository: GitRepository {
 			return URL(fileURLWithPath: path)
 		}
 		return repositoryURL.appending(path: path)
+	}
+
+	private var operationEnvironment: [String: String] {
+		[
+			"GIT_EDITOR": "true",
+			"GIT_SEQUENCE_EDITOR": "true",
+			"GIT_MERGE_AUTOEDIT": "no",
+		]
+	}
+
+	private func requestOperationStart(
+		arguments: [String],
+		expectedOperation: RepositoryOperationKind,
+		at repositoryURL: URL
+	) async throws {
+		do {
+			_ = try await runner.requestRun(
+				arguments: arguments,
+				at: repositoryURL,
+				environment: operationEnvironment
+			)
+		} catch is CancellationError {
+			throw CancellationError()
+		} catch {
+			let state = try? await requestOperationState(at: repositoryURL)
+			guard state?.operation?.kind == expectedOperation || state?.hasConflicts == true else {
+				throw error
+			}
+		}
+	}
+
+	private func requestStashMutation(arguments: [String], at repositoryURL: URL) async throws {
+		do {
+			_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+		} catch is CancellationError {
+			throw CancellationError()
+		} catch {
+			let state = try? await requestOperationState(at: repositoryURL)
+			guard state?.hasConflicts == true else { throw error }
+		}
+	}
+
+	private func requestSetPushURL(
+		_ pushURL: String?,
+		for remoteName: String,
+		at repositoryURL: URL
+	) async throws {
+		if let pushURL, !pushURL.isEmpty {
+			_ = try await runner.requestRun(
+				arguments: ["remote", "set-url", "--push", remoteName, pushURL],
+				at: repositoryURL
+			)
+		} else {
+			_ = try await runner.requestRun(
+				arguments: ["config", "--unset-all", "remote.\(remoteName).pushurl"],
+				at: repositoryURL,
+				acceptedTerminationStatuses: [0, 5]
+			)
+		}
+	}
+
+	private func requestEnsureIdle(at repositoryURL: URL) async throws {
+		let state = try await requestOperationState(at: repositoryURL)
+		guard state.isIdle else {
+			throw GitRepositoryError.commandFailed(
+				"Finish or abort the current Git operation before starting another action."
+			)
+		}
+	}
+
+	private func requestRebaseProgress(at directoryURL: URL) -> RepositoryOperationProgress? {
+		let candidates = [("msgnum", "end"), ("next", "last")]
+		for candidate in candidates {
+			let currentURL = directoryURL.appending(path: candidate.0)
+			let totalURL = directoryURL.appending(path: candidate.1)
+			guard
+				let currentValue = try? String(contentsOf: currentURL, encoding: .utf8),
+				let totalValue = try? String(contentsOf: totalURL, encoding: .utf8),
+				let current = Int(currentValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+				let total = Int(totalValue.trimmingCharacters(in: .whitespacesAndNewlines))
+			else { continue }
+			return RepositoryOperationProgress(current: current, total: total)
+		}
+		return nil
 	}
 
 	private func requestAmendBase(at repositoryURL: URL) async throws -> String? {

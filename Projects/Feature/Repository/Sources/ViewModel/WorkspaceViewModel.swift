@@ -1,4 +1,5 @@
 import DomainGitInterface
+import FeatureRepositoryInterface
 import Foundation
 import UniformTypeIdentifiers
 
@@ -15,18 +16,27 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published var expandedTreeNodeIDs: Set<String> = []
 	@Published var expandedSidebarGroups: Set<RepositorySidebarGroup> = []
 	@Published var changeFilterText = ""
-	@Published private(set) var pendingDiscardChanges: [WorkingTreeChange]?
+	@Published var pendingRepositoryConfirmation: PendingRepositoryConfirmation?
 	@Published var commitSubject = ""
 	@Published var commitBody = ""
 	@Published private(set) var isAmendingCommit = false
 	@Published var newBranchName = ""
 	@Published var isPresentingNewBranch = false
+	@Published var branchRenameName = ""
+	@Published var pendingBranchRename: GitBranch?
 	@Published var newTagName = ""
 	@Published var newTagMessage = ""
 	@Published private(set) var pendingTagCommit: GitCommit?
-	@Published private(set) var pendingTagDeletion: GitTag?
-	@Published private(set) var isPresentingForcePushConfirmation = false
+	@Published var pendingMainlineAction: PendingMainlineAction?
+	@Published var pendingResetCommit: GitCommit?
+	@Published var resetMode: GitResetMode = .mixed
+	@Published var remoteEditorPresentation: RemoteEditorPresentation?
+	@Published var pendingRemoteRename: GitRemote?
 	@Published var newStashMessage = ""
+	@Published var includeUntrackedInStash = true
+	@Published private(set) var stashDiff = ""
+	@Published private(set) var conflictContents: String?
+	@Published private(set) var conflictPreviewUnavailable = false
 	@Published private(set) var repositoryURL: URL?
 	@Published private(set) var changes: [WorkingTreeChange] = []
 	@Published private(set) var amendChanges: [GitAmendChange] = []
@@ -52,6 +62,8 @@ final class WorkspaceViewModel: ObservableObject {
 	private let changesUseCase: any RepositoryChangesUseCase
 	private let referencesUseCase: any RepositoryReferencesUseCase
 	private let stashesUseCase: any RepositoryStashesUseCase
+	private let operationsUseCase: (any RepositoryOperationsUseCase)?
+	private let externalEditorOpener: (any RepositoryExternalEditorOpening)?
 	private var refreshTask: Task<Void, Never>?
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var diffTask: Task<Void, Never>?
@@ -62,19 +74,22 @@ final class WorkspaceViewModel: ObservableObject {
 	private var displayedCommitDiffID: String?
 	private var requestedCommitDiffID: String?
 	private var contentLoadID: UUID?
-	private var pendingForcePushRemoteName: String?
 
 	init(
 		contentUseCase: any RepositoryContentUseCase,
 		changesUseCase: any RepositoryChangesUseCase,
 		referencesUseCase: any RepositoryReferencesUseCase,
 		stashesUseCase: any RepositoryStashesUseCase,
+		operationsUseCase: (any RepositoryOperationsUseCase)? = nil,
+		externalEditorOpener: (any RepositoryExternalEditorOpening)? = nil,
 		repositoryURL: URL? = nil
 	) {
 		self.contentUseCase = contentUseCase
 		self.changesUseCase = changesUseCase
 		self.referencesUseCase = referencesUseCase
 		self.stashesUseCase = stashesUseCase
+		self.operationsUseCase = operationsUseCase
+		self.externalEditorOpener = externalEditorOpener
 		self.repositoryURL = repositoryURL
 		isLoadingContent = repositoryURL != nil
 	}
@@ -92,7 +107,7 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var currentBranchName: String {
-		guard operationState != .detachedHead else { return "Detached HEAD" }
+		guard !operationState.isDetached else { return "Detached HEAD" }
 		return currentBranch?.name ?? "No Branch"
 	}
 
@@ -108,7 +123,7 @@ final class WorkspaceViewModel: ObservableObject {
 		if currentBranch.behindCount > 0 {
 			components.append("↓\(currentBranch.behindCount)")
 		}
-		if operationState != .normal {
+		if !operationState.isIdle || operationState.isDetached {
 			components.append(operationStateTitle)
 		}
 		return components.joined(separator: " · ")
@@ -128,14 +143,6 @@ final class WorkspaceViewModel: ObservableObject {
 
 	var forcePushConfirmationTitle: String {
 		"Force Push \(currentBranchName)?"
-	}
-
-	var forcePushConfirmationMessage: String {
-		let destination = pendingForcePushRemoteName ?? currentBranch?.upstream
-		guard let destination else {
-			return "The remote branch will be replaced if its lease is unchanged."
-		}
-		return "\(destination) will be replaced if its lease is unchanged."
 	}
 
 	var selectedStagedChanges: [WorkingTreeChange] {
@@ -161,8 +168,13 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	var selectedChange: WorkingTreeChange? {
-		guard selectedChangeIDs.count == 1 else { return nil }
-		return changes.first { $0.id == selectedChangeIDs.first?.changeID }
+		guard selectedChangeIDs.count == 1, let selection = selectedChangeIDs.first else { return nil }
+		switch selection {
+		case .staged(let id), .unstaged(let id):
+			return changes.first { $0.id == id }
+		case .amend, .conflict:
+			return nil
+		}
 	}
 
 	var selectedDiffSource: GitDiffSource? {
@@ -174,7 +186,7 @@ final class WorkspaceViewModel: ObservableObject {
 			return .staged
 		case .unstaged:
 			return .unstaged
-		case .amend:
+		case .amend, .conflict:
 			return nil
 		}
 	}
@@ -198,6 +210,47 @@ final class WorkspaceViewModel: ObservableObject {
 	var selectedAmendChange: GitAmendChange? {
 		guard selectedChangeIDs.count == 1 else { return nil }
 		return selectedAmendChanges.first
+	}
+
+	var conflicts: [GitConflict] {
+		operationState.conflicts
+	}
+
+	var oursConflictLabel: String {
+		switch operationState.operation?.kind {
+		case .rebase:
+			return "Use Target Branch"
+		case .cherryPick:
+			return "Use Current Branch"
+		case .revert:
+			return "Use Current Branch"
+		case .merge, .none:
+			return "Use Current"
+		}
+	}
+
+	var theirsConflictLabel: String {
+		switch operationState.operation?.kind {
+		case .rebase:
+			return "Use Replayed Commit"
+		case .cherryPick:
+			return "Use Picked Commit"
+		case .revert:
+			return "Use Reverted Result"
+		case .merge, .none:
+			return "Use Incoming"
+		}
+	}
+
+	var filteredConflicts: [GitConflict] {
+		conflicts.filter { matchesChangeFilter(path: $0.path) }
+	}
+
+	var selectedConflict: GitConflict? {
+		guard selectedChangeIDs.count == 1, case .conflict(let path) = selectedChangeIDs.first else {
+			return nil
+		}
+		return conflicts.first { $0.path == path }
 	}
 
 	var selectedDiffLineAction: GitDiffLineAction? {
@@ -265,6 +318,21 @@ final class WorkspaceViewModel: ObservableObject {
 		return "Discard Changes to “\(fileName)”?"
 	}
 
+	var pendingDiscardChanges: [WorkingTreeChange]? {
+		guard case .discard(let changes) = pendingRepositoryConfirmation else { return nil }
+		return changes
+	}
+
+	var pendingTagDeletion: GitTag? {
+		guard case .deleteTag(let tag) = pendingRepositoryConfirmation else { return nil }
+		return tag
+	}
+
+	var isPresentingForcePushConfirmation: Bool {
+		guard case .forcePush = pendingRepositoryConfirmation else { return false }
+		return true
+	}
+
 	var deleteTagConfirmationTitle: String {
 		guard let pendingTagDeletion else { return "Delete Tag?" }
 		return "Delete “\(pendingTagDeletion.name)”?"
@@ -287,26 +355,30 @@ final class WorkspaceViewModel: ObservableObject {
 	func canMergeBranch(_ branch: GitBranch) -> Bool {
 		currentBranch != nil
 			&& !branch.isCurrent
-			&& operationState == .normal
+			&& operationState.isIdle
+			&& !operationState.isDetached
 			&& !isLoading
 	}
 
+	func canRebaseOnto(_ branch: GitBranch) -> Bool {
+		canMergeBranch(branch) && changes.isEmpty
+	}
+
 	private var operationStateTitle: String {
-		switch operationState {
-		case .normal:
-			return "No Branch"
-		case .detachedHead:
-			return "Detached HEAD"
-		case .mergeInProgress:
-			return "Merge in Progress"
-		case .rebaseInProgress:
-			return "Rebase in Progress"
-		case .cherryPickInProgress:
-			return "Cherry-pick in Progress"
-		case .revertInProgress:
-			return "Revert in Progress"
-		case .conflicted:
+		if operationState.hasConflicts, operationState.operation == nil {
 			return "Conflicts"
+		}
+		switch operationState.operation?.kind {
+		case .merge:
+			return "Merge in Progress"
+		case .rebase:
+			return "Rebase in Progress"
+		case .cherryPick:
+			return "Cherry-pick in Progress"
+		case .revert:
+			return "Revert in Progress"
+		case .none:
+			return operationState.isDetached ? "Detached HEAD" : "No Branch"
 		}
 	}
 
@@ -337,17 +409,16 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didPresentDiscardConfirmation(for changes: [WorkingTreeChange]) {
 		guard !changes.isEmpty else { return }
-		pendingDiscardChanges = changes
+		pendingRepositoryConfirmation = .discard(changes)
 	}
 
 	func didDismissDiscardConfirmation() {
-		pendingDiscardChanges = nil
+		pendingRepositoryConfirmation = nil
 	}
 
 	func didConfirmDiscardChanges() {
 		guard let pendingDiscardChanges else { return }
-		self.pendingDiscardChanges = nil
-		didRequestDiscard(pendingDiscardChanges)
+		didConfirmPendingRepositoryConfirmation()
 	}
 
 	func didPresentNewBranch() {
@@ -373,21 +444,72 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didPresentTagDeletion(_ tag: GitTag) {
-		pendingTagDeletion = tag
+		pendingRepositoryConfirmation = .deleteTag(tag)
 	}
 
 	func didDismissTagDeletion() {
-		pendingTagDeletion = nil
+		pendingRepositoryConfirmation = nil
 	}
 
 	func didConfirmTagDeletion(_ tag: GitTag) {
-		guard let repositoryURL else { return }
-		pendingTagDeletion = nil
-		requestMutation {
-			try await self.referencesUseCase.deleteTag(
-				named: tag.name,
-				at: repositoryURL
-			)
+		guard pendingTagDeletion == tag else { return }
+		didConfirmPendingRepositoryConfirmation()
+	}
+
+	func didDismissPendingRepositoryConfirmation() {
+		pendingRepositoryConfirmation = nil
+	}
+
+	func didConfirmPendingRepositoryConfirmation() {
+		guard let confirmation = pendingRepositoryConfirmation else { return }
+		pendingRepositoryConfirmation = nil
+		switch confirmation {
+		case .discard(let changes):
+			didRequestDiscard(changes)
+		case .deleteBranch(let branch):
+			requestDeleteBranch(branch)
+		case .deleteTag(let tag):
+			guard let repositoryURL else { return }
+			requestMutation {
+				try await self.referencesUseCase.deleteTag(named: tag.name, at: repositoryURL)
+			}
+		case .dropStash(let stash):
+			guard let repositoryURL else { return }
+			requestMutation {
+				try await self.stashesUseCase.dropStash(stash, at: repositoryURL)
+			}
+		case .forcePush(let remoteName):
+			guard let repositoryURL, pushAction != .unavailable else { return }
+			requestMutation {
+				try await self.referencesUseCase.forcePush(
+					currentBranch: self.currentBranch,
+					remotes: self.remotes,
+					operationState: self.operationState,
+					selectedRemoteName: remoteName,
+					at: repositoryURL
+				)
+			}
+		case .operation(let action, let operation):
+			guard
+				let repositoryURL,
+				let operationsUseCase,
+				operationState.operation?.kind == operation
+			else { return }
+			requestMutation {
+				try await operationsUseCase.perform(action, for: operation, at: repositoryURL)
+			}
+		case .hardReset(let commit):
+			didRequestReset(commit, mode: .hard)
+		case .deleteRemote(let remote):
+			guard let repositoryURL else { return }
+			requestMutation {
+				try await self.referencesUseCase.deleteRemote(named: remote.name, at: repositoryURL)
+			}
+		case .deleteRemoteBranch(let branch):
+			guard let repositoryURL else { return }
+			requestMutation {
+				try await self.referencesUseCase.deleteRemoteBranch(branch, at: repositoryURL)
+			}
 		}
 	}
 
@@ -571,6 +693,33 @@ final class WorkspaceViewModel: ObservableObject {
 					alertMessage = error.localizedDescription
 				}
 			}
+		case .conflict(let path):
+			guard conflicts.contains(where: { $0.path == path }) else {
+				clearDisplayedDiff()
+				return
+			}
+			requestedDiffSelection = selection
+			isLoadingDiff = true
+			diffTask = Task {
+				defer { finishDiffLoad(for: selection) }
+				do {
+					let data = try await contentUseCase.loadFileContents(
+						at: path,
+						in: repositoryURL
+					)
+					guard selectedChangeIDs == Set([selection]) else { return }
+					conflictContents = String(data: data, encoding: .utf8)
+					conflictPreviewUnavailable = conflictContents == nil
+					updateDisplayedDiff(conflictContents ?? "", for: selection)
+				} catch is CancellationError {
+					return
+				} catch {
+					guard selectedChangeIDs == Set([selection]) else { return }
+					conflictContents = nil
+					conflictPreviewUnavailable = true
+					updateDisplayedDiff("", for: selection)
+				}
+			}
 		}
 	}
 
@@ -732,6 +881,13 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	func didRequestAmendWithoutEditingMessage() {
+		guard let repositoryURL, changes.contains(where: \.isStaged), !isLoading else { return }
+		requestMutation {
+			try await self.changesUseCase.amendWithoutEditingMessage(at: repositoryURL)
+		}
+	}
+
 	func didSetAmendingCommit(_ isAmending: Bool) {
 		guard !isAmending || canAmendCommit else { return }
 		isAmendingCommit = isAmending
@@ -749,7 +905,12 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didRequestSwitchBranch() {
-		guard let repositoryURL, let branch = selectedBranch, !branch.isCurrent else { return }
+		guard
+			let repositoryURL,
+			let branch = selectedBranch,
+			!branch.isCurrent,
+			operationState.isIdle
+		else { return }
 		requestMutation {
 			try await self.referencesUseCase.switchBranch(
 				named: branch.name,
@@ -759,7 +920,7 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didRequestCreateBranch() {
-		guard let repositoryURL else { return }
+		guard let repositoryURL, operationState.isIdle else { return }
 		let name = newBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !name.isEmpty else { return }
 		requestMutation {
@@ -795,7 +956,8 @@ final class WorkspaceViewModel: ObservableObject {
 	func didRequestCreateLocalBranch(from remoteBranch: GitRemoteBranch) {
 		guard
 			let repositoryURL,
-			!branches.contains(where: { $0.name == remoteBranch.name })
+			!branches.contains(where: { $0.name == remoteBranch.name }),
+			operationState.isIdle
 		else { return }
 		requestMutation {
 			try await self.referencesUseCase.createTrackingBranch(
@@ -807,7 +969,21 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func didRequestDeleteBranch() {
-		guard let repositoryURL, let branch = selectedBranch, !branch.isCurrent else { return }
+		guard
+			let branch = selectedBranch,
+			!branch.isCurrent,
+			operationState.isIdle
+		else { return }
+		requestDeleteBranch(branch)
+	}
+
+	func didPresentBranchDeletion(_ branch: GitBranch) {
+		guard !branch.isCurrent, operationState.isIdle, !isLoading else { return }
+		pendingRepositoryConfirmation = .deleteBranch(branch)
+	}
+
+	private func requestDeleteBranch(_ branch: GitBranch) {
+		guard let repositoryURL, !branch.isCurrent, operationState.isIdle else { return }
 		requestMutation {
 			try await self.referencesUseCase.deleteBranch(
 				named: branch.name,
@@ -816,18 +992,192 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	func didRequestRenameBranch(_ branch: GitBranch, to newName: String) {
+		guard let repositoryURL else { return }
+		let newName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !newName.isEmpty, newName != branch.name else { return }
+		requestMutation {
+			let snapshot = try await self.referencesUseCase.renameBranch(
+				named: branch.name,
+				to: newName,
+				at: repositoryURL
+			)
+			self.selectedBranchID = newName
+			return snapshot
+		}
+	}
+
+	func didPresentBranchRename(_ branch: GitBranch) {
+		guard operationState.isIdle, !isLoading else { return }
+		branchRenameName = branch.name
+		pendingBranchRename = branch
+	}
+
+	func didDismissBranchRename() {
+		pendingBranchRename = nil
+		branchRenameName = ""
+	}
+
+	func didConfirmBranchRename() {
+		guard let branch = pendingBranchRename else { return }
+		let name = branchRenameName
+		didDismissBranchRename()
+		didRequestRenameBranch(branch, to: name)
+	}
+
 	func didRequestMergeBranch(_ branch: GitBranch) {
 		guard let repositoryURL, canMergeBranch(branch) else { return }
 		requestMutation {
-			let snapshot = try await self.referencesUseCase.mergeBranch(
+			try await self.referencesUseCase.mergeBranch(
 				named: branch.name,
 				at: repositoryURL
 			)
-			if snapshot.operationState == .conflicted {
-				self.alertMessage =
-					"Merge has conflicts. Resolve the conflicted files in Changes before continuing."
-			}
-			return snapshot
+		}
+	}
+
+	func didRequestRebase(onto branch: GitBranch) {
+		guard let repositoryURL, canRebaseOnto(branch), let operationsUseCase else { return }
+		requestMutation {
+			try await operationsUseCase.rebase(onto: branch.name, at: repositoryURL)
+		}
+	}
+
+	func didRequestCherryPick(_ commit: GitCommit, mainline: Int? = nil) {
+		guard let repositoryURL, operationState.isIdle, let operationsUseCase else { return }
+		requestMutation {
+			try await operationsUseCase.cherryPick(
+				commitHash: commit.hash,
+				mainline: mainline,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didRequestRevert(_ commit: GitCommit, mainline: Int? = nil) {
+		guard let repositoryURL, operationState.isIdle, let operationsUseCase else { return }
+		requestMutation {
+			try await operationsUseCase.revert(
+				commitHash: commit.hash,
+				mainline: mainline,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didPresentCommitAction(_ action: PendingMainlineAction) {
+		if action.commit.parentHashes.count > 1 {
+			pendingMainlineAction = action
+		} else {
+			didPerformCommitAction(action, mainline: nil)
+		}
+	}
+
+	func didPerformPendingMainlineAction(parent: Int) {
+		guard let action = pendingMainlineAction else { return }
+		pendingMainlineAction = nil
+		didPerformCommitAction(action, mainline: parent)
+	}
+
+	func didPresentReset(_ commit: GitCommit) {
+		guard operationState.isIdle, !operationState.isDetached, !isLoading else { return }
+		resetMode = .mixed
+		pendingResetCommit = commit
+	}
+
+	func didConfirmReset() {
+		guard let commit = pendingResetCommit else { return }
+		let mode = resetMode
+		pendingResetCommit = nil
+		if mode == .hard {
+			didPresentHardReset(commit)
+		} else {
+			didRequestReset(commit, mode: mode)
+		}
+	}
+
+	private func didPerformCommitAction(_ action: PendingMainlineAction, mainline: Int?) {
+		switch action {
+		case .cherryPick(let commit):
+			didRequestCherryPick(commit, mainline: mainline)
+		case .revert(let commit):
+			didRequestRevert(commit, mainline: mainline)
+		}
+	}
+
+	func didRequestReset(_ commit: GitCommit, mode: GitResetMode) {
+		guard
+			let repositoryURL,
+			operationState.isIdle,
+			!operationState.isDetached,
+			let operationsUseCase
+		else { return }
+		requestMutation {
+			try await operationsUseCase.reset(to: commit.hash, mode: mode, at: repositoryURL)
+		}
+	}
+
+	func didResolveConflict(_ conflict: GitConflict, using resolution: GitConflictResolution) {
+		guard let repositoryURL, let operationsUseCase else { return }
+		requestMutation {
+			try await operationsUseCase.resolve(
+				conflict,
+				using: resolution,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didMarkConflictResolved(_ conflict: GitConflict) {
+		guard let repositoryURL, let operationsUseCase else { return }
+		requestMutation {
+			try await operationsUseCase.markResolved(path: conflict.path, at: repositoryURL)
+		}
+	}
+
+	func didPerformOperationAction(_ action: RepositoryOperationAction) {
+		guard
+			let repositoryURL,
+			let operation = operationState.operation,
+			let operationsUseCase,
+			action != .continue || conflicts.isEmpty
+		else { return }
+		requestMutation {
+			try await operationsUseCase.perform(action, for: operation.kind, at: repositoryURL)
+		}
+	}
+
+	func didPresentOperationAction(_ action: RepositoryOperationAction) {
+		guard let operation = operationState.operation, action != .continue else { return }
+		pendingRepositoryConfirmation = .operation(action, operation.kind)
+	}
+
+	func didConfirmPendingOperationAction() {
+		didConfirmPendingRepositoryConfirmation()
+	}
+
+	func didViewConflicts() {
+		guard let conflict = conflicts.first else { return }
+		selectedSection = .changes
+		selectedChangeIDs = [.conflict(conflict.path)]
+		didChangeSelectedChanges()
+	}
+
+	func didOpenConflictInEditor(_ conflict: GitConflict) {
+		guard let repositoryURL, let externalEditorOpener else { return }
+		let fileURL = repositoryURL.appending(path: conflict.path)
+		guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+		do {
+			let storedBundleIdentifier = UserDefaults.standard.string(
+				forKey: "externalEditorBundleIdentifier"
+			)
+			try externalEditorOpener.openFile(
+				at: fileURL,
+				applicationBundleIdentifier: storedBundleIdentifier?.isEmpty == false
+					? storedBundleIdentifier
+					: nil
+			)
+		} catch {
+			alertMessage = "The selected editor is unavailable. Choose another app in Settings."
 		}
 	}
 
@@ -883,6 +1233,7 @@ final class WorkspaceViewModel: ObservableObject {
 		requestMutation {
 			let snapshot = try await self.stashesUseCase.createStash(
 				message: message,
+				includeUntracked: self.includeUntrackedInStash,
 				at: repositoryURL
 			)
 			self.newStashMessage = ""
@@ -894,6 +1245,26 @@ final class WorkspaceViewModel: ObservableObject {
 		guard let repositoryURL, let stash = selectedStash else { return }
 		requestMutation {
 			try await self.stashesUseCase.applyStash(stash, at: repositoryURL)
+		}
+	}
+
+	func didSelectStash(_ stashID: String?) {
+		selectedStashID = stashID
+		stashDiff = ""
+		guard let repositoryURL, let stash = selectedStash else { return }
+		Task {
+			do {
+				let requestedDiff = try await stashesUseCase.loadDiff(
+					for: stash,
+					at: repositoryURL
+				)
+				guard selectedStashID == stash.id else { return }
+				stashDiff = requestedDiff
+			} catch is CancellationError {
+				return
+			} catch {
+				alertMessage = error.localizedDescription
+			}
 		}
 	}
 
@@ -911,8 +1282,13 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
+	func didPresentStashDrop(_ stash: GitStash) {
+		guard !isLoading else { return }
+		pendingRepositoryConfirmation = .dropStash(stash)
+	}
+
 	func didRequestPull() {
-		guard let repositoryURL else { return }
+		guard let repositoryURL, operationState.isIdle else { return }
 		requestMutation {
 			try await self.referencesUseCase.pull(at: repositoryURL)
 		}
@@ -951,29 +1327,16 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didPresentForcePushConfirmation(remoteName: String? = nil) {
 		guard pushAction != .unavailable else { return }
-		pendingForcePushRemoteName = remoteName
-		isPresentingForcePushConfirmation = true
+		pendingRepositoryConfirmation = .forcePush(remoteName: remoteName)
 	}
 
 	func didDismissForcePushConfirmation() {
-		pendingForcePushRemoteName = nil
-		isPresentingForcePushConfirmation = false
+		pendingRepositoryConfirmation = nil
 	}
 
 	func didConfirmForcePush() {
-		guard let repositoryURL else { return }
-		guard pushAction != .unavailable else { return }
-		let remoteName = pendingForcePushRemoteName
-		didDismissForcePushConfirmation()
-		requestMutation {
-			try await self.referencesUseCase.forcePush(
-				currentBranch: self.currentBranch,
-				remotes: self.remotes,
-				operationState: self.operationState,
-				selectedRemoteName: remoteName,
-				at: repositoryURL
-			)
-		}
+		guard isPresentingForcePushConfirmation else { return }
+		didConfirmPendingRepositoryConfirmation()
 	}
 
 	func didRequestPushTags(remoteName: String) {
@@ -984,6 +1347,84 @@ final class WorkspaceViewModel: ObservableObject {
 				at: repositoryURL
 			)
 		}
+	}
+
+	func didRequestAddRemote(name: String, fetchURL: String, pushURL: String?) {
+		guard let repositoryURL else { return }
+		requestMutation {
+			try await self.referencesUseCase.addRemote(
+				named: name,
+				fetchURL: fetchURL,
+				pushURL: pushURL,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didPresentAddRemote() {
+		remoteEditorPresentation = .add
+	}
+
+	func didPresentRemoteEditor(_ remote: GitRemote) {
+		remoteEditorPresentation = .edit(remote)
+	}
+
+	func didPresentRemoteRename(_ remote: GitRemote) {
+		pendingRemoteRename = remote
+	}
+
+	func didRequestRenameRemote(_ remote: GitRemote, to newName: String) {
+		guard let repositoryURL else { return }
+		requestMutation {
+			let snapshot = try await self.referencesUseCase.renameRemote(
+				named: remote.name,
+				to: newName,
+				at: repositoryURL
+			)
+			self.selectedRemoteID = newName
+			return snapshot
+		}
+	}
+
+	func didRequestUpdateRemote(_ remote: GitRemote, fetchURL: String, pushURL: String?) {
+		guard let repositoryURL else { return }
+		requestMutation {
+			try await self.referencesUseCase.updateRemote(
+				named: remote.name,
+				fetchURL: fetchURL,
+				pushURL: pushURL,
+				at: repositoryURL
+			)
+		}
+	}
+
+	func didRequestDeleteRemote(_ remote: GitRemote) {
+		guard let repositoryURL else { return }
+		requestMutation {
+			try await self.referencesUseCase.deleteRemote(named: remote.name, at: repositoryURL)
+		}
+	}
+
+	func didPresentRemoteDeletion(_ remote: GitRemote) {
+		guard !isLoading else { return }
+		pendingRepositoryConfirmation = .deleteRemote(remote)
+	}
+
+	func didRequestDeleteRemoteBranch(_ branch: GitRemoteBranch) {
+		guard let repositoryURL else { return }
+		requestMutation {
+			try await self.referencesUseCase.deleteRemoteBranch(branch, at: repositoryURL)
+		}
+	}
+
+	func didPresentRemoteBranchDeletion(_ branch: GitRemoteBranch) {
+		guard operationState.isIdle, !isLoading else { return }
+		pendingRepositoryConfirmation = .deleteRemoteBranch(branch)
+	}
+
+	func didPresentHardReset(_ commit: GitCommit) {
+		guard operationState.isIdle, !operationState.isDetached, !isLoading else { return }
+		pendingRepositoryConfirmation = .hardReset(commit)
 	}
 
 	private func requestMutation(
@@ -1005,6 +1446,12 @@ final class WorkspaceViewModel: ObservableObject {
 				return
 			} catch {
 				alertMessage = error.localizedDescription
+				do {
+					let snapshot = try await contentUseCase.loadSnapshot(at: expectedRepositoryURL)
+					try apply(snapshot, at: expectedRepositoryURL)
+				} catch is CancellationError {
+					return
+				} catch {}
 			}
 		}
 	}
@@ -1154,13 +1601,16 @@ final class WorkspaceViewModel: ObservableObject {
 
 	private func preserveChangeSelection() {
 		var availableSelections = availableWorkingTreeSelections(in: displayedWorkingTreeChanges)
+		availableSelections.formUnion(conflicts.map { WorkspaceChangeSelection.conflict($0.path) })
 		if isAmendingCommit {
 			availableSelections.formUnion(
 				amendChanges.map { WorkspaceChangeSelection.amend($0.id) }
 			)
 		}
 		selectedChangeIDs.formIntersection(availableSelections)
-		if selectedChangeIDs.isEmpty,
+		if selectedChangeIDs.isEmpty, let firstConflict = conflicts.first {
+			selectedChangeIDs = [.conflict(firstConflict.path)]
+		} else if selectedChangeIDs.isEmpty,
 			let firstStagedChange = displayedWorkingTreeChanges.first(where: \.isStaged)
 		{
 			selectedChangeIDs = [.staged(firstStagedChange.id)]
@@ -1234,6 +1684,8 @@ final class WorkspaceViewModel: ObservableObject {
 			diff = ""
 		}
 		displayedDiffSelection = nil
+		conflictContents = nil
+		conflictPreviewUnavailable = false
 		clearDiffLoad()
 	}
 
@@ -1256,7 +1708,10 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	private var filteredWorkingTreeChanges: [WorkingTreeChange] {
-		displayedWorkingTreeChanges.filter { matchesChangeFilter(path: $0.path) }
+		let conflictPaths = Set(conflicts.map(\.path))
+		return displayedWorkingTreeChanges.filter {
+			!conflictPaths.contains($0.path) && matchesChangeFilter(path: $0.path)
+		}
 	}
 
 	private func matchesChangeFilter(path: String) -> Bool {

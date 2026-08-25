@@ -22,6 +22,14 @@ struct CommitBar: View {
 				.toggleStyle(.checkbox)
 				.controlSize(.small)
 				.disabled(!viewModel.canAmendCommit)
+				Button("Amend Without Editing Message") {
+					viewModel.didRequestAmendWithoutEditingMessage()
+				}
+				.controlSize(.small)
+				.disabled(
+					!viewModel.changes.contains(where: \.isStaged)
+						|| !viewModel.canAmendCommit
+				)
 				Button(viewModel.isAmendingCommit ? "Amend" : "Commit") {
 					viewModel.didRequestCommit()
 				}

@@ -1,5 +1,6 @@
 import DomainGit
 import DomainGitInterface
+import FeatureRepositoryInterface
 import Foundation
 import XCTest
 
@@ -56,6 +57,7 @@ struct GitRepositoryStub: GitRepository {
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] { [] }
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { commits }
 	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String { "" }
+	func requestStashDiff(for stash: GitStash, at repositoryURL: URL) async throws -> String { "" }
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] { branches }
 	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] { remotes }
 	func requestOperationState(at repositoryURL: URL) async throws -> RepositoryOperationState {
@@ -87,6 +89,7 @@ struct GitRepositoryStub: GitRepository {
 		for change: WorkingTreeChange,
 		at repositoryURL: URL
 	) async throws {}
+	func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws {}
 	func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws {}
 	func requestUnstageFromAmend(change: GitAmendChange, at repositoryURL: URL) async throws {}
 	func requestCommit(
@@ -103,8 +106,27 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws {}
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws {}
+	func requestRenameBranch(named name: String, to newName: String, at repositoryURL: URL)
+		async throws
+	{}
 	func requestMergeBranch(named name: String, at repositoryURL: URL) async throws {
 		await recorder?.record(.merge(branchName: name))
+	}
+	func requestRebase(onto branchName: String, at repositoryURL: URL) async throws {}
+	func requestCherryPick(commitHash: String, mainline: Int?, at repositoryURL: URL) async throws {}
+	func requestRevert(commitHash: String, mainline: Int?, at repositoryURL: URL) async throws {}
+	func requestResolveConflict(
+		_ conflict: GitConflict,
+		using resolution: GitConflictResolution,
+		at repositoryURL: URL
+	) async throws {}
+	func requestMarkConflictResolved(path: String, at repositoryURL: URL) async throws {}
+	func requestPerformOperationAction(
+		_ action: RepositoryOperationAction,
+		for operation: RepositoryOperationKind,
+		at repositoryURL: URL
+	) async throws {}
+	func requestReset(to commitHash: String, mode: GitResetMode, at repositoryURL: URL) async throws {
 	}
 	func requestCreateTag(
 		named name: String,
@@ -117,7 +139,11 @@ struct GitRepositoryStub: GitRepository {
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {
 		await recorder?.record(.deleteTag(name: name))
 	}
-	func requestCreateStash(message: String, at repositoryURL: URL) async throws {}
+	func requestCreateStash(
+		message: String,
+		includeUntracked: Bool,
+		at repositoryURL: URL
+	) async throws {}
 	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
 	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
 	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
@@ -133,6 +159,23 @@ struct GitRepositoryStub: GitRepository {
 	func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
 		await recorder?.record(.pushTags(remoteName: name))
 	}
+	func requestAddRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws {}
+	func requestRenameRemote(named name: String, to newName: String, at repositoryURL: URL)
+		async throws
+	{}
+	func requestUpdateRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws {}
+	func requestDeleteRemote(named name: String, at repositoryURL: URL) async throws {}
+	func requestDeleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws {}
 }
 
 actor GitRepositoryRecorder {
@@ -172,13 +215,16 @@ func makeRepositoryTabsUseCase(
 
 @MainActor
 func makeWorkspaceViewModel(
-	repository: any GitRepository = GitRepositoryStub()
+	repository: any GitRepository = GitRepositoryStub(),
+	externalEditorOpener: (any RepositoryExternalEditorOpening)? = nil
 ) -> WorkspaceViewModel {
 	WorkspaceViewModel(
 		contentUseCase: RepositoryUseCaseFactory.makeContentUseCase(repository: repository),
 		changesUseCase: RepositoryUseCaseFactory.makeChangesUseCase(repository: repository),
 		referencesUseCase: RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository),
-		stashesUseCase: RepositoryUseCaseFactory.makeStashesUseCase(repository: repository)
+		stashesUseCase: RepositoryUseCaseFactory.makeStashesUseCase(repository: repository),
+		operationsUseCase: RepositoryUseCaseFactory.makeOperationsUseCase(repository: repository),
+		externalEditorOpener: externalEditorOpener
 	)
 }
 

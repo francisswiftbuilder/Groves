@@ -146,6 +146,99 @@ final class WorkspaceViewModelTests: XCTestCase {
 		XCTAssertEqual(viewModel.currentBranchStatus, "Rebase in Progress")
 	}
 
+	func testConflictsAreExcludedFromStagedAndUnstagedSections() async throws {
+		let change = WorkingTreeChange(
+			path: "Sources/Conflict.swift",
+			previousPath: nil,
+			indexState: .unmerged,
+			workingTreeState: .unmerged
+		)
+		let conflict = GitConflict(
+			path: change.path,
+			kind: .bothModified,
+			hasBase: true,
+			hasOurs: true,
+			hasTheirs: true
+		)
+		let viewModel = makeWorkspaceViewModel(
+			repository: GitRepositoryStub(
+				changes: [change],
+				operationState: RepositoryOperationState(
+					head: .attached,
+					operation: RepositoryOperation(kind: .merge),
+					conflicts: [conflict]
+				)
+			)
+		)
+
+		viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Conflict"))
+		try await waitUntil { viewModel.conflicts == [conflict] }
+
+		XCTAssertEqual(viewModel.filteredConflicts, [conflict])
+		XCTAssertTrue(viewModel.filteredStagedChanges.isEmpty)
+		XCTAssertTrue(viewModel.filteredUnstagedChanges.isEmpty)
+		XCTAssertEqual(viewModel.selectedChangeIDs, [.conflict(conflict.path)])
+	}
+
+	func testExternalEditorUsesConfiguredApplicationAndIgnoresDeletedConflict() async throws {
+		let repositoryURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesExternalEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
+		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+			UserDefaults.standard.removeObject(forKey: "externalEditorBundleIdentifier")
+		}
+		let conflict = GitConflict(
+			path: "Conflict.swift",
+			kind: .bothModified,
+			hasBase: true,
+			hasOurs: true,
+			hasTheirs: true
+		)
+		let fileURL = repositoryURL.appending(path: conflict.path)
+		try Data("conflict".utf8).write(to: fileURL)
+		let opener = RepositoryExternalEditorOpenerSpy()
+		let viewModel = makeWorkspaceViewModel(externalEditorOpener: opener)
+		viewModel.didChooseRepository(repositoryURL)
+		try await waitUntil { viewModel.repositoryURL == repositoryURL }
+		UserDefaults.standard.set("com.example.Editor", forKey: "externalEditorBundleIdentifier")
+
+		viewModel.didOpenConflictInEditor(conflict)
+
+		XCTAssertEqual(opener.openedFileURL, fileURL)
+		XCTAssertEqual(opener.applicationBundleIdentifier, "com.example.Editor")
+		try FileManager.default.removeItem(at: fileURL)
+		viewModel.didOpenConflictInEditor(conflict)
+		XCTAssertEqual(opener.invocationCount, 1)
+	}
+
+	func testUnavailableExternalEditorShowsSettingsRecovery() async throws {
+		let repositoryURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesMissingEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
+		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let conflict = GitConflict(
+			path: "Conflict.swift",
+			kind: .bothModified,
+			hasBase: true,
+			hasOurs: true,
+			hasTheirs: true
+		)
+		try Data("conflict".utf8).write(to: repositoryURL.appending(path: conflict.path))
+		let opener = RepositoryExternalEditorOpenerSpy()
+		opener.error = CocoaError(.fileNoSuchFile)
+		let viewModel = makeWorkspaceViewModel(externalEditorOpener: opener)
+		viewModel.didChooseRepository(repositoryURL)
+		try await waitUntil { viewModel.repositoryURL == repositoryURL }
+
+		viewModel.didOpenConflictInEditor(conflict)
+
+		XCTAssertEqual(
+			viewModel.alertMessage,
+			"The selected editor is unavailable. Choose another app in Settings."
+		)
+	}
+
 	func testMergeBranchUsesExplicitContextMenuBranch() async throws {
 		let recorder = GitRepositoryRecorder()
 		let currentBranch = GitBranch(

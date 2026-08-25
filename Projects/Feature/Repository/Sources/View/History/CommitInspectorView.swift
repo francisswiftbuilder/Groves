@@ -85,9 +85,20 @@ struct CommitInspectorView: View {
 	private func commitInformation(_ commit: GitCommit) -> some View {
 		CommitInspectorSection("Information") {
 			CommitInspectorValue("Author", value: commit.author)
+			if !commit.authorEmail.isEmpty {
+				CommitInspectorValue("Author Email", value: commit.authorEmail)
+			}
+			CommitInspectorValue(
+				"Authored",
+				value: commit.date.formatted(date: .abbreviated, time: .shortened)
+			)
+			CommitInspectorValue("Committer", value: commit.committer)
+			if !commit.committerEmail.isEmpty {
+				CommitInspectorValue("Committer Email", value: commit.committerEmail)
+			}
 			CommitInspectorValue(
 				"Committed",
-				value: commit.date.formatted(date: .abbreviated, time: .shortened)
+				value: commit.committedDate.formatted(date: .abbreviated, time: .shortened)
 			)
 			CommitInspectorValue("Hash", value: commit.shortHash, isMonospaced: true)
 			if !commit.parentHashes.isEmpty {

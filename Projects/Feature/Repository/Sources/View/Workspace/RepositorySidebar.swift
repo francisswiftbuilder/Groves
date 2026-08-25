@@ -61,13 +61,25 @@ struct RepositorySidebar: View {
 							viewModel.didRequestMergeBranch(branch)
 						}
 						.disabled(!viewModel.canMergeBranch(branch))
+
+						Button(
+							"Rebase \(currentBranch.name) onto \(branch.name)",
+							systemImage: "arrow.triangle.2.circlepath"
+						) {
+							viewModel.didRequestRebase(onto: branch)
+						}
+						.disabled(!viewModel.canRebaseOnto(branch))
 					}
+
+					Button("Rename…", systemImage: "pencil") {
+						viewModel.didPresentBranchRename(branch)
+					}
+					.disabled(!viewModel.operationState.isIdle || viewModel.isLoading)
 
 					Divider()
 
 					Button("Delete Branch", systemImage: "trash", role: .destructive) {
-						selectBranch(branch)
-						viewModel.didRequestDeleteBranch()
+						viewModel.didPresentBranchDeletion(branch)
 					}
 					.disabled(branch.isCurrent)
 				}
@@ -86,8 +98,7 @@ struct RepositorySidebar: View {
 					Divider()
 
 					Button("Delete Stash", systemImage: "trash", role: .destructive) {
-						selectStash(stash)
-						viewModel.didRequestDropStash()
+						viewModel.didPresentStashDrop(stash)
 					}
 				}
 			case .remoteBranch(_, let id):
@@ -104,6 +115,11 @@ struct RepositorySidebar: View {
 						Button("Create Local Branch", systemImage: "arrow.down.to.line") {
 							switchToRemoteBranch(remoteBranch)
 						}
+					}
+
+					Divider()
+					Button("Delete Remote Branch…", systemImage: "trash", role: .destructive) {
+						viewModel.didPresentRemoteBranchDeletion(remoteBranch)
 					}
 				}
 			case .tag(_, let id):

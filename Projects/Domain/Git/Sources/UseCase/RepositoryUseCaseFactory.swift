@@ -45,6 +45,15 @@ public enum RepositoryUseCaseFactory {
 			content: DefaultRepositoryContentUseCase(repository: repository)
 		)
 	}
+
+	public static func makeOperationsUseCase(
+		repository: any GitRepository
+	) -> any RepositoryOperationsUseCase {
+		DefaultRepositoryOperationsUseCase(
+			repository: repository,
+			content: DefaultRepositoryContentUseCase(repository: repository)
+		)
+	}
 }
 
 @MainActor
@@ -255,6 +264,11 @@ private struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
+
+	func amendWithoutEditingMessage(at repositoryURL: URL) async throws -> RepositorySnapshot {
+		try await repository.requestAmendWithoutEditingMessage(at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
 }
 
 private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
@@ -266,7 +280,9 @@ private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		remotes: [GitRemote],
 		operationState: RepositoryOperationState
 	) -> RepositoryPushAction {
-		guard let currentBranch, operationState != .detachedHead else { return .unavailable }
+		guard let currentBranch, !operationState.isDetached, operationState.isIdle else {
+			return .unavailable
+		}
 		if currentBranch.upstream != nil {
 			return .upstream
 		}
@@ -312,6 +328,15 @@ private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		-> RepositorySnapshot
 	{
 		try await repository.requestDeleteBranch(named: name, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	func renameBranch(
+		named name: String,
+		to newName: String,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot {
+		try await repository.requestRenameBranch(named: name, to: newName, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
@@ -400,6 +425,59 @@ private struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
+	func addRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot {
+		try await repository.requestAddRemote(
+			named: name,
+			fetchURL: fetchURL,
+			pushURL: pushURL,
+			at: repositoryURL
+		)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	func renameRemote(
+		named name: String,
+		to newName: String,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot {
+		try await repository.requestRenameRemote(named: name, to: newName, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	func updateRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot {
+		try await repository.requestUpdateRemote(
+			named: name,
+			fetchURL: fetchURL,
+			pushURL: pushURL,
+			at: repositoryURL
+		)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	func deleteRemote(named name: String, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
+	{
+		try await repository.requestDeleteRemote(named: name, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
+	{
+		try await repository.requestDeleteRemoteBranch(branch, at: repositoryURL)
+		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
 	private func pushTarget(
 		currentBranch: GitBranch?,
 		remotes: [GitRemote],
@@ -433,10 +511,18 @@ private struct DefaultRepositoryStashesUseCase: RepositoryStashesUseCase {
 	let repository: any GitRepository
 	let content: any RepositoryContentUseCase
 
-	func createStash(message: String, at repositoryURL: URL) async throws
+	func loadDiff(for stash: GitStash, at repositoryURL: URL) async throws -> String {
+		try await repository.requestStashDiff(for: stash, at: repositoryURL)
+	}
+
+	func createStash(message: String, includeUntracked: Bool, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		try await repository.requestCreateStash(message: message, at: repositoryURL)
+		try await repository.requestCreateStash(
+			message: message,
+			includeUntracked: includeUntracked,
+			at: repositoryURL
+		)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 

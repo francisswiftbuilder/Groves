@@ -25,4 +25,5 @@ public protocol RepositoryChangesUseCase: Sendable {
 		-> RepositorySnapshot
 	func commit(subject: String, body: String, amend: Bool, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
+	func amendWithoutEditingMessage(at repositoryURL: URL) async throws -> RepositorySnapshot
 }

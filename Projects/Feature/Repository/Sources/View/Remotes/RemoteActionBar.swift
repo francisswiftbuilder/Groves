@@ -3,9 +3,14 @@ import SwiftUI
 
 struct RemoteActionBar: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
+	let onAdd: () -> Void
 
 	var body: some View {
 		HStack(spacing: 10) {
+			Button("Add Remote…", systemImage: "plus") {
+				onAdd()
+			}
+
 			Label(viewModel.selectedRemote?.name ?? "Remote", systemImage: "icloud")
 				.font(.callout)
 				.foregroundStyle(.secondary)

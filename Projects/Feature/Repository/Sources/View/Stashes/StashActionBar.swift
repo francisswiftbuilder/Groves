@@ -3,6 +3,7 @@ import SwiftUI
 
 struct StashActionBar: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
+	let onDelete: () -> Void
 
 	var body: some View {
 		HStack(spacing: 10) {
@@ -15,6 +16,9 @@ struct StashActionBar: View {
 				.onSubmit {
 					viewModel.didRequestCreateStash()
 				}
+
+			Toggle("Include Untracked Files", isOn: $viewModel.includeUntrackedInStash)
+				.toggleStyle(.checkbox)
 
 			Button("Stash") {
 				viewModel.didRequestCreateStash()
@@ -32,8 +36,8 @@ struct StashActionBar: View {
 			}
 			.disabled(viewModel.selectedStash == nil || viewModel.isLoading)
 
-			Button("Delete", role: .destructive) {
-				viewModel.didRequestDropStash()
+			Button("Delete…", role: .destructive) {
+				onDelete()
 			}
 			.disabled(viewModel.selectedStash == nil || viewModel.isLoading)
 		}

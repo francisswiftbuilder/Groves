@@ -12,6 +12,8 @@ public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 			let changesUseCase = dependencies.makeRepositoryChangesUseCase()
 			let referencesUseCase = dependencies.makeRepositoryReferencesUseCase()
 			let stashesUseCase = dependencies.makeRepositoryStashesUseCase()
+			let operationsUseCase = dependencies.makeRepositoryOperationsUseCase()
+			let externalEditorOpener = dependencies.makeRepositoryExternalEditorOpener()
 			return RepositoryTabsViewModel(
 				useCase: try dependencies.makeRepositoryTabsUseCase(),
 				makeWorkspaceViewModel: { repositoryURL in
@@ -20,6 +22,8 @@ public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 						changesUseCase: changesUseCase,
 						referencesUseCase: referencesUseCase,
 						stashesUseCase: stashesUseCase,
+						operationsUseCase: operationsUseCase,
+						externalEditorOpener: externalEditorOpener,
 						repositoryURL: repositoryURL
 					)
 				}

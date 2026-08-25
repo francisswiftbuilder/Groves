@@ -7,6 +7,7 @@ public protocol GitRepository: Sendable {
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange]
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit]
 	func requestCommitDiff(for commit: GitCommit, at repositoryURL: URL) async throws -> String
+	func requestStashDiff(for stash: GitStash, at repositoryURL: URL) async throws -> String
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch]
 	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote]
 	func requestOperationState(at repositoryURL: URL) async throws -> RepositoryOperationState
@@ -32,6 +33,7 @@ public protocol GitRepository: Sendable {
 	func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws
 	func requestUnstageFromAmend(change: GitAmendChange, at repositoryURL: URL) async throws
 	func requestCommit(subject: String, body: String, amend: Bool, at repositoryURL: URL) async throws
+	func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws
 	func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateTrackingBranch(
@@ -40,7 +42,24 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	) async throws
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws
+	func requestRenameBranch(named name: String, to newName: String, at repositoryURL: URL)
+		async throws
 	func requestMergeBranch(named name: String, at repositoryURL: URL) async throws
+	func requestRebase(onto branchName: String, at repositoryURL: URL) async throws
+	func requestCherryPick(commitHash: String, mainline: Int?, at repositoryURL: URL) async throws
+	func requestRevert(commitHash: String, mainline: Int?, at repositoryURL: URL) async throws
+	func requestResolveConflict(
+		_ conflict: GitConflict,
+		using resolution: GitConflictResolution,
+		at repositoryURL: URL
+	) async throws
+	func requestMarkConflictResolved(path: String, at repositoryURL: URL) async throws
+	func requestPerformOperationAction(
+		_ action: RepositoryOperationAction,
+		for operation: RepositoryOperationKind,
+		at repositoryURL: URL
+	) async throws
+	func requestReset(to commitHash: String, mode: GitResetMode, at repositoryURL: URL) async throws
 	func requestCreateTag(
 		named name: String,
 		message: String,
@@ -48,7 +67,11 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	) async throws
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws
-	func requestCreateStash(message: String, at repositoryURL: URL) async throws
+	func requestCreateStash(
+		message: String,
+		includeUntracked: Bool,
+		at repositoryURL: URL
+	) async throws
 	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
 	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws
 	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
@@ -58,4 +81,20 @@ public protocol GitRepository: Sendable {
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws
 	func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws
 	func requestPushTags(remote name: String, at repositoryURL: URL) async throws
+	func requestAddRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws
+	func requestRenameRemote(named name: String, to newName: String, at repositoryURL: URL)
+		async throws
+	func requestUpdateRemote(
+		named name: String,
+		fetchURL: String,
+		pushURL: String?,
+		at repositoryURL: URL
+	) async throws
+	func requestDeleteRemote(named name: String, at repositoryURL: URL) async throws
+	func requestDeleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
 }

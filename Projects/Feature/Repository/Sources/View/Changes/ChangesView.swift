@@ -31,31 +31,6 @@ struct ChangesView: View {
 		.safeAreaInset(edge: .bottom) {
 			CommitBar(viewModel: viewModel)
 		}
-		.confirmationDialog(
-			viewModel.discardConfirmationTitle,
-			isPresented: discardConfirmationBinding,
-			presenting: viewModel.pendingDiscardChanges
-		) { _ in
-			Button("Discard Changes", role: .destructive) {
-				viewModel.didConfirmDiscardChanges()
-			}
-			Button("Cancel", role: .cancel) {
-				viewModel.didDismissDiscardConfirmation()
-			}
-		} message: { _ in
-			Text("This action cannot be undone.")
-		}
-	}
-
-	private var discardConfirmationBinding: Binding<Bool> {
-		Binding(
-			get: { viewModel.pendingDiscardChanges != nil },
-			set: { isPresented in
-				if !isPresented {
-					viewModel.didDismissDiscardConfirmation()
-				}
-			}
-		)
 	}
 
 	private var navigationSubtitle: String {
@@ -78,19 +53,23 @@ struct ChangesView: View {
 		VStack(spacing: 0) {
 			changesActionsHeader
 			Divider()
-			DiffView(
-				diff: viewModel.diff,
-				changedFileCount: viewModel.changes.count,
-				fileName: selectedFileName,
-				filePath: selectedFilePath,
-				fileState: selectedFileState,
-				fileActionTitle: selectedFileActionTitle,
-				lineAction: viewModel.selectedDiffLineAction,
-				isLoadingDiff: viewModel.isLoadingDiff,
-				isApplyingAction: viewModel.isApplyingDiffLine,
-				onApplyFileAction: applySelectedFileAction,
-				onApplyLine: viewModel.didRequestApplyDiffLine
-			)
+			if let conflict = viewModel.selectedConflict {
+				ConflictPreview(viewModel: viewModel, conflict: conflict)
+			} else {
+				DiffView(
+					diff: viewModel.diff,
+					changedFileCount: viewModel.changes.count,
+					fileName: selectedFileName,
+					filePath: selectedFilePath,
+					fileState: selectedFileState,
+					fileActionTitle: selectedFileActionTitle,
+					lineAction: viewModel.selectedDiffLineAction,
+					isLoadingDiff: viewModel.isLoadingDiff,
+					isApplyingAction: viewModel.isApplyingDiffLine,
+					onApplyFileAction: applySelectedFileAction,
+					onApplyLine: viewModel.didRequestApplyDiffLine
+				)
+			}
 		}
 	}
 
@@ -140,6 +119,26 @@ struct ChangesView: View {
 				)
 			} else {
 				List(selection: selectedChangesBinding) {
+					if !viewModel.filteredConflicts.isEmpty {
+						Section {
+							ForEach(viewModel.filteredConflicts) { conflict in
+								ConflictRow(conflict: conflict) {
+									viewModel.didOpenConflictInEditor(conflict)
+								}
+								.tag(WorkspaceChangeSelection.conflict(conflict.path))
+								.listRowSeparator(.hidden)
+								.contextMenu {
+									conflictActions(conflict)
+								}
+							}
+						} header: {
+							ChangeListSectionHeader(
+								title: "Conflicts",
+								count: viewModel.filteredConflicts.count
+							)
+						}
+					}
+
 					if viewModel.isAmendingCommit, !viewModel.amendChanges.isEmpty {
 						Section {
 							ForEach(viewModel.filteredAmendChanges) { change in
@@ -236,11 +235,13 @@ struct ChangesView: View {
 	}
 
 	private var selectedFilePath: String? {
-		viewModel.selectedChange?.path ?? viewModel.selectedAmendChange?.path
+		viewModel.selectedConflict?.path
+			?? viewModel.selectedChange?.path
+			?? viewModel.selectedAmendChange?.path
 	}
 
 	private var selectedFileState: GitFileState? {
-		viewModel.selectedFileState
+		viewModel.selectedConflict == nil ? viewModel.selectedFileState : .unmerged
 	}
 
 	private var selectedFileActionTitle: String? {
@@ -306,6 +307,29 @@ struct ChangesView: View {
 			viewModel.didRequestUnstageFromAmend(changes)
 		}
 		.disabled(viewModel.isLoading)
+	}
+
+	@ViewBuilder
+	private func conflictActions(_ conflict: GitConflict) -> some View {
+		Button(viewModel.oursConflictLabel, systemImage: "arrow.down.doc") {
+			viewModel.didResolveConflict(conflict, using: .ours)
+		}
+		Button(viewModel.theirsConflictLabel, systemImage: "arrow.down.doc.fill") {
+			viewModel.didResolveConflict(conflict, using: .theirs)
+		}
+		Divider()
+		Button("Mark Resolved", systemImage: "checkmark.circle") {
+			viewModel.didMarkConflictResolved(conflict)
+		}
+		Button("Open in Editor", systemImage: "square.and.pencil") {
+			viewModel.didOpenConflictInEditor(conflict)
+		}
+		.disabled(!conflictFileExists(conflict))
+	}
+
+	private func conflictFileExists(_ conflict: GitConflict) -> Bool {
+		guard let repositoryURL = viewModel.repositoryURL else { return false }
+		return FileManager.default.fileExists(atPath: repositoryURL.appending(path: conflict.path).path)
 	}
 
 	private func contextChanges(

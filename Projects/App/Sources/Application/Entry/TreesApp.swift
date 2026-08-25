@@ -22,9 +22,14 @@ struct TreesApp: App {
 		.windowToolbarStyle(.unified)
 		.commands {
 			RepositoryWindowCommands()
+			RepositoryCommands()
 			SidebarCommands()
 			ToolbarCommands()
 			FindCommands()
+		}
+
+		Settings {
+			TreesSettingsView()
 		}
 	}
 }
