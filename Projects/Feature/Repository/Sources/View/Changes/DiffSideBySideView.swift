@@ -5,7 +5,7 @@ struct DiffSideBySideView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	let rows: [DiffSideBySideRow]
 	let filePath: String?
-	let searchText: String
+	@ObservedObject var searchModel: RepositorySearchViewModel
 	let lineAction: GitDiffLineAction?
 	let hunkActions: [GitDiffHunkAction]
 	let isApplyingAction: Bool
@@ -25,7 +25,8 @@ struct DiffSideBySideView: View {
 								row: row,
 								paneWidth: paneWidth,
 								filePath: filePath,
-								searchText: searchText,
+								searchText: searchModel.query,
+								activeMatch: searchModel.currentMatch,
 								lineAction: lineAction,
 								hunkActions: hunkActions,
 								isLoading: isApplyingAction,
@@ -39,8 +40,10 @@ struct DiffSideBySideView: View {
 					.frame(width: contentWidth, alignment: .leading)
 				}
 				.defaultScrollAnchor(.topLeading)
-				.onChange(of: searchText) { _, searchText in
-					guard let row = firstMatchingRow(searchText) else { return }
+				.onChange(of: searchModel.currentMatchID) { _, _ in
+					guard let sourceID = searchModel.currentMatch?.sourceID,
+						let row = rows.first(where: { $0.contains(lineID: sourceID) })
+					else { return }
 					if reduceMotion {
 						proxy.scrollTo(row.id, anchor: .center)
 					} else {
@@ -50,13 +53,6 @@ struct DiffSideBySideView: View {
 					}
 				}
 			}
-		}
-	}
-
-	private func firstMatchingRow(_ searchText: String) -> DiffSideBySideRow? {
-		guard !searchText.isEmpty else { return nil }
-		return rows.first {
-			$0.searchableText.localizedCaseInsensitiveContains(searchText)
 		}
 	}
 }

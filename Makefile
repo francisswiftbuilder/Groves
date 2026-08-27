@@ -24,12 +24,15 @@ sync:
 	swift Tuist/Scripts/SyncTargets.swift
 	swift Tuist/Scripts/SyncSchemes.swift
 
-SWIFT_SOURCES := $(shell git ls-files '*.swift' | xargs grep -L '^// AUTO-GENERATED')
+SWIFT_SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.swift' | while read -r file; do test -f "$$file" && grep -L '^// AUTO-GENERATED' "$$file"; done)
 
 format:
 	xcrun swift-format --in-place --parallel --configuration .swift-format $(SWIFT_SOURCES)
 
-lint:
+structure-lint:
+	swift Tuist/Scripts/ValidateSingleTypeFiles.swift
+
+lint: structure-lint
 	xcrun swift-format lint --strict --parallel --configuration .swift-format $(SWIFT_SOURCES)
 
-.PHONY: generate clean module sync format lint
+.PHONY: generate clean module sync format structure-lint lint

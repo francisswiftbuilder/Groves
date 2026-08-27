@@ -3,22 +3,29 @@ import FeatureRepositoryInterface
 import SwiftUI
 
 struct ConflictPreview: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
-	@State private var isSearchPresented = false
-	@State private var searchText = ""
+	@ObservedObject private var viewModel: ChangesViewModel
+	@StateObject private var searchModel = RepositorySearchViewModel()
+	let repositoryURL: URL?
 	let conflict: GitConflict
+
+	init(
+		viewModel: ChangesViewModel,
+		repositoryURL: URL?,
+		conflict: GitConflict
+	) {
+		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.repositoryURL = repositoryURL
+		self.conflict = conflict
+	}
 
 	var body: some View {
 		conflictContent
 			.safeAreaInset(edge: .top) {
 				conflictHeader
 			}
-			.searchable(
-				text: $searchText,
-				isPresented: $isSearchPresented,
-				prompt: "Find in Conflict"
-			)
-			.focusedSceneValue(\.repositoryFindPresentation, $isSearchPresented)
+			.focusedSceneValue(\.repositoryFindActions, searchModel)
+			.onAppear { updateSearchSources() }
+			.onChange(of: viewModel.conflictContent) { _, _ in updateSearchSources() }
 	}
 
 	private var conflictHeader: some View {
@@ -74,6 +81,10 @@ struct ConflictPreview: View {
 			.frame(minHeight: 52)
 			.background(.bar)
 			Divider()
+
+			if searchModel.isPresented {
+				RepositoryFindBar(model: searchModel, prompt: "Find in Conflict")
+			}
 		}
 	}
 
@@ -108,7 +119,7 @@ struct ConflictPreview: View {
 									currentLabel: viewModel.currentConflictLabel,
 									incomingLabel: viewModel.incomingConflictLabel,
 									filePath: conflict.path,
-									searchText: searchText,
+									searchText: searchModel.query,
 									isLoading: viewModel.isLoading,
 									onResolve: { resolution in
 										viewModel.didResolveConflictHunk(
@@ -126,7 +137,7 @@ struct ConflictPreview: View {
 										title: "Base",
 										content: base,
 										filePath: conflict.path,
-										searchText: searchText,
+										searchText: searchModel.query,
 										unavailableMessage: "Base unavailable"
 									)
 								}
@@ -162,7 +173,7 @@ struct ConflictPreview: View {
 				incomingLabel: viewModel.incomingConflictLabel,
 				incomingContent: content.incoming,
 				filePath: conflict.path,
-				searchText: searchText,
+				searchText: searchModel.query,
 				currentUnavailableMessage: "File deleted in \(viewModel.currentConflictLabel.lowercased())",
 				incomingUnavailableMessage:
 					"File deleted in \(viewModel.incomingConflictLabel.lowercased())"
@@ -171,8 +182,35 @@ struct ConflictPreview: View {
 	}
 
 	private var canOpenInEditor: Bool {
-		guard let repositoryURL = viewModel.repositoryURL else { return false }
+		guard let repositoryURL else { return false }
 		return FileManager.default.fileExists(atPath: repositoryURL.appending(path: conflict.path).path)
+	}
+
+	private func updateSearchSources() {
+		guard let content = viewModel.conflictContent else {
+			searchModel.update(sources: [])
+			return
+		}
+		var values: [String] = []
+		if content.hunks.isEmpty {
+			values.append(contentsOf: [content.current, content.incoming].compactMap { $0 })
+		} else {
+			for hunk in content.hunks {
+				values.append(hunk.current)
+				values.append(hunk.incoming)
+				if let base = hunk.base {
+					values.append(base)
+				}
+			}
+			if let base = content.base {
+				values.append(base)
+			}
+		}
+		searchModel.update(
+			sources: values.enumerated().map {
+				RepositorySearchSource(id: $0.offset, text: $0.element)
+			}
+		)
 	}
 
 	private var currentFileResolutionTitle: String {

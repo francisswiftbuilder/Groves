@@ -24,4 +24,8 @@ struct DiffSideBySideRow: Identifiable, Equatable, Sendable {
 		}
 		return nil
 	}
+
+	func contains(lineID: Int) -> Bool {
+		fullWidthLine?.id == lineID || oldLine?.id == lineID || newLine?.id == lineID
+	}
 }

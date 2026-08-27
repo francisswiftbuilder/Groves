@@ -2,8 +2,16 @@ import DomainGitInterface
 import SwiftUI
 
 struct RemoteActionBar: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
+	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
 	let onAdd: () -> Void
+
+	init(
+		operationViewModel: RepositoryOperationViewModel,
+		onAdd: @escaping () -> Void
+	) {
+		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
+		self.onAdd = onAdd
+	}
 
 	var body: some View {
 		HStack(spacing: 10) {
@@ -11,22 +19,22 @@ struct RemoteActionBar: View {
 				onAdd()
 			}
 
-			Label(viewModel.selectedRemote?.name ?? "Remote", systemImage: "icloud")
+			Label(operationViewModel.selectedRemote?.name ?? "Remote", systemImage: "icloud")
 				.font(.callout)
 				.foregroundStyle(.secondary)
 
 			Spacer()
 
 			Button("Pull", systemImage: "arrow.down") {
-				viewModel.didRequestPull()
+				operationViewModel.didRequestPull()
 			}
-			.disabled(viewModel.selectedRemote == nil || viewModel.isLoading)
+			.disabled(operationViewModel.selectedRemote == nil || operationViewModel.isLoading)
 
 			RepositoryPushMenu(
-				viewModel: viewModel,
-				preferredRemoteName: viewModel.selectedRemote?.name
+				viewModel: operationViewModel,
+				preferredRemoteName: operationViewModel.selectedRemote?.name
 			)
-			.disabled(viewModel.selectedRemote == nil || viewModel.isLoading)
+			.disabled(operationViewModel.selectedRemote == nil || operationViewModel.isLoading)
 		}
 		.padding(.horizontal, 12)
 		.padding(.vertical, 10)

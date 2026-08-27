@@ -4,6 +4,10 @@ public enum GitRepositoryError: LocalizedError, Sendable {
 	case invalidRepository
 	case invalidRemoteURL
 	case repositoryAlreadyExists
+	case authentication(String)
+	case hostVerification(String)
+	case network(String)
+	case timeout
 	case commandFailed(String)
 	case invalidOutput
 	case invalidFilePath
@@ -18,6 +22,14 @@ public enum GitRepositoryError: LocalizedError, Sendable {
 			return "올바른 Git 저장소 URL을 입력해 주세요."
 		case .repositoryAlreadyExists:
 			return "선택한 위치에 같은 이름의 폴더가 이미 있습니다."
+		case .authentication(let message):
+			return message.isEmpty ? "Git 인증에 실패했습니다." : message
+		case .hostVerification(let message):
+			return message.isEmpty ? "원격 호스트의 신원을 확인할 수 없습니다." : message
+		case .network(let message):
+			return message.isEmpty ? "원격 저장소에 연결할 수 없습니다." : message
+		case .timeout:
+			return "Git 네트워크 작업 시간이 초과되었습니다."
 		case .commandFailed(let message):
 			return message.isEmpty ? "Git 명령을 실행하지 못했습니다." : message
 		case .invalidOutput:

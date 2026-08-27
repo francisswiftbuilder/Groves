@@ -1,10 +1,5 @@
 import Foundation
 
-enum RepositoryFolderImportRequest {
-	case openRepository
-	case clone(remoteURL: String)
-}
-
 @MainActor
 final class RepositoryWindowViewModel: ObservableObject {
 	@Published private(set) var folderImportRequest: RepositoryFolderImportRequest?

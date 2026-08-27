@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct CommitDiffView: View {
-	@StateObject private var viewerModel = DiffViewerModel()
+	@StateObject private var viewerModel = DiffViewerViewModel()
 	@Binding var options: GitDiffOptions
 	@Binding var presentationMode: DiffPresentationMode
 	let file: CommitDiffFile?
@@ -122,6 +122,7 @@ struct CommitDiffView: View {
 			} else {
 				DiffViewer(
 					document: viewerModel.document,
+					sideBySideRows: viewerModel.sideBySideRows,
 					presentationMode: presentationMode,
 					filePath: file?.path,
 					lineAction: nil,

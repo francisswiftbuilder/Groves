@@ -2,13 +2,28 @@ import DomainGitInterface
 import SwiftUI
 
 struct StashesView: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
+	@ObservedObject private var changesViewModel: ChangesViewModel
+	@ObservedObject private var stashesViewModel: StashesViewModel
+	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
 	@State private var selectedFileID: CommitDiffFile.ID?
 	@State private var parsedFiles: [CommitDiffFile] = []
+	let onDiffOptionsChanged: () -> Void
+
+	init(
+		changesViewModel: ChangesViewModel,
+		stashesViewModel: StashesViewModel,
+		diffPreferences: WorkspaceDiffPreferences,
+		onDiffOptionsChanged: @escaping () -> Void
+	) {
+		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
+		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
+		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
+		self.onDiffOptionsChanged = onDiffOptionsChanged
+	}
 
 	var body: some View {
 		Group {
-			if viewModel.stashes.isEmpty {
+			if stashesViewModel.stashes.isEmpty {
 				EmptyStateView(
 					title: "No Stashes",
 					message: "Save uncommitted changes to return to them later.",
@@ -20,7 +35,7 @@ struct StashesView: View {
 					minimumWidths: [220, 220, 300]
 				) {
 					List(selection: stashSelection) {
-						ForEach(viewModel.stashes) { stash in
+						ForEach(stashesViewModel.stashes) { stash in
 							StashRow(stash: stash)
 								.tag(stash.id)
 								.listRowSeparator(.hidden)
@@ -36,30 +51,30 @@ struct StashesView: View {
 					.listStyle(.plain)
 				} trailing: {
 					CommitDiffView(
-						options: $viewModel.diffOptions,
-						presentationMode: $viewModel.diffPresentationMode,
+						options: $diffPreferences.options,
+						presentationMode: $diffPreferences.presentationMode,
 						file: selectedFile,
-						imageDiff: viewModel.stashImageDiff,
+						imageDiff: stashesViewModel.imageDiff,
 						beforeImageTitle: "Base",
 						afterImageTitle: "Stash",
 						changedFileCount: files.count,
-						isLoading: viewModel.isLoadingStashImageDiff,
-						onOptionsChanged: viewModel.didChangeDiffOptions
+						isLoading: stashesViewModel.isLoadingImageDiff,
+						onOptionsChanged: onDiffOptionsChanged
 					)
 				}
 			}
 		}
 		.navigationTitle("Stashes")
-		.navigationSubtitle("\(viewModel.stashes.count) stashes")
+		.navigationSubtitle("\(stashesViewModel.stashes.count) stashes")
 		.safeAreaInset(edge: .bottom) {
-			StashActionBar(viewModel: viewModel) {
-				if let stash = viewModel.selectedStash {
-					viewModel.didPresentStashDrop(stash)
+			StashActionBar(viewModel: stashesViewModel, changesViewModel: changesViewModel) {
+				if let stash = stashesViewModel.selectedStash {
+					stashesViewModel.didPresentStashDrop(stash)
 				}
 			}
 		}
-		.task(id: viewModel.stashDiff) {
-			let diff = viewModel.stashDiff
+		.task(id: stashesViewModel.diff) {
+			let diff = stashesViewModel.diff
 			let files = await Task.detached(priority: .userInitiated) {
 				CommitDiffFileParser.parse(diff)
 			}.value
@@ -68,16 +83,16 @@ struct StashesView: View {
 			if !files.contains(where: { $0.id == selectedFileID }) {
 				selectedFileID = files.first?.id
 			}
-			viewModel.didSelectStashFile(selectedFile)
+			stashesViewModel.didSelectStashFile(selectedFile)
 		}
 	}
 
 	private var stashSelection: Binding<String?> {
 		Binding(
-			get: { viewModel.selectedStashID },
+			get: { stashesViewModel.selectedStashID },
 			set: { stashID in
 				selectedFileID = nil
-				viewModel.didSelectStash(stashID)
+				stashesViewModel.didSelectStash(stashID)
 			}
 		)
 	}
@@ -95,7 +110,7 @@ struct StashesView: View {
 			get: { selectedFileID },
 			set: { fileID in
 				selectedFileID = fileID
-				viewModel.didSelectStashFile(
+				stashesViewModel.didSelectStashFile(
 					files.first { $0.id == fileID } ?? files.first
 				)
 			}

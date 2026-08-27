@@ -146,7 +146,19 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws {}
 	func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws {}
-	func requestCreateBranch(named name: String, at repositoryURL: URL) async throws {}
+	func requestCreateBranch(named name: String, at repositoryURL: URL) async throws {
+		await recorder?.record(.createBranch(name: name, commitHash: nil))
+	}
+	func requestCreateBranch(
+		named name: String,
+		from commitHash: String,
+		at repositoryURL: URL
+	) async throws {
+		await recorder?.record(.createBranch(name: name, commitHash: commitHash))
+	}
+	func requestCheckoutCommit(_ commitHash: String, at repositoryURL: URL) async throws {
+		await recorder?.record(.checkoutCommit(commitHash))
+	}
 	func requestCreateTrackingBranch(
 		named name: String,
 		tracking remoteBranch: String,
@@ -208,7 +220,14 @@ struct GitRepositoryStub: GitRepository {
 	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws {}
 	func requestFetchAll(at repositoryURL: URL) async throws {}
-	func requestPull(at repositoryURL: URL) async throws {}
+	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome {
+		.upToDate
+	}
+	func requestResolvePull(
+		_ divergence: RepositoryPullDivergence,
+		using resolution: RepositoryPullResolution,
+		at repositoryURL: URL
+	) async throws {}
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		await recorder?.record(.push(target))
 	}
@@ -237,30 +256,6 @@ struct GitRepositoryStub: GitRepository {
 	func requestDeleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws {}
 }
 
-actor GitRepositoryRecorder {
-	enum Event: Equatable, Sendable {
-		case repositoryRoot(URL)
-		case clone(remoteURL: String, directoryURL: URL)
-		case stage(path: String)
-		case merge(branchName: String)
-		case createTag(name: String, message: String, commitHash: String)
-		case deleteTag(name: String)
-		case push(GitPushTarget)
-		case forcePush(GitPushTarget)
-		case pushTags(remoteName: String)
-	}
-
-	private var events: [Event] = []
-
-	func record(_ event: Event) {
-		events.append(event)
-	}
-
-	func recordedEvents() -> [Event] {
-		events
-	}
-}
-
 @MainActor
 func makeRepositoryTabsUseCase(
 	repository: any GitRepository = GitRepositoryStub(),
@@ -273,18 +268,21 @@ func makeRepositoryTabsUseCase(
 }
 
 @MainActor
-func makeWorkspaceViewModel(
+func makeRepositoryWorkspace(
 	repository: any GitRepository = GitRepositoryStub(),
 	externalEditorOpener: (any RepositoryExternalEditorOpening)? = nil
-) -> WorkspaceViewModel {
-	WorkspaceViewModel(
-		contentUseCase: RepositoryUseCaseFactory.makeContentUseCase(repository: repository),
-		changesUseCase: RepositoryUseCaseFactory.makeChangesUseCase(repository: repository),
-		referencesUseCase: RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository),
-		stashesUseCase: RepositoryUseCaseFactory.makeStashesUseCase(repository: repository),
-		operationsUseCase: RepositoryUseCaseFactory.makeOperationsUseCase(repository: repository),
-		externalEditorOpener: externalEditorOpener
+) -> RepositoryWorkspace {
+	RepositoryWorkspaceAssembly(
+		dependencies: .init(
+			contentUseCase: RepositoryUseCaseFactory.makeContentUseCase(repository: repository),
+			changesUseCase: RepositoryUseCaseFactory.makeChangesUseCase(repository: repository),
+			referencesUseCase: RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository),
+			stashesUseCase: RepositoryUseCaseFactory.makeStashesUseCase(repository: repository),
+			operationsUseCase: RepositoryUseCaseFactory.makeOperationsUseCase(repository: repository),
+			externalEditorOpener: externalEditorOpener
+		)
 	)
+	.makeWorkspace(repositoryURL: nil)
 }
 
 @MainActor
@@ -296,19 +294,23 @@ func makeRepositoryTabsViewModel(
 	let changesUseCase = RepositoryUseCaseFactory.makeChangesUseCase(repository: repository)
 	let referencesUseCase = RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository)
 	let stashesUseCase = RepositoryUseCaseFactory.makeStashesUseCase(repository: repository)
+	let workspaceAssembly = RepositoryWorkspaceAssembly(
+		dependencies: .init(
+			contentUseCase: contentUseCase,
+			changesUseCase: changesUseCase,
+			referencesUseCase: referencesUseCase,
+			stashesUseCase: stashesUseCase,
+			operationsUseCase: RepositoryUseCaseFactory.makeOperationsUseCase(repository: repository),
+			externalEditorOpener: nil
+		)
+	)
 	return RepositoryTabsViewModel(
 		useCase: makeRepositoryTabsUseCase(
 			repository: repository,
 			savedRepositoryStore: savedRepositoryStore
 		),
-		makeWorkspaceViewModel: { repositoryURL in
-			WorkspaceViewModel(
-				contentUseCase: contentUseCase,
-				changesUseCase: changesUseCase,
-				referencesUseCase: referencesUseCase,
-				stashesUseCase: stashesUseCase,
-				repositoryURL: repositoryURL
-			)
+		makeWorkspace: { repositoryURL in
+			workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)
 		}
 	)
 }

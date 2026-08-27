@@ -3,16 +3,35 @@ import SwiftUI
 
 struct RepositoryNavigationRows: View {
 	@ObservedObject var workspace: WorkspaceViewModel
+	@ObservedObject private var changesViewModel: ChangesViewModel
+	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
+	@ObservedObject private var stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
 	let onCreateBranch: () -> Void
 
+	init(
+		workspace: WorkspaceViewModel,
+		changesViewModel: ChangesViewModel,
+		operationViewModel: RepositoryOperationViewModel,
+		stashesViewModel: StashesViewModel,
+		repositoryID: RepositoryTab.ID,
+		onCreateBranch: @escaping () -> Void
+	) {
+		self.workspace = workspace
+		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
+		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
+		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
+		self.repositoryID = repositoryID
+		self.onCreateBranch = onCreateBranch
+	}
+
 	var body: some View {
 		sectionRow(.tree)
-		sectionRow(.changes, badgeCount: workspace.changes.count)
+		sectionRow(.changes, badgeCount: changesViewModel.changes.count)
 		sectionRow(.history)
 
 		navigationGroup(.branches, kind: .branches, selectsSection: false) {
-			ForEach(workspace.branches) { branch in
+			ForEach(operationViewModel.branches) { branch in
 				BranchSidebarRow(branch: branch)
 					.tag(RepositorySidebarSelection.branch(repositoryID: repositoryID, id: branch.id))
 					.help("Click to show \(branch.name) in History. Double-click to switch branches.")
@@ -20,7 +39,7 @@ struct RepositoryNavigationRows: View {
 		}
 
 		navigationGroup(.remotes, kind: .remotes, selectsSection: false) {
-			ForEach(workspace.remotes) { remote in
+			ForEach(operationViewModel.remotes) { remote in
 				DisclosureGroup {
 					ForEach(remote.branches) { branch in
 						RemoteBranchSidebarRow(branch: branch)
@@ -41,7 +60,7 @@ struct RepositoryNavigationRows: View {
 		}
 
 		tagNavigationGroup {
-			ForEach(workspace.tags) { tag in
+			ForEach(operationViewModel.tags) { tag in
 				TagSidebarRow(tag: tag)
 					.tag(RepositorySidebarSelection.tag(repositoryID: repositoryID, id: tag.id))
 					.help("Show \(tag.name) in History")
@@ -49,7 +68,7 @@ struct RepositoryNavigationRows: View {
 		}
 
 		navigationGroup(.stashes, kind: .stashes) {
-			ForEach(workspace.stashes) { stash in
+			ForEach(stashesViewModel.stashes) { stash in
 				SidebarChildRow(
 					title: stash.subject,
 					systemImage: "archivebox",

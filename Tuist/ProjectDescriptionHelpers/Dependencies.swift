@@ -3,9 +3,21 @@ import ProjectDescription
 extension Array: TargetDependencies where Element == TargetDependency {
 	public static var appDependencies: [TargetDependency] {
 		[
+			.module(core: .gitCredential),
 			.module(feature: .repository),
 			.module(domain: .git),
 			.module(data: .git),
+			.target(name: TreesProduct.askPassTargetName),
+		]
+	}
+
+	public static var coreGitCredentialDependencies: [TargetDependency] {
+		[]
+	}
+
+	public static var coreGitCredentialTestsDependencies: [TargetDependency] {
+		[
+			.core(implements: .gitCredential)
 		]
 	}
 
@@ -37,7 +49,8 @@ extension Array: TargetDependencies where Element == TargetDependency {
 
 	public static var dataGitDependencies: [TargetDependency] {
 		[
-			.module(domain: .git)
+			.module(core: .gitCredential),
+			.module(domain: .git),
 		]
 	}
 

@@ -3,9 +3,9 @@ import FeatureRepositoryInterface
 import SwiftUI
 
 struct DiffViewer: View {
-	@State private var isSearchPresented = false
-	@State private var searchText = ""
+	@StateObject private var searchModel = RepositorySearchViewModel()
 	let document: DiffDocument
+	let sideBySideRows: [DiffSideBySideRow]
 	let presentationMode: DiffPresentationMode
 	let filePath: String?
 	let lineAction: GitDiffLineAction?
@@ -19,9 +19,9 @@ struct DiffViewer: View {
 			switch presentationMode {
 			case .sideBySide:
 				DiffSideBySideView(
-					rows: DiffSideBySideBuilder.build(from: document),
+					rows: sideBySideRows,
 					filePath: filePath,
-					searchText: searchText,
+					searchModel: searchModel,
 					lineAction: lineAction,
 					hunkActions: hunkActions,
 					isApplyingAction: isApplyingAction,
@@ -32,7 +32,7 @@ struct DiffViewer: View {
 				DiffUnifiedView(
 					document: document,
 					filePath: filePath,
-					searchText: searchText,
+					searchModel: searchModel,
 					lineAction: lineAction,
 					hunkActions: hunkActions,
 					isApplyingAction: isApplyingAction,
@@ -41,8 +41,22 @@ struct DiffViewer: View {
 				)
 			}
 		}
-		.searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Find in Diff")
-		.focusedSceneValue(\.repositoryFindPresentation, $isSearchPresented)
+		.safeAreaInset(edge: .top) {
+			if searchModel.isPresented {
+				RepositoryFindBar(model: searchModel, prompt: "Find in Diff")
+			}
+		}
+		.focusedSceneValue(\.repositoryFindActions, searchModel)
+		.onAppear { updateSearchSources() }
+		.onChange(of: document) { _, _ in updateSearchSources() }
+	}
+
+	private func updateSearchSources() {
+		searchModel.update(
+			sources: document.lines.map {
+				RepositorySearchSource(id: $0.id, text: $0.sourceText)
+			}
+		)
 	}
 }
 
@@ -55,6 +69,9 @@ struct DiffViewer: View {
 		"""
 	DiffViewer(
 		document: DiffDocument(lines: DiffParser.parse(diff)),
+		sideBySideRows: DiffSideBySideBuilder.build(
+			from: DiffDocument(lines: DiffParser.parse(diff))
+		),
 		presentationMode: .sideBySide,
 		filePath: "Sources/App.swift",
 		lineAction: .stage,

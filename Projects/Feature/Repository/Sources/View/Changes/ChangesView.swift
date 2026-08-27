@@ -2,7 +2,28 @@ import DomainGitInterface
 import SwiftUI
 
 struct ChangesView: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
+	@ObservedObject private var viewModel: ChangesViewModel
+	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
+	let repositoryName: String
+	let currentBranchStatus: String
+	let repositoryURL: URL?
+	let onDiffOptionsChanged: () -> Void
+
+	init(
+		viewModel: ChangesViewModel,
+		diffPreferences: WorkspaceDiffPreferences,
+		repositoryName: String,
+		currentBranchStatus: String,
+		repositoryURL: URL?,
+		onDiffOptionsChanged: @escaping () -> Void
+	) {
+		_viewModel = ObservedObject(wrappedValue: viewModel)
+		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
+		self.repositoryName = repositoryName
+		self.currentBranchStatus = currentBranchStatus
+		self.repositoryURL = repositoryURL
+		self.onDiffOptionsChanged = onDiffOptionsChanged
+	}
 
 	var body: some View {
 		EqualWidthHSplitView(
@@ -26,8 +47,8 @@ struct ChangesView: View {
 			)
 			.frame(maxWidth: .infinity)
 		}
-		.navigationTitle(viewModel.repositoryName)
-		.navigationSubtitle(viewModel.currentBranchStatus)
+		.navigationTitle(repositoryName)
+		.navigationSubtitle(currentBranchStatus)
 		.safeAreaInset(edge: .bottom) {
 			CommitBar(viewModel: viewModel)
 		}
@@ -54,11 +75,15 @@ struct ChangesView: View {
 			changesActionsHeader
 			Divider()
 			if let conflict = viewModel.selectedConflict {
-				ConflictPreview(viewModel: viewModel, conflict: conflict)
+				ConflictPreview(
+					viewModel: viewModel,
+					repositoryURL: repositoryURL,
+					conflict: conflict
+				)
 			} else {
 				DiffView(
-					options: $viewModel.diffOptions,
-					presentationMode: $viewModel.diffPresentationMode,
+					options: $diffPreferences.options,
+					presentationMode: $diffPreferences.presentationMode,
 					diff: viewModel.diff,
 					imageDiff: viewModel.imageDiff,
 					changedFileCount: viewModel.changes.count,
@@ -70,7 +95,7 @@ struct ChangesView: View {
 					hunkActions: viewModel.selectedDiffHunkActions,
 					isLoadingDiff: viewModel.isLoadingDiff,
 					isApplyingAction: viewModel.isApplyingDiffLine,
-					onOptionsChanged: viewModel.didChangeDiffOptions,
+					onOptionsChanged: onDiffOptionsChanged,
 					onApplyFileAction: applySelectedFileAction,
 					onApplyLine: viewModel.didRequestApplyDiffLine,
 					onApplyHunk: viewModel.didRequestApplyDiffHunk
@@ -189,7 +214,7 @@ struct ChangesView: View {
 				}
 				.listStyle(.plain)
 				.safeAreaInset(edge: .bottom) {
-					TextField("Filter Files", text: $viewModel.changeFilterText)
+					TextField("Filter Files", text: $viewModel.filterText)
 						.textFieldStyle(.roundedBorder)
 						.padding(10)
 						.background(.bar)
@@ -334,7 +359,7 @@ struct ChangesView: View {
 	}
 
 	private func conflictFileExists(_ conflict: GitConflict) -> Bool {
-		guard let repositoryURL = viewModel.repositoryURL else { return false }
+		guard let repositoryURL else { return false }
 		return FileManager.default.fileExists(atPath: repositoryURL.appending(path: conflict.path).path)
 	}
 

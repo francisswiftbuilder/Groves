@@ -3,26 +3,46 @@ import FeatureRepositoryInterface
 import SwiftUI
 
 struct FindCommands: Commands {
-	@FocusedValue(\.repositoryFindPresentation) private var repositoryFindPresentation
+	@FocusedValue(\.repositoryFindActions) private var repositoryFindActions
 
 	var body: some Commands {
 		CommandGroup(after: .textEditing) {
 			Button("Find…", action: performFind)
 				.keyboardShortcut("f", modifiers: .command)
+			Button("Find Next", action: performFindNext)
+				.keyboardShortcut("g", modifiers: .command)
+			Button("Find Previous", action: performFindPrevious)
+				.keyboardShortcut("g", modifiers: [.command, .shift])
 		}
 	}
 
 	private func performFind() {
-		if let repositoryFindPresentation {
-			repositoryFindPresentation.wrappedValue = true
+		if let repositoryFindActions {
+			repositoryFindActions.present()
 		} else {
-			showFindInterface()
+			performTextViewFindAction(.showFindPanel)
 		}
 	}
 
-	private func showFindInterface() {
+	private func performFindNext() {
+		if let repositoryFindActions {
+			repositoryFindActions.next()
+		} else {
+			performTextViewFindAction(.next)
+		}
+	}
+
+	private func performFindPrevious() {
+		if let repositoryFindActions {
+			repositoryFindActions.previous()
+		} else {
+			performTextViewFindAction(.previous)
+		}
+	}
+
+	private func performTextViewFindAction(_ action: NSFindPanelAction) {
 		let menuItem = NSMenuItem()
-		menuItem.tag = Int(NSFindPanelAction.showFindPanel.rawValue)
+		menuItem.tag = Int(action.rawValue)
 		NSApp.sendAction(
 			#selector(NSTextView.performFindPanelAction(_:)),
 			to: nil,

@@ -5,75 +5,114 @@ struct WorkspaceView: View {
 	@Environment(\.scenePhase) private var scenePhase
 	@ObservedObject var viewModel: WorkspaceViewModel
 	@ObservedObject var windowViewModel: RepositoryWindowViewModel
+	@ObservedObject private var historyViewModel: HistoryViewModel
+	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
+	let changesViewModel: ChangesViewModel
+	let stashesViewModel: StashesViewModel
+	let treeViewModel: RepositoryTreeViewModel
+	let diffPreferences: WorkspaceDiffPreferences
 	let repositoryID: RepositoryTab.ID
+
+	init(
+		viewModel: WorkspaceViewModel,
+		windowViewModel: RepositoryWindowViewModel,
+		changesViewModel: ChangesViewModel,
+		historyViewModel: HistoryViewModel,
+		operationViewModel: RepositoryOperationViewModel,
+		stashesViewModel: StashesViewModel,
+		treeViewModel: RepositoryTreeViewModel,
+		diffPreferences: WorkspaceDiffPreferences,
+		repositoryID: RepositoryTab.ID
+	) {
+		self.viewModel = viewModel
+		self.windowViewModel = windowViewModel
+		self.changesViewModel = changesViewModel
+		_historyViewModel = ObservedObject(wrappedValue: historyViewModel)
+		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
+		self.stashesViewModel = stashesViewModel
+		self.treeViewModel = treeViewModel
+		self.diffPreferences = diffPreferences
+		self.repositoryID = repositoryID
+	}
 
 	var body: some View {
 		NavigationSplitView {
 			RepositorySidebar(
 				viewModel: viewModel,
 				windowViewModel: windowViewModel,
+				changesViewModel: changesViewModel,
+				operationViewModel: operationViewModel,
+				stashesViewModel: stashesViewModel,
 				repositoryID: repositoryID
 			)
 			.navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
 		} detail: {
-			WorkspaceDetail(viewModel: viewModel)
+			WorkspaceDetail(
+				viewModel: viewModel,
+				changesViewModel: changesViewModel,
+				historyViewModel: historyViewModel,
+				operationViewModel: operationViewModel,
+				stashesViewModel: stashesViewModel,
+				treeViewModel: treeViewModel,
+				diffPreferences: diffPreferences
+			)
 		}
 		.sheet(isPresented: newBranchPresentation) {
 			NewBranchSheet(
-				name: $viewModel.newBranchName,
-				onCancel: viewModel.didDismissNewBranch,
-				onCreate: viewModel.didRequestCreateBranch
+				name: $operationViewModel.newBranchName,
+				onCancel: operationViewModel.didDismissNewBranch,
+				onCreate: operationViewModel.didRequestCreateBranch
 			)
 		}
 		.sheet(isPresented: newTagPresentation) {
-			if let commit = viewModel.pendingTagCommit {
+			if let commit = operationViewModel.pendingTagCommit {
 				NewTagSheet(
 					commit: commit,
-					name: $viewModel.newTagName,
-					message: $viewModel.newTagMessage,
-					onCancel: viewModel.didDismissNewTag,
-					onCreate: viewModel.didRequestCreateTag
+					name: $operationViewModel.newTagName,
+					message: $operationViewModel.newTagMessage,
+					onCancel: operationViewModel.didDismissNewTag,
+					onCreate: operationViewModel.didRequestCreateTag
 				)
 			}
 		}
-		.sheet(item: $viewModel.pendingBranchRename) { branch in
-			BranchRenameSheet(name: $viewModel.branchRenameName) {
-				viewModel.didConfirmBranchRename()
+		.sheet(item: $operationViewModel.pendingBranchRename) { branch in
+			BranchRenameSheet(name: $operationViewModel.branchRenameName) {
+				operationViewModel.didConfirmBranchRename()
 			}
 		}
-		.sheet(item: $viewModel.pendingMainlineAction) { action in
+		.sheet(item: $operationViewModel.pendingMainlineAction) { action in
 			MainlineSelectionSheet(action: action) { parent in
-				viewModel.didPerformPendingMainlineAction(parent: parent)
+				operationViewModel.didPerformPendingMainlineAction(parent: parent)
 			}
 		}
-		.sheet(item: $viewModel.pendingResetCommit) { commit in
-			ResetCommitSheet(commit: commit, mode: $viewModel.resetMode) {
-				viewModel.didConfirmReset()
+		.sheet(item: $operationViewModel.pendingResetCommit) { commit in
+			ResetCommitSheet(commit: commit, mode: $operationViewModel.resetMode) {
+				operationViewModel.didConfirmReset()
 			}
 		}
-		.sheet(item: $viewModel.remoteEditorPresentation) { presentation in
+		.sheet(item: $operationViewModel.remoteEditorPresentation) { presentation in
 			RemoteEditorSheet(presentation: presentation) { name, fetchURL, pushURL in
 				switch presentation {
 				case .add:
-					viewModel.didRequestAddRemote(
+					operationViewModel.didRequestAddRemote(
 						name: name,
 						fetchURL: fetchURL,
 						pushURL: pushURL
 					)
 				case .edit(let remote):
-					viewModel.didRequestUpdateRemote(
+					operationViewModel.didRequestUpdateRemote(
 						remote,
 						fetchURL: fetchURL,
 						pushURL: pushURL
 					)
 				}
-				viewModel.remoteEditorPresentation = nil
+				operationViewModel.remoteEditorPresentation = nil
 			}
 		}
-		.sheet(item: $viewModel.pendingRemoteRename) { remote in
+		.sheet(item: $operationViewModel.pendingRemoteRename) { remote in
 			RemoteRenameSheet(remote: remote) { newName in
-				viewModel.didRequestRenameRemote(remote, to: newName)
-				viewModel.pendingRemoteRename = nil
+				operationViewModel.didRequestRenameRemote(remote, to: newName)
+				operationViewModel.pendingRemoteRename = nil
 			}
 		}
 		.confirmationDialog(
@@ -92,6 +131,26 @@ struct WorkspaceView: View {
 		} message: {
 			Text(viewModel.pendingRepositoryConfirmation?.message ?? "")
 		}
+		.confirmationDialog(
+			pullDivergenceTitle,
+			isPresented: pullDivergencePresentation
+		) {
+			Button("Rebase onto Upstream") {
+				operationViewModel.didResolvePull(using: .rebase)
+			}
+			Button("Merge Upstream") {
+				operationViewModel.didResolvePull(using: .merge)
+			}
+			Button("Cancel", role: .cancel) {
+				operationViewModel.didDismissPullDivergence()
+			}
+		} message: {
+			if let divergence = operationViewModel.pendingPullDivergence {
+				Text(
+					"\(divergence.upstream) · ↑\(divergence.aheadCount) · ↓\(divergence.behindCount)"
+				)
+			}
+		}
 		.task(id: workingTreeMonitorID) {
 			guard scenePhase == .active else { return }
 			await viewModel.monitorRepositoryChanges()
@@ -101,10 +160,10 @@ struct WorkspaceView: View {
 
 	private var newBranchPresentation: Binding<Bool> {
 		Binding(
-			get: { viewModel.isPresentingNewBranch },
+			get: { operationViewModel.isPresentingNewBranch },
 			set: { isPresented in
 				if !isPresented {
-					viewModel.didDismissNewBranch()
+					operationViewModel.didDismissNewBranch()
 				}
 			}
 		)
@@ -112,10 +171,10 @@ struct WorkspaceView: View {
 
 	private var newTagPresentation: Binding<Bool> {
 		Binding(
-			get: { viewModel.pendingTagCommit != nil },
+			get: { operationViewModel.pendingTagCommit != nil },
 			set: { isPresented in
 				if !isPresented {
-					viewModel.didDismissNewTag()
+					operationViewModel.didDismissNewTag()
 				}
 			}
 		)
@@ -130,6 +189,24 @@ struct WorkspaceView: View {
 				}
 			}
 		)
+	}
+
+	private var pullDivergencePresentation: Binding<Bool> {
+		Binding(
+			get: { operationViewModel.pendingPullDivergence != nil },
+			set: { isPresented in
+				if !isPresented {
+					operationViewModel.didDismissPullDivergence()
+				}
+			}
+		)
+	}
+
+	private var pullDivergenceTitle: String {
+		guard let divergence = operationViewModel.pendingPullDivergence else {
+			return "Branches Have Diverged"
+		}
+		return "Choose How to Integrate \(divergence.upstream)"
 	}
 
 	private func clearDeletedSidebarSelection(for confirmation: PendingRepositoryConfirmation) {
@@ -147,28 +224,28 @@ struct WorkspaceView: View {
 	}
 
 	private var focusedActions: RepositoryFocusedActions {
-		let operation = viewModel.operationState.operation
+		let operation = operationViewModel.operationState.operation
 		let viewConflicts: (() -> Void)? =
-			viewModel.operationState.hasConflicts
-			? { viewModel.didViewConflicts() }
+			operationViewModel.operationState.hasConflicts
+			? { operationViewModel.didViewConflicts() }
 			: nil
 		let continueOperation: (() -> Void)? =
-			operation != nil && !viewModel.operationState.hasConflicts
-			? { viewModel.didPerformOperationAction(.continue) }
+			operation != nil && !operationViewModel.operationState.hasConflicts
+			? { operationViewModel.didPerformOperationAction(.continue) }
 			: nil
 		let skipOperation: (() -> Void)? =
 			operation != nil && operation?.kind != .merge
-			? { viewModel.didPresentOperationAction(.skip) }
+			? { operationViewModel.didPresentOperationAction(.skip) }
 			: nil
 		let abortOperation: (() -> Void)? =
 			operation != nil
-			? { viewModel.didPresentOperationAction(.abort) }
+			? { operationViewModel.didPresentOperationAction(.abort) }
 			: nil
 		let rebaseSelectedBranch: (() -> Void)?
 		let renameSelectedBranch: (() -> Void)?
-		if let branch = viewModel.selectedBranch {
-			rebaseSelectedBranch = { viewModel.didRequestRebase(onto: branch) }
-			renameSelectedBranch = { viewModel.didPresentBranchRename(branch) }
+		if let branch = operationViewModel.selectedBranch {
+			rebaseSelectedBranch = { operationViewModel.didRequestRebase(onto: branch) }
+			renameSelectedBranch = { operationViewModel.didPresentBranchRename(branch) }
 		} else {
 			rebaseSelectedBranch = nil
 			renameSelectedBranch = nil
@@ -176,16 +253,20 @@ struct WorkspaceView: View {
 		let cherryPickSelectedCommit: (() -> Void)?
 		let revertSelectedCommit: (() -> Void)?
 		let resetSelectedCommit: (() -> Void)?
-		if let commit = viewModel.selectedCommit {
-			cherryPickSelectedCommit = { viewModel.didPresentCommitAction(.cherryPick(commit)) }
-			revertSelectedCommit = { viewModel.didPresentCommitAction(.revert(commit)) }
-			resetSelectedCommit = { viewModel.didPresentReset(commit) }
+		if let commit = historyViewModel.selectedCommit {
+			cherryPickSelectedCommit = {
+				operationViewModel.didPresentCommitAction(.cherryPick(commit))
+			}
+			revertSelectedCommit = {
+				operationViewModel.didPresentCommitAction(.revert(commit))
+			}
+			resetSelectedCommit = { operationViewModel.didPresentReset(commit) }
 		} else {
 			cherryPickSelectedCommit = nil
 			revertSelectedCommit = nil
 			resetSelectedCommit = nil
 		}
-		let selectedRemote = viewModel.selectedRemote
+		let selectedRemote = operationViewModel.selectedRemote
 		return RepositoryFocusedActions(
 			refresh: { viewModel.didRequestRefresh() },
 			viewConflicts: viewConflicts,
@@ -197,15 +278,15 @@ struct WorkspaceView: View {
 			cherryPickSelectedCommit: cherryPickSelectedCommit,
 			revertSelectedCommit: revertSelectedCommit,
 			resetSelectedCommit: resetSelectedCommit,
-			addRemote: { viewModel.didPresentAddRemote() },
+			addRemote: { operationViewModel.didPresentAddRemote() },
 			renameSelectedRemote: selectedRemote.map { remote in
-				{ viewModel.didPresentRemoteRename(remote) }
+				{ operationViewModel.didPresentRemoteRename(remote) }
 			},
 			editSelectedRemote: selectedRemote.map { remote in
-				{ viewModel.didPresentRemoteEditor(remote) }
+				{ operationViewModel.didPresentRemoteEditor(remote) }
 			},
 			deleteSelectedRemote: selectedRemote.map { remote in
-				{ viewModel.didPresentRemoteDeletion(remote) }
+				{ operationViewModel.didPresentRemoteDeletion(remote) }
 			}
 		)
 	}

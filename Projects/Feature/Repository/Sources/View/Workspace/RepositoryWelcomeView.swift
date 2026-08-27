@@ -5,6 +5,7 @@ struct RepositoryWelcomeView: View {
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
 	let onCloneRepository: () -> Void
+	let onCancel: () -> Void
 	@FocusState private var isRemoteURLFocused: Bool
 
 	var body: some View {
@@ -26,10 +27,17 @@ struct RepositoryWelcomeView: View {
 						.multilineTextAlignment(.center)
 
 					if isWorking {
-						ProgressView("Working…")
+						HStack(spacing: 8) {
+							ProgressView("Working…")
+								.controlSize(.small)
+								.font(.caption)
+								.foregroundStyle(.secondary)
+
+							Button("Cancel", systemImage: "xmark.circle") {
+								onCancel()
+							}
 							.controlSize(.small)
-							.font(.caption)
-							.foregroundStyle(.secondary)
+						}
 					}
 				}
 

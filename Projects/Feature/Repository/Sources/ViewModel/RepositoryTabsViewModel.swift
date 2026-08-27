@@ -9,16 +9,16 @@ final class RepositoryTabsViewModel: ObservableObject {
 	@Published var alertMessage: String?
 
 	private let useCase: any RepositoryTabsUseCase
-	private let makeWorkspaceViewModel: @MainActor (URL) -> WorkspaceViewModel
+	private let makeWorkspace: @MainActor (URL) -> RepositoryWorkspace
 	private var addRepositoryTask: Task<Void, Never>?
 	private var didRestoreRepositoryWindows = false
 
 	init(
 		useCase: any RepositoryTabsUseCase,
-		makeWorkspaceViewModel: @escaping @MainActor (URL) -> WorkspaceViewModel
+		makeWorkspace: @escaping @MainActor (URL) -> RepositoryWorkspace
 	) {
 		self.useCase = useCase
-		self.makeWorkspaceViewModel = makeWorkspaceViewModel
+		self.makeWorkspace = makeWorkspace
 		restoreTabs()
 	}
 
@@ -31,7 +31,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 	}
 
 	var selectedWorkspace: WorkspaceViewModel? {
-		selectedTab?.workspace
+		selectedTab?.workspace.viewModel
 	}
 
 	func tab(id: RepositoryTab.ID?) -> RepositoryTab? {
@@ -83,6 +83,10 @@ final class RepositoryTabsViewModel: ObservableObject {
 		}
 	}
 
+	func didRequestCancelAddingRepository() {
+		addRepositoryTask?.cancel()
+	}
+
 	func requestWindowRestoration(
 		currentRepositoryID: RepositoryTab.ID?
 	) -> RepositoryWindowRestoration? {
@@ -115,26 +119,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 		else { return }
 
 		didSelectTab(tab.id)
-		let workspace = tab.workspace
-		switch selection {
-		case .section(_, let section):
-			workspace.didSelectSection(section)
-		case .branch(_, let id):
-			guard let branch = workspace.branches.first(where: { $0.id == id }) else { return }
-			workspace.didOpenBranch(branch)
-		case .remote(_, let id):
-			workspace.selectedRemoteID = id
-			workspace.didSelectSection(.remotes)
-		case .remoteBranch(_, let id):
-			guard let branch = workspace.remoteBranches.first(where: { $0.id == id }) else { return }
-			workspace.didOpenRemoteBranch(branch)
-		case .tag(_, let id):
-			guard let tag = workspace.tags.first(where: { $0.id == id }) else { return }
-			workspace.didOpenTag(tag)
-		case .stash(_, let id):
-			workspace.selectedStashID = id
-			workspace.didSelectSection(.stashes)
-		}
+		tab.workspace.viewModel.didActivateSidebarSelection(selection)
 	}
 
 	@discardableResult
@@ -166,7 +151,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 	private func makeTab(repository: SavedRepository) -> RepositoryTab {
 		RepositoryTab(
 			repository: repository,
-			workspace: makeWorkspaceViewModel(repository.url)
+			workspace: makeWorkspace(repository.url)
 		)
 	}
 
@@ -192,14 +177,15 @@ final class RepositoryTabsViewModel: ObservableObject {
 	private func activateSelectedTabIfNeeded() {
 		guard let selectedTab, selectedTab.hasLoadedContent == false else { return }
 		selectedTab.hasLoadedContent = true
-		selectedTab.workspace.didRequestRefresh()
+		selectedTab.workspace.viewModel.didRequestRefresh()
 	}
 
 	func defaultSidebarSelection(
 		repositoryID: RepositoryTab.ID
 	) -> RepositorySidebarSelection {
 		let section =
-			tabs.first(where: { $0.id == repositoryID })?.workspace.selectedSection ?? .changes
+			tabs.first(where: { $0.id == repositoryID })?.workspace.viewModel.selectedSection
+			?? .changes
 		return .section(repositoryID: repositoryID, section: section)
 	}
 }

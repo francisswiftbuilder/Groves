@@ -17,7 +17,7 @@ struct DiffOptionsMenu: View {
 
 			Divider()
 
-			Toggle("Ignore Whitespace", isOn: ignoresWhitespaceBinding)
+			Toggle("Ignore All Whitespace", isOn: ignoresWhitespaceBinding)
 
 			Menu("Context Lines") {
 				Picker("Context Lines", selection: contextLineCountBinding) {

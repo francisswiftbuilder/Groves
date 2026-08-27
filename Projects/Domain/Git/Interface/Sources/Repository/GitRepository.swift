@@ -80,6 +80,12 @@ public protocol GitRepository: Sendable {
 	func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws
 	func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateBranch(named name: String, at repositoryURL: URL) async throws
+	func requestCreateBranch(
+		named name: String,
+		from commitHash: String,
+		at repositoryURL: URL
+	) async throws
+	func requestCheckoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
 	func requestCreateTrackingBranch(
 		named name: String,
 		tracking remoteBranch: String,
@@ -131,7 +137,12 @@ public protocol GitRepository: Sendable {
 	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws
 	func requestFetchAll(at repositoryURL: URL) async throws
-	func requestPull(at repositoryURL: URL) async throws
+	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome
+	func requestResolvePull(
+		_ divergence: RepositoryPullDivergence,
+		using resolution: RepositoryPullResolution,
+		at repositoryURL: URL
+	) async throws
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws
 	func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws
 	func requestPushTags(remote name: String, at repositoryURL: URL) async throws

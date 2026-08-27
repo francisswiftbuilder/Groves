@@ -2,8 +2,19 @@ import DomainGitInterface
 import SwiftUI
 
 struct StashActionBar: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
+	@ObservedObject var viewModel: StashesViewModel
+	@ObservedObject private var changesViewModel: ChangesViewModel
 	let onDelete: () -> Void
+
+	init(
+		viewModel: StashesViewModel,
+		changesViewModel: ChangesViewModel,
+		onDelete: @escaping () -> Void
+	) {
+		self.viewModel = viewModel
+		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
+		self.onDelete = onDelete
+	}
 
 	var body: some View {
 		HStack(spacing: 10) {
@@ -24,7 +35,7 @@ struct StashActionBar: View {
 				viewModel.didRequestCreateStash()
 			}
 			.buttonStyle(.borderedProminent)
-			.disabled(viewModel.changes.isEmpty || viewModel.isLoading)
+			.disabled(changesViewModel.changes.isEmpty || viewModel.isLoading)
 
 			Button("Apply") {
 				viewModel.didRequestApplyStash()

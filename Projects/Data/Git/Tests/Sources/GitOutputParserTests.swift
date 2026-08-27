@@ -730,6 +730,35 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertFalse(branches.contains(where: { $0.name == "feature/local" }))
 	}
 
+	func testCreateBranchFromCommitAndCheckoutDetachedCommit() async throws {
+		let repositoryURL = try makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let originalBranch = try currentBranch(at: repositoryURL)
+		let originalCommit = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		try Data("second".utf8).write(to: repositoryURL.appending(path: "second.txt"))
+		try requestRunGit(["add", "second.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Second commit"], at: repositoryURL)
+		let repository = LocalGitRepository()
+
+		try await repository.requestCreateBranch(
+			named: "release/initial",
+			from: originalCommit,
+			at: repositoryURL
+		)
+		XCTAssertEqual(try currentBranch(at: repositoryURL), "release/initial")
+		XCTAssertEqual(
+			try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+				.trimmingCharacters(in: .whitespacesAndNewlines),
+			originalCommit
+		)
+
+		try await repository.requestSwitchBranch(named: originalBranch, at: repositoryURL)
+		try await repository.requestCheckoutCommit(originalCommit, at: repositoryURL)
+		let operationState = try await repository.requestOperationState(at: repositoryURL)
+		XCTAssertTrue(operationState.isDetached)
+	}
+
 	func testCreateTrackingBranchFromRemoteBranch() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -833,6 +862,87 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(currentBranch.upstream, "origin/\(branchName)")
 		XCTAssertEqual(currentBranch.aheadCount, 1)
 		XCTAssertEqual(currentBranch.behindCount, 1)
+	}
+
+	func testPreparePullHandlesUpToDateAheadFastForwardAndDivergence() async throws {
+		let repositoryURL = try makeRepository()
+		let remoteURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesPullTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+		let peerURL = FileManager.default.temporaryDirectory
+			.appending(path: "TreesPullPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
+		defer {
+			try? FileManager.default.removeItem(at: repositoryURL)
+			try? FileManager.default.removeItem(at: remoteURL)
+			try? FileManager.default.removeItem(at: peerURL)
+		}
+		try requestRunGit(["init", "--quiet", "--bare", remoteURL.path], at: repositoryURL)
+		try requestRunGit(["remote", "add", "origin", remoteURL.path], at: repositoryURL)
+		let branchName = try currentBranch(at: repositoryURL)
+		let repository = LocalGitRepository()
+		try await repository.requestPush(
+			.setUpstream(remoteName: "origin", branchName: branchName),
+			at: repositoryURL
+		)
+
+		let upToDateOutcome = try await repository.requestPreparePull(at: repositoryURL)
+		XCTAssertEqual(upToDateOutcome, .upToDate)
+
+		try Data("local-ahead".utf8).write(to: repositoryURL.appending(path: "local-ahead.txt"))
+		try requestRunGit(["add", "local-ahead.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Local ahead"], at: repositoryURL)
+		let aheadOutcome = try await repository.requestPreparePull(at: repositoryURL)
+		XCTAssertEqual(aheadOutcome, .aheadOnly(aheadCount: 1))
+		try await repository.requestPush(.upstream, at: repositoryURL)
+
+		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
+		try requestRunGit(["config", "user.name", "Trees Peer"], at: peerURL)
+		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
+		try Data("remote-behind".utf8).write(to: peerURL.appending(path: "remote-behind.txt"))
+		try requestRunGit(["add", "remote-behind.txt"], at: peerURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Remote behind"], at: peerURL)
+		try requestRunGit(["push", "--quiet"], at: peerURL)
+		let fastForwardOutcome = try await repository.requestPreparePull(at: repositoryURL)
+		XCTAssertEqual(fastForwardOutcome, .fastForwarded)
+
+		try Data("local-diverged".utf8).write(
+			to: repositoryURL.appending(path: "local-diverged.txt")
+		)
+		try requestRunGit(["add", "local-diverged.txt"], at: repositoryURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Local diverged"], at: repositoryURL)
+		try Data("remote-diverged".utf8).write(
+			to: peerURL.appending(path: "remote-diverged.txt")
+		)
+		try requestRunGit(["add", "remote-diverged.txt"], at: peerURL)
+		try requestRunGit(["commit", "--quiet", "-m", "Remote diverged"], at: peerURL)
+		try requestRunGit(["push", "--quiet"], at: peerURL)
+
+		guard
+			case .diverged(let divergence) = try await repository.requestPreparePull(
+				at: repositoryURL
+			)
+		else {
+			return XCTFail("Expected pull divergence")
+		}
+		XCTAssertEqual(divergence.upstream, "origin/\(branchName)")
+		XCTAssertEqual(divergence.aheadCount, 1)
+		XCTAssertEqual(divergence.behindCount, 1)
+
+		try Data("dirty".utf8).write(to: repositoryURL.appending(path: "dirty.txt"))
+		do {
+			try await repository.requestResolvePull(divergence, using: .rebase, at: repositoryURL)
+			XCTFail("Expected dirty working tree rejection")
+		} catch let error as GitRepositoryError {
+			XCTAssertTrue(error.localizedDescription.contains("commit하거나 stash"))
+		}
+		try FileManager.default.removeItem(at: repositoryURL.appending(path: "dirty.txt"))
+		try await repository.requestResolvePull(divergence, using: .rebase, at: repositoryURL)
+		XCTAssertEqual(
+			try requestGitOutput(
+				["rev-list", "--count", "origin/\(branchName)..HEAD"], at: repositoryURL
+			)
+			.trimmingCharacters(in: .whitespacesAndNewlines),
+			"1"
+		)
 	}
 
 	func testForcePushWithLeaseReplacesKnownRemoteHistory() async throws {
@@ -1559,6 +1669,70 @@ final class GitOutputParserTests: XCTestCase {
 		)
 		XCTAssertEqual(resolved.workingTree, "current\nincoming\n")
 		XCTAssertFalse(resolved.hasConflictMarkers)
+	}
+
+	func testConflictMarkerParserSupportsCustomSizeDiff3AndCRLF() throws {
+		let contents = [
+			"before",
+			"<<<<<<<<<< current",
+			"current",
+			"|||||||||| base",
+			"base",
+			"==========",
+			"incoming",
+			">>>>>>>>>> incoming",
+			"after",
+		].joined(separator: "\r\n")
+
+		let hunks = GitConflictMarkerParser.parse(contents)
+
+		XCTAssertEqual(hunks.count, 1)
+		XCTAssertEqual(hunks[0].base, "base")
+		XCTAssertEqual(hunks[0].current, "current")
+		XCTAssertEqual(hunks[0].incoming, "incoming")
+		let resolved = try GitConflictMarkerParser.resolve(0, using: .both, in: contents)
+		XCTAssertEqual(resolved, "before\r\ncurrent\r\nincoming\r\nafter")
+	}
+
+	func testConflictMarkerParserRejectsMalformedAndMismatchedMarkers() {
+		let malformed = [
+			"<<<<<<< current",
+			"current",
+			"==========",
+			"incoming",
+			">>>>>>> incoming",
+		].joined(separator: "\n")
+		let short = [
+			"<<<<<< current",
+			"current",
+			"======",
+			"incoming",
+			">>>>>> incoming",
+		].joined(separator: "\n")
+
+		XCTAssertTrue(GitConflictMarkerParser.parse(malformed).isEmpty)
+		XCTAssertTrue(GitConflictMarkerParser.parse(short).isEmpty)
+	}
+
+	func testConflictMarkerParserResolvesMultipleHunksInEitherOrder() throws {
+		let contents = [
+			"<<<<<<< current",
+			"one-current",
+			"=======",
+			"one-incoming",
+			">>>>>>> incoming",
+			"middle",
+			"<<<<<<< current",
+			"two-current",
+			"=======",
+			"two-incoming",
+			">>>>>>> incoming",
+		].joined(separator: "\n")
+
+		let lastFirst = try GitConflictMarkerParser.resolve(1, using: .incoming, in: contents)
+		XCTAssertEqual(GitConflictMarkerParser.parse(lastFirst).count, 1)
+		let fullyResolved = try GitConflictMarkerParser.resolve(0, using: .current, in: lastFirst)
+		XCTAssertEqual(fullyResolved, "one-current\nmiddle\ntwo-incoming")
 	}
 
 	private func makeRepository() throws -> URL {

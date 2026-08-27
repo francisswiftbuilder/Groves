@@ -8,24 +8,20 @@ public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 
 	public init(dependencies: some RepositoryDIDependencies) {
 		viewModelResult = Result {
-			let contentUseCase = dependencies.makeRepositoryContentUseCase()
-			let changesUseCase = dependencies.makeRepositoryChangesUseCase()
-			let referencesUseCase = dependencies.makeRepositoryReferencesUseCase()
-			let stashesUseCase = dependencies.makeRepositoryStashesUseCase()
-			let operationsUseCase = dependencies.makeRepositoryOperationsUseCase()
-			let externalEditorOpener = dependencies.makeRepositoryExternalEditorOpener()
+			let workspaceAssembly = RepositoryWorkspaceAssembly(
+				dependencies: .init(
+					contentUseCase: dependencies.makeRepositoryContentUseCase(),
+					changesUseCase: dependencies.makeRepositoryChangesUseCase(),
+					referencesUseCase: dependencies.makeRepositoryReferencesUseCase(),
+					stashesUseCase: dependencies.makeRepositoryStashesUseCase(),
+					operationsUseCase: dependencies.makeRepositoryOperationsUseCase(),
+					externalEditorOpener: dependencies.makeRepositoryExternalEditorOpener()
+				)
+			)
 			return RepositoryTabsViewModel(
 				useCase: try dependencies.makeRepositoryTabsUseCase(),
-				makeWorkspaceViewModel: { repositoryURL in
-					WorkspaceViewModel(
-						contentUseCase: contentUseCase,
-						changesUseCase: changesUseCase,
-						referencesUseCase: referencesUseCase,
-						stashesUseCase: stashesUseCase,
-						operationsUseCase: operationsUseCase,
-						externalEditorOpener: externalEditorOpener,
-						repositoryURL: repositoryURL
-					)
+				makeWorkspace: { repositoryURL in
+					workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)
 				}
 			)
 		}

@@ -30,6 +30,13 @@ public extension Module {
   }
 }
 
+public extension Module {
+  enum Core: String, CaseIterable, ModuleCoreType {
+    case GitCredential
+    public var name: String { rawValue }
+  }
+}
+
 extension ModuleAppType where Self == Module {
   public static var app: Module { Module.App }
 }
@@ -44,4 +51,8 @@ extension ModuleDomainType where Self == Module.Domain {
 
 extension ModuleDataType where Self == Module.Data {
   public static var git: Module.Data { Module.Data.Git }
+}
+
+extension ModuleCoreType where Self == Module.Core {
+  public static var gitCredential: Module.Core { Module.Core.GitCredential }
 }

@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct CommitBar: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
+	@ObservedObject var viewModel: ChangesViewModel
 
 	var body: some View {
 		VStack(spacing: 8) {
@@ -10,8 +10,14 @@ struct CommitBar: View {
 				Image(systemName: "text.bubble")
 					.foregroundStyle(.secondary)
 					.accessibilityHidden(true)
-				TextField("Summary", text: $viewModel.commitSubject)
-					.textFieldStyle(.roundedBorder)
+				TextField(
+					"Summary",
+					text: Binding(
+						get: { viewModel.commitSubject },
+						set: { viewModel.commitSubject = $0 }
+					)
+				)
+				.textFieldStyle(.roundedBorder)
 				Toggle(
 					"Amend",
 					isOn: Binding(
@@ -39,7 +45,10 @@ struct CommitBar: View {
 			}
 			TextField(
 				"Description (optional)",
-				text: $viewModel.commitBody,
+				text: Binding(
+					get: { viewModel.commitBody },
+					set: { viewModel.commitBody = $0 }
+				),
 				axis: .vertical
 			)
 			.textFieldStyle(.roundedBorder)

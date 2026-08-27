@@ -5,6 +5,7 @@ struct RepositoryWelcomeContainerView: View {
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
 	let onCloneRepository: () -> Void
+	let onCancel: () -> Void
 
 	var body: some View {
 		NavigationSplitView {
@@ -16,7 +17,8 @@ struct RepositoryWelcomeContainerView: View {
 				viewModel: viewModel,
 				isWorking: isWorking,
 				onOpenRepository: onOpenRepository,
-				onCloneRepository: onCloneRepository
+				onCloneRepository: onCloneRepository,
+				onCancel: onCancel
 			)
 		}
 	}

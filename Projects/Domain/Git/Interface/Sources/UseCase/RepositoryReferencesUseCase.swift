@@ -10,6 +10,10 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		-> RepositorySnapshot
 	func createBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
+	func createBranch(named name: String, from commitHash: String, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
+	func checkoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
+		-> RepositorySnapshot
 	func createTrackingBranch(
 		named name: String,
 		tracking remoteBranch: String,
@@ -31,7 +35,12 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		-> RepositorySnapshot
 	func fetch(remote name: String, at repositoryURL: URL) async throws -> RepositorySnapshot
 	func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot
-	func pull(at repositoryURL: URL) async throws -> RepositorySnapshot
+	func preparePull(at repositoryURL: URL) async throws -> RepositoryPullPreparation
+	func resolvePull(
+		_ divergence: RepositoryPullDivergence,
+		using resolution: RepositoryPullResolution,
+		at repositoryURL: URL
+	) async throws -> RepositorySnapshot
 	func push(
 		currentBranch: GitBranch?,
 		remotes: [GitRemote],

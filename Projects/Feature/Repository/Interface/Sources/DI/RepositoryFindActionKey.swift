@@ -1,11 +1,11 @@
 import SwiftUI
 
 private struct RepositoryFindActionKey: FocusedValueKey {
-	typealias Value = Binding<Bool>
+	typealias Value = any RepositoryFindActions
 }
 
 extension FocusedValues {
-	public var repositoryFindPresentation: Binding<Bool>? {
+	public var repositoryFindActions: (any RepositoryFindActions)? {
 		get { self[RepositoryFindActionKey.self] }
 		set { self[RepositoryFindActionKey.self] = newValue }
 	}

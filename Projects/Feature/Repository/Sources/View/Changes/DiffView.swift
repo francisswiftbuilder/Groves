@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct DiffView: View {
-	@StateObject private var viewerModel = DiffViewerModel()
+	@StateObject private var viewerModel = DiffViewerViewModel()
 	@Binding var options: GitDiffOptions
 	@Binding var presentationMode: DiffPresentationMode
 	let diff: String
@@ -25,6 +25,9 @@ struct DiffView: View {
 		VStack(spacing: 0) {
 			diffHeader
 			Divider()
+			if options.ignoresWhitespace, !diff.isEmpty {
+				partialActionsDisabledBanner
+			}
 			diffContent
 		}
 		.safeAreaInset(edge: .bottom) {
@@ -35,6 +38,25 @@ struct DiffView: View {
 		.task(id: diff) {
 			await viewerModel.update(diff: diff)
 		}
+	}
+
+	private var partialActionsDisabledBanner: some View {
+		HStack(spacing: 8) {
+			Image(systemName: "line.3.horizontal.decrease.circle")
+				.foregroundStyle(.secondary)
+			Text("Line and hunk actions are unavailable while Ignore All Whitespace is enabled.")
+				.font(.caption)
+				.foregroundStyle(.secondary)
+			Spacer(minLength: 8)
+			Button("Show Whitespace") {
+				options.ignoresWhitespace = false
+				onOptionsChanged()
+			}
+			.controlSize(.small)
+		}
+		.padding(.horizontal, 12)
+		.frame(minHeight: 36)
+		.background(Color.accentColor.opacity(0.08))
 	}
 
 	private var diffFooter: some View {
@@ -153,6 +175,7 @@ struct DiffView: View {
 		} else {
 			DiffViewer(
 				document: viewerModel.document,
+				sideBySideRows: viewerModel.sideBySideRows,
 				presentationMode: presentationMode,
 				filePath: filePath,
 				lineAction: lineAction,

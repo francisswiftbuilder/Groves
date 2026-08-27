@@ -5,8 +5,8 @@ public struct LocalGitRepository: GitRepository {
 	private static let maximumPreviewByteCount = 10 * 1_024 * 1_024
 	private let runner: GitProcessRunner
 
-	public init() {
-		runner = GitProcessRunner()
+	public init(configuration: GitProcessConfiguration = GitProcessConfiguration()) {
+		runner = GitProcessRunner(configuration: configuration)
 	}
 
 	init(runner: GitProcessRunner) {
@@ -56,7 +56,8 @@ public struct LocalGitRepository: GitRepository {
 
 		_ = try await runner.requestRun(
 			arguments: ["clone", "--", remoteURL, repositoryURL.path],
-			at: directoryURL
+			at: directoryURL,
+			isNetworkOperation: true
 		)
 		return repositoryURL
 	}
@@ -681,6 +682,31 @@ public struct LocalGitRepository: GitRepository {
 		_ = try await runner.requestRun(arguments: ["switch", "-c", name], at: repositoryURL)
 	}
 
+	public func requestCreateBranch(
+		named name: String,
+		from commitHash: String,
+		at repositoryURL: URL
+	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: ["switch", "-c", name, commitHash],
+			at: repositoryURL
+		)
+	}
+
+	public func requestCheckoutCommit(_ commitHash: String, at repositoryURL: URL) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		guard try await requestWorkingTreeChanges(at: repositoryURL).isEmpty else {
+			throw GitRepositoryError.commandFailed(
+				"변경 사항을 먼저 commit하거나 stash한 뒤 commit을 checkout해 주세요."
+			)
+		}
+		_ = try await runner.requestRun(
+			arguments: ["switch", "--detach", commitHash],
+			at: repositoryURL
+		)
+	}
+
 	public func requestCreateTrackingBranch(
 		named name: String,
 		tracking remoteBranch: String,
@@ -994,35 +1020,106 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestFetch(remote name: String, at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(arguments: ["fetch", name], at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: ["fetch", name],
+			at: repositoryURL,
+			isNetworkOperation: true
+		)
 	}
 
 	public func requestFetchAll(at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(arguments: ["fetch", "--all"], at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: ["fetch", "--all"],
+			at: repositoryURL,
+			isNetworkOperation: true
+		)
 	}
 
-	public func requestPull(at repositoryURL: URL) async throws {
+	public func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome {
 		try await requestEnsureIdle(at: repositoryURL)
-		_ = try await runner.requestRun(arguments: ["pull", "--ff-only"], at: repositoryURL)
+		guard
+			let currentBranch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
+			let upstream = currentBranch.upstream,
+			let remoteName = upstream.split(separator: "/", maxSplits: 1).first.map(String.init)
+		else {
+			throw GitRepositoryError.commandFailed(
+				"현재 브랜치에 upstream이 없습니다. 먼저 upstream을 설정해 주세요."
+			)
+		}
+
+		try await requestFetch(remote: remoteName, at: repositoryURL)
+		guard let updatedBranch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent)
+		else {
+			throw GitRepositoryError.invalidOutput
+		}
+
+		switch (updatedBranch.aheadCount, updatedBranch.behindCount) {
+		case (0, 0):
+			return .upToDate
+		case (let aheadCount, 0):
+			return .aheadOnly(aheadCount: aheadCount)
+		case (0, _):
+			_ = try await runner.requestRun(
+				arguments: ["merge", "--ff-only", "--", upstream],
+				at: repositoryURL
+			)
+			return .fastForwarded
+		case (let aheadCount, let behindCount):
+			return .diverged(
+				RepositoryPullDivergence(
+					upstream: upstream,
+					aheadCount: aheadCount,
+					behindCount: behindCount
+				)
+			)
+		}
+	}
+
+	public func requestResolvePull(
+		_ divergence: RepositoryPullDivergence,
+		using resolution: RepositoryPullResolution,
+		at repositoryURL: URL
+	) async throws {
+		try await requestEnsureIdle(at: repositoryURL)
+		guard try await requestWorkingTreeChanges(at: repositoryURL).isEmpty else {
+			throw GitRepositoryError.commandFailed(
+				"변경 사항을 먼저 commit하거나 stash한 뒤 pull을 계속해 주세요."
+			)
+		}
+		switch resolution {
+		case .rebase:
+			try await requestRebase(onto: divergence.upstream, at: repositoryURL)
+		case .merge:
+			try await requestMergeBranch(named: divergence.upstream, at: repositoryURL)
+		}
 	}
 
 	public func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		try await requestEnsureIdle(at: repositoryURL)
-		_ = try await runner.requestRun(arguments: pushArguments(for: target), at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: pushArguments(for: target),
+			at: repositoryURL,
+			isNetworkOperation: true
+		)
 	}
 
 	public func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		try await requestEnsureIdle(at: repositoryURL)
 		var arguments = pushArguments(for: target)
 		arguments.insert("--force-with-lease", at: 1)
-		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: arguments,
+			at: repositoryURL,
+			isNetworkOperation: true
+		)
 	}
 
 	public func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
 		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(
 			arguments: ["push", name, "--tags"],
-			at: repositoryURL
+			at: repositoryURL,
+			isNetworkOperation: true
 		)
 	}
 
@@ -1068,7 +1165,8 @@ public struct LocalGitRepository: GitRepository {
 		try await requestEnsureIdle(at: repositoryURL)
 		_ = try await runner.requestRun(
 			arguments: ["push", branch.remoteName, "--delete", branch.name],
-			at: repositoryURL
+			at: repositoryURL,
+			isNetworkOperation: true
 		)
 	}
 

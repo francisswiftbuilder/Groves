@@ -1,14 +1,36 @@
 import Foundation
 import SwiftUI
 
+@MainActor
 enum DiffSyntaxHighlighter {
+	private static let expressionCache = NSCache<NSString, NSRegularExpression>()
+	private static let attributedStringCache: NSCache<NSString, DiffAttributedStringCacheValue> = {
+		let cache = NSCache<NSString, DiffAttributedStringCacheValue>()
+		cache.countLimit = 4_000
+		cache.totalCostLimit = 16 * 1_024 * 1_024
+		return cache
+	}()
+
 	static func styledText(
 		_ text: String,
 		filePath: String?,
 		kind: DiffLineKind,
 		changedRange: DiffTextRange?,
-		searchText: String
+		searchText: String,
+		activeSearchRange: DiffTextRange? = nil
 	) -> AttributedString {
+		let cacheKey =
+			[
+				text,
+				filePath.map { URL(fileURLWithPath: $0).pathExtension.lowercased() } ?? "",
+				String(describing: kind),
+				changedRange.map { "\($0.location):\($0.length)" } ?? "",
+				searchText,
+				activeSearchRange.map { "\($0.location):\($0.length)" } ?? "",
+			].joined(separator: "\u{1f}") as NSString
+		if let cached = attributedStringCache.object(forKey: cacheKey) {
+			return cached.value
+		}
 		var result = AttributedString(text.isEmpty ? " " : text)
 		applyKeywordHighlighting(to: &result, source: text, filePath: filePath)
 		applyLiteralHighlighting(to: &result, source: text)
@@ -22,7 +44,17 @@ enum DiffSyntaxHighlighter {
 					: Color.red.opacity(0.22)
 			)
 		}
-		applySearchHighlighting(to: &result, source: text, searchText: searchText)
+		applySearchHighlighting(
+			to: &result,
+			source: text,
+			searchText: searchText,
+			activeSearchRange: activeSearchRange
+		)
+		attributedStringCache.setObject(
+			DiffAttributedStringCacheValue(result),
+			forKey: cacheKey,
+			cost: max(text.utf8.count, 1)
+		)
 		return result
 	}
 
@@ -157,7 +189,8 @@ enum DiffSyntaxHighlighter {
 	private static func applySearchHighlighting(
 		to result: inout AttributedString,
 		source: String,
-		searchText: String
+		searchText: String,
+		activeSearchRange: DiffTextRange?
 	) {
 		guard !searchText.isEmpty else { return }
 		var searchRange = source.startIndex..<source.endIndex
@@ -176,6 +209,13 @@ enum DiffSyntaxHighlighter {
 			guard match.upperBound < source.endIndex else { break }
 			searchRange = match.upperBound..<source.endIndex
 		}
+		if let activeSearchRange {
+			apply(
+				activeSearchRange,
+				to: &result,
+				backgroundColor: Color.orange.opacity(0.55)
+			)
+		}
 	}
 
 	private static func applyMatches(
@@ -184,7 +224,15 @@ enum DiffSyntaxHighlighter {
 		to result: inout AttributedString,
 		foregroundColor: Color
 	) {
-		guard let expression = try? NSRegularExpression(pattern: pattern) else { return }
+		let key = pattern as NSString
+		let expression: NSRegularExpression
+		if let cachedExpression = expressionCache.object(forKey: key) {
+			expression = cachedExpression
+		} else {
+			guard let compiledExpression = try? NSRegularExpression(pattern: pattern) else { return }
+			expressionCache.setObject(compiledExpression, forKey: key)
+			expression = compiledExpression
+		}
 		let fullRange = NSRange(source.startIndex..<source.endIndex, in: source)
 		for match in expression.matches(in: source, range: fullRange) {
 			guard let range = Range(match.range, in: source) else { continue }

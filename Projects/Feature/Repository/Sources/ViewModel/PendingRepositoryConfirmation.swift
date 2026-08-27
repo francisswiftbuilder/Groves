@@ -11,6 +11,7 @@ enum PendingRepositoryConfirmation {
 	case forcePush(remoteName: String?)
 	case operation(RepositoryOperationAction, RepositoryOperationKind)
 	case hardReset(GitCommit)
+	case checkoutCommit(GitCommit)
 	case deleteRemote(GitRemote)
 	case deleteRemoteBranch(GitRemoteBranch)
 
@@ -39,6 +40,8 @@ enum PendingRepositoryConfirmation {
 			return operationTitle(action: action, operation: operation)
 		case .hardReset:
 			return "Hard Reset"
+		case .checkoutCommit(let commit):
+			return "Checkout \(commit.shortHash) in Detached HEAD?"
 		case .deleteRemote:
 			return "Delete Remote"
 		case .deleteRemoteBranch:
@@ -79,6 +82,9 @@ enum PendingRepositoryConfirmation {
 		case .hardReset(let commit):
 			return
 				"Tracked changes after \(commit.shortHash) will be discarded. Untracked files are preserved."
+		case .checkoutCommit(let commit):
+			return
+				"You will leave the current branch and inspect \(commit.shortHash). Create or switch to a branch to keep new work."
 		case .deleteRemote(let remote):
 			return
 				"The local configuration for \(remote.name) will be removed. The remote repository is not deleted."
@@ -99,6 +105,7 @@ enum PendingRepositoryConfirmation {
 		case .operation(let action, let operation):
 			return operationTitle(action: action, operation: operation)
 		case .hardReset: return "Hard Reset"
+		case .checkoutCommit: return "Checkout Commit"
 		case .deleteRemote: return "Delete Remote"
 		case .deleteRemoteBranch: return "Delete Remote Branch"
 		}

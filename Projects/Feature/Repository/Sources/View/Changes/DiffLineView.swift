@@ -5,6 +5,7 @@ struct DiffLineView: View {
 	let line: DiffLine
 	let filePath: String?
 	let searchText: String
+	let activeSearchRange: DiffTextRange?
 	let showsOldLineNumbers: Bool
 	let showsNewLineNumbers: Bool
 	let lineAction: GitDiffLineAction?
@@ -36,7 +37,8 @@ struct DiffLineView: View {
 					filePath: filePath,
 					kind: line.kind,
 					changedRange: line.changedRange,
-					searchText: searchText
+					searchText: searchText,
+					activeSearchRange: activeSearchRange
 				)
 			)
 			.font(.system(size: 12, design: .monospaced))

@@ -6,6 +6,7 @@ struct DiffSideBySideRowView: View {
 	let paneWidth: CGFloat
 	let filePath: String?
 	let searchText: String
+	let activeMatch: RepositorySearchMatch?
 	let lineAction: GitDiffLineAction?
 	let hunkActions: [GitDiffHunkAction]
 	let isLoading: Bool
@@ -19,6 +20,7 @@ struct DiffSideBySideRowView: View {
 					line: line,
 					filePath: filePath,
 					searchText: searchText,
+					activeSearchRange: activeRange(for: line),
 					showsOldLineNumbers: false,
 					showsNewLineNumbers: false,
 					lineAction: lineAction,
@@ -35,6 +37,7 @@ struct DiffSideBySideRowView: View {
 						line: row.oldLine,
 						filePath: filePath,
 						searchText: searchText,
+						activeSearchRange: row.oldLine.flatMap(activeRange),
 						isOld: true
 					)
 					.frame(width: paneWidth)
@@ -46,6 +49,7 @@ struct DiffSideBySideRowView: View {
 						line: row.newLine,
 						filePath: filePath,
 						searchText: searchText,
+						activeSearchRange: row.newLine.flatMap(activeRange),
 						isOld: false
 					)
 					.frame(width: paneWidth)
@@ -54,6 +58,11 @@ struct DiffSideBySideRowView: View {
 				.contextMenu { lineContextMenu }
 			}
 		}
+	}
+
+	private func activeRange(for line: DiffLine) -> DiffTextRange? {
+		guard let activeMatch, activeMatch.sourceID == line.id else { return nil }
+		return DiffTextRange(location: activeMatch.location, length: activeMatch.length)
 	}
 
 	@ViewBuilder

@@ -17,7 +17,21 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.app
+		.app,
+		.target(
+			name: TreesProduct.askPassTargetName,
+			destinations: environment.destinations,
+			product: .commandLineTool,
+			productName: TreesProduct.askPassTargetName,
+			bundleId: environment.organizationName + ".AskPass",
+			deploymentTargets: environment.deploymentTargets,
+			infoPlist: .default,
+			sources: TreesProduct.askPassSources,
+			dependencies: [
+				.module(core: .gitCredential)
+			],
+			settings: .settings(base: baseSettings)
+		),
 	],
 	schemes: [
 		.appScheme

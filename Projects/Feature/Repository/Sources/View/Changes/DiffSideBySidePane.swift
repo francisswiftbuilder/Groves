@@ -4,6 +4,7 @@ struct DiffSideBySidePane: View {
 	let line: DiffLine?
 	let filePath: String?
 	let searchText: String
+	let activeSearchRange: DiffTextRange?
 	let isOld: Bool
 
 	var body: some View {
@@ -28,7 +29,8 @@ struct DiffSideBySidePane: View {
 						filePath: filePath,
 						kind: line.kind,
 						changedRange: line.changedRange,
-						searchText: searchText
+						searchText: searchText,
+						activeSearchRange: activeSearchRange
 					)
 				)
 				.font(.system(size: 12, design: .monospaced))

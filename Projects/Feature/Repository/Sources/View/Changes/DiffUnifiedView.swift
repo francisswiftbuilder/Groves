@@ -5,7 +5,7 @@ struct DiffUnifiedView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	let document: DiffDocument
 	let filePath: String?
-	let searchText: String
+	@ObservedObject var searchModel: RepositorySearchViewModel
 	let lineAction: GitDiffLineAction?
 	let hunkActions: [GitDiffHunkAction]
 	let isApplyingAction: Bool
@@ -21,7 +21,8 @@ struct DiffUnifiedView: View {
 							DiffLineView(
 								line: line,
 								filePath: filePath,
-								searchText: searchText,
+								searchText: searchModel.query,
+								activeSearchRange: searchModel.activeRange(for: line.id),
 								showsOldLineNumbers: document.showsOldLineNumbers,
 								showsNewLineNumbers: document.showsNewLineNumbers,
 								lineAction: lineAction,
@@ -38,24 +39,17 @@ struct DiffUnifiedView: View {
 					.frame(minWidth: max(geometry.size.width, 0), alignment: .leading)
 				}
 				.defaultScrollAnchor(.topLeading)
-				.onChange(of: searchText) { _, searchText in
-					guard let line = firstMatchingLine(searchText) else { return }
+				.onChange(of: searchModel.currentMatchID) { _, _ in
+					guard let sourceID = searchModel.currentMatch?.sourceID else { return }
 					if reduceMotion {
-						proxy.scrollTo(line.id, anchor: .center)
+						proxy.scrollTo(sourceID, anchor: .center)
 					} else {
 						withAnimation(.easeInOut(duration: 0.15)) {
-							proxy.scrollTo(line.id, anchor: .center)
+							proxy.scrollTo(sourceID, anchor: .center)
 						}
 					}
 				}
 			}
-		}
-	}
-
-	private func firstMatchingLine(_ searchText: String) -> DiffLine? {
-		guard !searchText.isEmpty else { return nil }
-		return document.lines.first {
-			$0.sourceText.localizedCaseInsensitiveContains(searchText)
 		}
 	}
 }

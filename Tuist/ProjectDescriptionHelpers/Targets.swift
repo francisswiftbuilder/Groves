@@ -12,7 +12,9 @@ public let allTargets: [Target] = [
   .domainGit,
   .domainGitInterface,
   .dataGit,
-  .dataGitTests
+  .dataGitTests,
+  .coreGitCredential,
+  .coreGitCredentialTests
 ]
 
 public extension Destinations {
@@ -24,6 +26,8 @@ public extension Destinations {
   static var domainGitInterfaceDestinations: Destinations { environment.destinations }
   static var dataGitDestinations: Destinations { environment.destinations }
   static var dataGitTestsDestinations: Destinations { environment.destinations }
+  static var coreGitCredentialDestinations: Destinations { environment.destinations }
+  static var coreGitCredentialTestsDestinations: Destinations { environment.destinations }
 }
 
 public extension DeploymentTargets {
@@ -35,6 +39,8 @@ public extension DeploymentTargets {
   static var domainGitInterfaceDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var dataGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var dataGitTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var coreGitCredentialDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var coreGitCredentialTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
 }
 
 public protocol TargetDependencies {
@@ -46,6 +52,8 @@ public protocol TargetDependencies {
   static var domainGitInterfaceDependencies: [TargetDependency] { get }
   static var dataGitDependencies: [TargetDependency] { get }
   static var dataGitTestsDependencies: [TargetDependency] { get }
+  static var coreGitCredentialDependencies: [TargetDependency] { get }
+  static var coreGitCredentialTestsDependencies: [TargetDependency] { get }
 }
 
 public extension TargetDependencies {
@@ -57,6 +65,8 @@ public extension TargetDependencies {
   static var domainGitInterfaceDependencies: [TargetDependency] { [] }
   static var dataGitDependencies: [TargetDependency] { [] }
   static var dataGitTestsDependencies: [TargetDependency] { [] }
+  static var coreGitCredentialDependencies: [TargetDependency] { [] }
+  static var coreGitCredentialTestsDependencies: [TargetDependency] { [] }
 }
 
 public protocol InfoPlists {
@@ -68,6 +78,8 @@ public protocol InfoPlists {
   static var domainGitInterfaceInfoPlist: InfoPlist { get }
   static var dataGitInfoPlist: InfoPlist { get }
   static var dataGitTestsInfoPlist: InfoPlist { get }
+  static var coreGitCredentialInfoPlist: InfoPlist { get }
+  static var coreGitCredentialTestsInfoPlist: InfoPlist { get }
 }
 
 public extension InfoPlists {
@@ -79,6 +91,8 @@ public extension InfoPlists {
   static var domainGitInterfaceInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var dataGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var dataGitTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var coreGitCredentialInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var coreGitCredentialTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
 }
 
 public protocol BundlePrefixes {
@@ -90,6 +104,8 @@ public protocol BundlePrefixes {
   static var domainGitInterfaceBundlePrefix: String { get }
   static var dataGitBundlePrefix: String { get }
   static var dataGitTestsBundlePrefix: String { get }
+  static var coreGitCredentialBundlePrefix: String { get }
+  static var coreGitCredentialTestsBundlePrefix: String { get }
 }
 
 public extension BundlePrefixes {
@@ -101,6 +117,8 @@ public extension BundlePrefixes {
   static var domainGitInterfaceBundlePrefix: String { environment.organizationName }
   static var dataGitBundlePrefix: String { environment.organizationName }
   static var dataGitTestsBundlePrefix: String { environment.organizationName }
+  static var coreGitCredentialBundlePrefix: String { environment.organizationName }
+  static var coreGitCredentialTestsBundlePrefix: String { environment.organizationName }
 }
 
 public protocol TargetSettings {
@@ -112,6 +130,8 @@ public protocol TargetSettings {
   static var domainGitInterfaceSettings: Settings? { get }
   static var dataGitSettings: Settings? { get }
   static var dataGitTestsSettings: Settings? { get }
+  static var coreGitCredentialSettings: Settings? { get }
+  static var coreGitCredentialTestsSettings: Settings? { get }
 }
 
 public extension TargetSettings {
@@ -123,6 +143,8 @@ public extension TargetSettings {
   static var domainGitInterfaceSettings: Settings? { nil }
   static var dataGitSettings: Settings? { nil }
   static var dataGitTestsSettings: Settings? { nil }
+  static var coreGitCredentialSettings: Settings? { nil }
+  static var coreGitCredentialTestsSettings: Settings? { nil }
 }
 
 public protocol TargetScripts {
@@ -134,6 +156,8 @@ public protocol TargetScripts {
   static var domainGitInterfaceTargetScripts: [TargetScript] { get }
   static var dataGitTargetScripts: [TargetScript] { get }
   static var dataGitTestsTargetScripts: [TargetScript] { get }
+  static var coreGitCredentialTargetScripts: [TargetScript] { get }
+  static var coreGitCredentialTestsTargetScripts: [TargetScript] { get }
 }
 
 public extension TargetScripts {
@@ -145,6 +169,8 @@ public extension TargetScripts {
   static var domainGitInterfaceTargetScripts: [TargetScript] { [] }
   static var dataGitTargetScripts: [TargetScript] { [] }
   static var dataGitTestsTargetScripts: [TargetScript] { [] }
+  static var coreGitCredentialTargetScripts: [TargetScript] { [] }
+  static var coreGitCredentialTestsTargetScripts: [TargetScript] { [] }
 }
 
 public protocol CoreDataModels {
@@ -156,6 +182,8 @@ public protocol CoreDataModels {
   static var domainGitInterfaceCoreDataModels: [CoreDataModel] { get }
   static var dataGitCoreDataModels: [CoreDataModel] { get }
   static var dataGitTestsCoreDataModels: [CoreDataModel] { get }
+  static var coreGitCredentialCoreDataModels: [CoreDataModel] { get }
+  static var coreGitCredentialTestsCoreDataModels: [CoreDataModel] { get }
 }
 
 public extension CoreDataModels {
@@ -167,4 +195,6 @@ public extension CoreDataModels {
   static var domainGitInterfaceCoreDataModels: [CoreDataModel] { [] }
   static var dataGitCoreDataModels: [CoreDataModel] { [] }
   static var dataGitTestsCoreDataModels: [CoreDataModel] { [] }
+  static var coreGitCredentialCoreDataModels: [CoreDataModel] { [] }
+  static var coreGitCredentialTestsCoreDataModels: [CoreDataModel] { [] }
 }

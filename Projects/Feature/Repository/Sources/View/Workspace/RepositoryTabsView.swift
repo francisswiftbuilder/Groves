@@ -12,8 +12,14 @@ struct RepositoryTabsView: View {
 		Group {
 			if let repositoryTab {
 				WorkspaceView(
-					viewModel: repositoryTab.workspace,
+					viewModel: repositoryTab.workspace.viewModel,
 					windowViewModel: windowViewModel,
+					changesViewModel: repositoryTab.workspace.changesViewModel,
+					historyViewModel: repositoryTab.workspace.historyViewModel,
+					operationViewModel: repositoryTab.workspace.operationViewModel,
+					stashesViewModel: repositoryTab.workspace.stashesViewModel,
+					treeViewModel: repositoryTab.workspace.treeViewModel,
+					diffPreferences: repositoryTab.workspace.diffPreferences,
 					repositoryID: repositoryTab.id
 				)
 			} else {
@@ -21,7 +27,8 @@ struct RepositoryTabsView: View {
 					viewModel: windowViewModel,
 					isWorking: viewModel.isAddingRepository,
 					onOpenRepository: presentRepositoryImporter,
-					onCloneRepository: presentCloneDestinationImporter
+					onCloneRepository: presentCloneDestinationImporter,
+					onCancel: viewModel.didRequestCancelAddingRepository
 				)
 			}
 		}
@@ -38,7 +45,8 @@ struct RepositoryTabsView: View {
 		.toolbar {
 			if let repositoryTab {
 				RepositoryWorkspaceToolbar(
-					viewModel: repositoryTab.workspace,
+					viewModel: repositoryTab.workspace.viewModel,
+					operationViewModel: repositoryTab.workspace.operationViewModel,
 					onCreateBranch: presentNewBranch
 				)
 			}
@@ -71,7 +79,7 @@ struct RepositoryTabsView: View {
 	}
 
 	private func presentNewBranch() {
-		repositoryTab?.workspace.didPresentNewBranch()
+		repositoryTab?.workspace.operationViewModel.didPresentNewBranch()
 	}
 
 	private func presentRepositoryImporter() {
