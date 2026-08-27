@@ -3,10 +3,26 @@ import ProjectDescription
 let tuist = Tuist(
 	project: .tuist(
 		plugins: [
-			.local(path: "../Tuist/Plugins/ConfigurationPlugin"),
-			.local(path: "../Tuist/Plugins/TargetPlugin"),
-			.local(path: "../Tuist/Plugins/EnvironmentPlugin"),
-			.local(path: "../Tuist/Plugins/TemplatePlugin"),
+			.git(
+				url: "https://github.com/francisswiftbuilder/tuist_template.git",
+				tag: "1.0.0",
+				directory: "Tuist/Plugins/ConfigurationPlugin"
+			),
+			.git(
+				url: "https://github.com/francisswiftbuilder/tuist_template.git",
+				tag: "1.0.0",
+				directory: "Tuist/Plugins/TargetPlugin"
+			),
+			.git(
+				url: "https://github.com/francisswiftbuilder/tuist_template.git",
+				tag: "1.0.0",
+				directory: "Tuist/Plugins/EnvironmentPlugin"
+			),
+			.git(
+				url: "https://github.com/francisswiftbuilder/tuist_template.git",
+				tag: "1.0.0",
+				directory: "Tuist/Plugins/TemplatePlugin"
+			),
 		]
 	)
 )
