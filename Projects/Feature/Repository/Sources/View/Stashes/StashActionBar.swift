@@ -1,4 +1,5 @@
 import DomainGitInterface
+import FeatureRepositoryChanges
 import SwiftUI
 
 struct StashActionBar: View {

@@ -1,17 +1,27 @@
+import FeatureRepositoryOperations
 import SwiftUI
 
 struct RepositoryWorkspaceToolbar: ToolbarContent {
 	@ObservedObject var viewModel: WorkspaceViewModel
 	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
+	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
+	@ObservedObject private var syncViewModel: RepositorySyncViewModel
+	@ObservedObject private var remotesViewModel: RemotesViewModel
 	let onCreateBranch: () -> Void
 
 	init(
 		viewModel: WorkspaceViewModel,
 		operationViewModel: RepositoryOperationViewModel,
+		referencesViewModel: RepositoryReferencesViewModel,
+		syncViewModel: RepositorySyncViewModel,
+		remotesViewModel: RemotesViewModel,
 		onCreateBranch: @escaping () -> Void
 	) {
 		self.viewModel = viewModel
 		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
+		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
+		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
+		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
 		self.onCreateBranch = onCreateBranch
 	}
 
@@ -23,11 +33,11 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 				Label("New Branch", systemImage: "arrow.triangle.branch")
 			}
 			.disabled(
-				operationViewModel.isLoading
-					|| operationViewModel.currentBranch == nil
-						&& !operationViewModel.operationState.isDetached
+				operationViewModel.isLoading || referencesViewModel.isLoading || syncViewModel.isLoading
+					|| referencesViewModel.currentBranch == nil
+						&& !referencesViewModel.operationState.isDetached
 			)
-			.help("Create a Branch from \(operationViewModel.currentBranchName)")
+			.help("Create a Branch from \(referencesViewModel.currentBranchName)")
 		}
 
 		ToolbarSpacer(.fixed, placement: .primaryAction)
@@ -38,31 +48,31 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 			} label: {
 				Label("Refresh", systemImage: "arrow.clockwise")
 			}
-			.disabled(viewModel.isLoading || operationViewModel.isLoading)
+			.disabled(viewModel.isLoading || operationViewModel.isLoading || syncViewModel.isLoading)
 			.help("Refresh Repository")
 
-			if operationViewModel.isLoading {
+			if syncViewModel.isLoading {
 				ControlGroup {
 					ProgressView()
 						.controlSize(.small)
 						.accessibilityLabel("Git operation in progress")
 
 					Button("Cancel", systemImage: "xmark.circle") {
-						operationViewModel.didRequestCancelOperation()
+						syncViewModel.didRequestCancelOperation()
 					}
 					.help("Cancel Git Operation")
 				}
 			} else {
 				Menu {
 					Button("Fetch All Remotes", systemImage: "arrow.triangle.2.circlepath") {
-						operationViewModel.didRequestFetchAll()
+						syncViewModel.didRequestFetchAll()
 					}
 
-					if !operationViewModel.remotes.isEmpty {
+					if !remotesViewModel.remotes.isEmpty {
 						Divider()
-						ForEach(operationViewModel.remotes) { remote in
+						ForEach(remotesViewModel.remotes) { remote in
 							Button(remote.name, systemImage: "icloud.and.arrow.down") {
-								operationViewModel.didRequestFetch(remoteName: remote.name)
+								syncViewModel.didRequestFetch(remoteName: remote.name)
 							}
 						}
 					}
@@ -70,7 +80,7 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 					Label("Fetch", systemImage: "arrow.triangle.2.circlepath")
 				}
 				.accessibilityLabel("Fetch")
-				.disabled(operationViewModel.remotes.isEmpty)
+				.disabled(remotesViewModel.remotes.isEmpty)
 				.help("Fetch Remote References")
 			}
 		}
@@ -78,15 +88,15 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 		ToolbarSpacer(.fixed, placement: .primaryAction)
 
 		ToolbarItemGroup(placement: .primaryAction) {
-			if !operationViewModel.isLoading {
+			if !syncViewModel.isLoading {
 				Button {
-					operationViewModel.didRequestPull()
+					syncViewModel.didRequestPull()
 				} label: {
 					Label("Pull", systemImage: "arrow.down")
 				}
 				.help("Pull Current Branch")
 
-				RepositoryPushMenu(viewModel: operationViewModel)
+				RepositoryPushMenu(viewModel: syncViewModel)
 			}
 		}
 	}

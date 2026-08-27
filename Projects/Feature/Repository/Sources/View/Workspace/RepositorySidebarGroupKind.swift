@@ -1,4 +1,5 @@
 import DomainGitInterface
+import FeatureRepositoryInterface
 import SwiftUI
 
 enum RepositorySidebarGroupKind: CaseIterable, Hashable {

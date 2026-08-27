@@ -9,6 +9,11 @@ public let allTargets: [Target] = [
   .featureRepository,
   .featureRepositoryInterface,
   .featureRepositoryTests,
+  .featureRepositoryChanges,
+  .featureRepositoryDiff,
+  .featureRepositoryHistory,
+  .featureRepositoryOperations,
+  .featureRepositoryUI,
   .domainGit,
   .domainGitInterface,
   .dataGit,
@@ -22,6 +27,11 @@ public extension Destinations {
   static var featureRepositoryDestinations: Destinations { environment.destinations }
   static var featureRepositoryInterfaceDestinations: Destinations { environment.destinations }
   static var featureRepositoryTestsDestinations: Destinations { environment.destinations }
+  static var featureRepositoryChangesDestinations: Destinations { environment.destinations }
+  static var featureRepositoryDiffDestinations: Destinations { environment.destinations }
+  static var featureRepositoryHistoryDestinations: Destinations { environment.destinations }
+  static var featureRepositoryOperationsDestinations: Destinations { environment.destinations }
+  static var featureRepositoryUIDestinations: Destinations { environment.destinations }
   static var domainGitDestinations: Destinations { environment.destinations }
   static var domainGitInterfaceDestinations: Destinations { environment.destinations }
   static var dataGitDestinations: Destinations { environment.destinations }
@@ -35,6 +45,11 @@ public extension DeploymentTargets {
   static var featureRepositoryDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryInterfaceDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryChangesDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryDiffDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryHistoryDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryOperationsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryUIDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var domainGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var domainGitInterfaceDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var dataGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
@@ -48,6 +63,11 @@ public protocol TargetDependencies {
   static var featureRepositoryDependencies: [TargetDependency] { get }
   static var featureRepositoryInterfaceDependencies: [TargetDependency] { get }
   static var featureRepositoryTestsDependencies: [TargetDependency] { get }
+  static var featureRepositoryChangesDependencies: [TargetDependency] { get }
+  static var featureRepositoryDiffDependencies: [TargetDependency] { get }
+  static var featureRepositoryHistoryDependencies: [TargetDependency] { get }
+  static var featureRepositoryOperationsDependencies: [TargetDependency] { get }
+  static var featureRepositoryUIDependencies: [TargetDependency] { get }
   static var domainGitDependencies: [TargetDependency] { get }
   static var domainGitInterfaceDependencies: [TargetDependency] { get }
   static var dataGitDependencies: [TargetDependency] { get }
@@ -61,6 +81,11 @@ public extension TargetDependencies {
   static var featureRepositoryDependencies: [TargetDependency] { [] }
   static var featureRepositoryInterfaceDependencies: [TargetDependency] { [] }
   static var featureRepositoryTestsDependencies: [TargetDependency] { [] }
+  static var featureRepositoryChangesDependencies: [TargetDependency] { [] }
+  static var featureRepositoryDiffDependencies: [TargetDependency] { [] }
+  static var featureRepositoryHistoryDependencies: [TargetDependency] { [] }
+  static var featureRepositoryOperationsDependencies: [TargetDependency] { [] }
+  static var featureRepositoryUIDependencies: [TargetDependency] { [] }
   static var domainGitDependencies: [TargetDependency] { [] }
   static var domainGitInterfaceDependencies: [TargetDependency] { [] }
   static var dataGitDependencies: [TargetDependency] { [] }
@@ -74,6 +99,11 @@ public protocol InfoPlists {
   static var featureRepositoryInfoPlist: InfoPlist { get }
   static var featureRepositoryInterfaceInfoPlist: InfoPlist { get }
   static var featureRepositoryTestsInfoPlist: InfoPlist { get }
+  static var featureRepositoryChangesInfoPlist: InfoPlist { get }
+  static var featureRepositoryDiffInfoPlist: InfoPlist { get }
+  static var featureRepositoryHistoryInfoPlist: InfoPlist { get }
+  static var featureRepositoryOperationsInfoPlist: InfoPlist { get }
+  static var featureRepositoryUIInfoPlist: InfoPlist { get }
   static var domainGitInfoPlist: InfoPlist { get }
   static var domainGitInterfaceInfoPlist: InfoPlist { get }
   static var dataGitInfoPlist: InfoPlist { get }
@@ -87,6 +117,11 @@ public extension InfoPlists {
   static var featureRepositoryInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryInterfaceInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryChangesInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryDiffInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryHistoryInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryOperationsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryUIInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var domainGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var domainGitInterfaceInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var dataGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
@@ -100,6 +135,11 @@ public protocol BundlePrefixes {
   static var featureRepositoryBundlePrefix: String { get }
   static var featureRepositoryInterfaceBundlePrefix: String { get }
   static var featureRepositoryTestsBundlePrefix: String { get }
+  static var featureRepositoryChangesBundlePrefix: String { get }
+  static var featureRepositoryDiffBundlePrefix: String { get }
+  static var featureRepositoryHistoryBundlePrefix: String { get }
+  static var featureRepositoryOperationsBundlePrefix: String { get }
+  static var featureRepositoryUIBundlePrefix: String { get }
   static var domainGitBundlePrefix: String { get }
   static var domainGitInterfaceBundlePrefix: String { get }
   static var dataGitBundlePrefix: String { get }
@@ -113,6 +153,11 @@ public extension BundlePrefixes {
   static var featureRepositoryBundlePrefix: String { environment.organizationName }
   static var featureRepositoryInterfaceBundlePrefix: String { environment.organizationName }
   static var featureRepositoryTestsBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryChangesBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryDiffBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryHistoryBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryOperationsBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryUIBundlePrefix: String { environment.organizationName }
   static var domainGitBundlePrefix: String { environment.organizationName }
   static var domainGitInterfaceBundlePrefix: String { environment.organizationName }
   static var dataGitBundlePrefix: String { environment.organizationName }
@@ -126,6 +171,11 @@ public protocol TargetSettings {
   static var featureRepositorySettings: Settings? { get }
   static var featureRepositoryInterfaceSettings: Settings? { get }
   static var featureRepositoryTestsSettings: Settings? { get }
+  static var featureRepositoryChangesSettings: Settings? { get }
+  static var featureRepositoryDiffSettings: Settings? { get }
+  static var featureRepositoryHistorySettings: Settings? { get }
+  static var featureRepositoryOperationsSettings: Settings? { get }
+  static var featureRepositoryUISettings: Settings? { get }
   static var domainGitSettings: Settings? { get }
   static var domainGitInterfaceSettings: Settings? { get }
   static var dataGitSettings: Settings? { get }
@@ -139,6 +189,11 @@ public extension TargetSettings {
   static var featureRepositorySettings: Settings? { nil }
   static var featureRepositoryInterfaceSettings: Settings? { nil }
   static var featureRepositoryTestsSettings: Settings? { nil }
+  static var featureRepositoryChangesSettings: Settings? { nil }
+  static var featureRepositoryDiffSettings: Settings? { nil }
+  static var featureRepositoryHistorySettings: Settings? { nil }
+  static var featureRepositoryOperationsSettings: Settings? { nil }
+  static var featureRepositoryUISettings: Settings? { nil }
   static var domainGitSettings: Settings? { nil }
   static var domainGitInterfaceSettings: Settings? { nil }
   static var dataGitSettings: Settings? { nil }
@@ -152,6 +207,11 @@ public protocol TargetScripts {
   static var featureRepositoryTargetScripts: [TargetScript] { get }
   static var featureRepositoryInterfaceTargetScripts: [TargetScript] { get }
   static var featureRepositoryTestsTargetScripts: [TargetScript] { get }
+  static var featureRepositoryChangesTargetScripts: [TargetScript] { get }
+  static var featureRepositoryDiffTargetScripts: [TargetScript] { get }
+  static var featureRepositoryHistoryTargetScripts: [TargetScript] { get }
+  static var featureRepositoryOperationsTargetScripts: [TargetScript] { get }
+  static var featureRepositoryUITargetScripts: [TargetScript] { get }
   static var domainGitTargetScripts: [TargetScript] { get }
   static var domainGitInterfaceTargetScripts: [TargetScript] { get }
   static var dataGitTargetScripts: [TargetScript] { get }
@@ -165,6 +225,11 @@ public extension TargetScripts {
   static var featureRepositoryTargetScripts: [TargetScript] { [] }
   static var featureRepositoryInterfaceTargetScripts: [TargetScript] { [] }
   static var featureRepositoryTestsTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryChangesTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryDiffTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryHistoryTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryOperationsTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryUITargetScripts: [TargetScript] { [] }
   static var domainGitTargetScripts: [TargetScript] { [] }
   static var domainGitInterfaceTargetScripts: [TargetScript] { [] }
   static var dataGitTargetScripts: [TargetScript] { [] }
@@ -178,6 +243,11 @@ public protocol CoreDataModels {
   static var featureRepositoryCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryInterfaceCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryTestsCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryChangesCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryDiffCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryUICoreDataModels: [CoreDataModel] { get }
   static var domainGitCoreDataModels: [CoreDataModel] { get }
   static var domainGitInterfaceCoreDataModels: [CoreDataModel] { get }
   static var dataGitCoreDataModels: [CoreDataModel] { get }
@@ -191,6 +261,11 @@ public extension CoreDataModels {
   static var featureRepositoryCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryInterfaceCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryTestsCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryChangesCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryDiffCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryUICoreDataModels: [CoreDataModel] { [] }
   static var domainGitCoreDataModels: [CoreDataModel] { [] }
   static var domainGitInterfaceCoreDataModels: [CoreDataModel] { [] }
   static var dataGitCoreDataModels: [CoreDataModel] { [] }

@@ -28,7 +28,7 @@ let project = Project(
 			infoPlist: .default,
 			sources: TreesProduct.askPassSources,
 			dependencies: [
-				.module(core: .gitCredential)
+				.core(implements: .gitCredential)
 			],
 			settings: .settings(base: baseSettings)
 		),

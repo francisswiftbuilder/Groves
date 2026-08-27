@@ -1,31 +1,57 @@
 import DomainGitInterface
+import FeatureRepositoryChanges
+import FeatureRepositoryHistory
+import FeatureRepositoryInterface
+import FeatureRepositoryOperations
+import FeatureRepositoryUI
 import SwiftUI
 
 struct WorkspaceDetail: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
 	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
+	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
+	@ObservedObject private var syncViewModel: RepositorySyncViewModel
+	@ObservedObject private var remotesViewModel: RemotesViewModel
 	let changesViewModel: ChangesViewModel
+	let changesDiffViewModel: ChangesDiffViewModel
+	let commitViewModel: CommitViewModel
+	let conflictViewModel: ConflictViewModel
 	let historyViewModel: HistoryViewModel
 	let stashesViewModel: StashesViewModel
 	let treeViewModel: RepositoryTreeViewModel
 	let diffPreferences: WorkspaceDiffPreferences
+	let commitActions: RepositoryCommitActions
 
 	init(
 		viewModel: WorkspaceViewModel,
 		changesViewModel: ChangesViewModel,
+		changesDiffViewModel: ChangesDiffViewModel,
+		commitViewModel: CommitViewModel,
+		conflictViewModel: ConflictViewModel,
 		historyViewModel: HistoryViewModel,
 		operationViewModel: RepositoryOperationViewModel,
+		referencesViewModel: RepositoryReferencesViewModel,
+		syncViewModel: RepositorySyncViewModel,
+		remotesViewModel: RemotesViewModel,
 		stashesViewModel: StashesViewModel,
 		treeViewModel: RepositoryTreeViewModel,
-		diffPreferences: WorkspaceDiffPreferences
+		diffPreferences: WorkspaceDiffPreferences,
+		commitActions: RepositoryCommitActions
 	) {
 		self.viewModel = viewModel
 		self.changesViewModel = changesViewModel
+		self.changesDiffViewModel = changesDiffViewModel
+		self.commitViewModel = commitViewModel
+		self.conflictViewModel = conflictViewModel
 		self.historyViewModel = historyViewModel
 		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
+		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
+		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
+		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
 		self.stashesViewModel = stashesViewModel
 		self.treeViewModel = treeViewModel
 		self.diffPreferences = diffPreferences
+		self.commitActions = commitActions
 	}
 
 	var body: some View {
@@ -42,29 +68,39 @@ struct WorkspaceDetail: View {
 					message: "Fetching changes, history, branches, tags, and files."
 				)
 				.navigationTitle(viewModel.repositoryName)
-				.navigationSubtitle(operationViewModel.currentBranchStatus)
+				.navigationSubtitle(referencesViewModel.currentBranchStatus)
 			} else {
 				switch viewModel.selectedSection ?? .changes {
 				case .changes:
 					ChangesView(
 						viewModel: changesViewModel,
+						diffViewModel: changesDiffViewModel,
+						commitViewModel: commitViewModel,
+						conflictViewModel: conflictViewModel,
 						diffPreferences: diffPreferences,
 						repositoryName: viewModel.repositoryName,
-						currentBranchStatus: operationViewModel.currentBranchStatus,
+						currentBranchStatus: referencesViewModel.currentBranchStatus,
 						repositoryURL: viewModel.repositoryURL,
 						onDiffOptionsChanged: viewModel.didChangeDiffOptions
 					)
 				case .history, .branches:
 					HistoryView(
 						historyViewModel: historyViewModel,
-						operationViewModel: operationViewModel,
 						diffPreferences: diffPreferences,
 						repositoryName: viewModel.repositoryName,
-						currentBranchStatus: operationViewModel.currentBranchStatus,
+						currentBranchStatus: referencesViewModel.currentBranchStatus,
+						operationState: operationViewModel.operationState,
+						isOperationLoading: operationViewModel.isLoading || syncViewModel.isLoading,
+						canCheckoutCommit: referencesViewModel.canCheckoutCommit,
+						remoteNames: Set(remotesViewModel.remotes.map(\.name)),
+						commitActions: commitActions,
 						onDiffOptionsChanged: viewModel.didChangeDiffOptions
 					)
 				case .remotes:
-					RemotesView(viewModel: operationViewModel)
+					RemotesView(
+						viewModel: remotesViewModel,
+						syncViewModel: syncViewModel
+					)
 				case .stashes:
 					StashesView(
 						changesViewModel: changesViewModel,
@@ -86,7 +122,7 @@ struct WorkspaceDetail: View {
 				}
 				if operationViewModel.operationState.isDetached {
 					RepositoryDetachedHeadBanner(
-						viewModel: operationViewModel
+						viewModel: referencesViewModel
 					)
 				}
 				if operationViewModel.operationState.operation != nil

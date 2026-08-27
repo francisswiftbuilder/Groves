@@ -3,10 +3,10 @@ import ProjectDescription
 extension Array: TargetDependencies where Element == TargetDependency {
 	public static var appDependencies: [TargetDependency] {
 		[
-			.module(core: .gitCredential),
-			.module(feature: .repository),
-			.module(domain: .git),
-			.module(data: .git),
+			.core(implements: .gitCredential),
+			.feature(implements: .repository),
+			.domain(implements: .git),
+			.data(implements: .git),
 			.target(name: TreesProduct.askPassTargetName),
 		]
 	}
@@ -24,20 +24,69 @@ extension Array: TargetDependencies where Element == TargetDependency {
 	public static var featureRepositoryDependencies: [TargetDependency] {
 		[
 			.feature(interface: .repository),
-			.module(domain: .git),
+			.feature(implements: .repositoryChanges),
+			.feature(implements: .repositoryDiff),
+			.feature(implements: .repositoryHistory),
+			.feature(implements: .repositoryOperations),
+			.feature(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryChangesDependencies: [TargetDependency] {
+		[
+			.feature(interface: .repository),
+			.feature(implements: .repositoryDiff),
+			.feature(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryDiffDependencies: [TargetDependency] {
+		[
+			.feature(interface: .repository),
+			.feature(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryHistoryDependencies: [TargetDependency] {
+		[
+			.feature(interface: .repository),
+			.feature(implements: .repositoryDiff),
+			.feature(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryOperationsDependencies: [TargetDependency] {
+		[
+			.feature(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryUIDependencies: [TargetDependency] {
+		[
+			.domain(interface: .git)
 		]
 	}
 
 	public static var featureRepositoryInterfaceDependencies: [TargetDependency] {
 		[
-			.module(domain: .git)
+			.domain(interface: .git)
 		]
 	}
 
 	public static var featureRepositoryTestsDependencies: [TargetDependency] {
 		[
 			.feature(implements: .repository),
-			.module(domain: .git),
+			.feature(implements: .repositoryChanges),
+			.feature(implements: .repositoryDiff),
+			.feature(implements: .repositoryHistory),
+			.feature(implements: .repositoryOperations),
+			.feature(implements: .repositoryUI),
+			.domain(implements: .git),
 		]
 	}
 
@@ -49,15 +98,15 @@ extension Array: TargetDependencies where Element == TargetDependency {
 
 	public static var dataGitDependencies: [TargetDependency] {
 		[
-			.module(core: .gitCredential),
-			.module(domain: .git),
+			.core(implements: .gitCredential),
+			.domain(implements: .git),
 		]
 	}
 
 	public static var dataGitTestsDependencies: [TargetDependency] {
 		[
 			.data(implements: .git),
-			.module(domain: .git),
+			.domain(implements: .git),
 		]
 	}
 }

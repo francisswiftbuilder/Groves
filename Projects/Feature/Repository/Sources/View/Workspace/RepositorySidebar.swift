@@ -1,4 +1,6 @@
 import DomainGitInterface
+import FeatureRepositoryChanges
+import FeatureRepositoryOperations
 import SwiftUI
 
 struct RepositorySidebar: View {
@@ -6,6 +8,8 @@ struct RepositorySidebar: View {
 	@ObservedObject var windowViewModel: RepositoryWindowViewModel
 	@ObservedObject private var changesViewModel: ChangesViewModel
 	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
+	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
+	@ObservedObject private var remotesViewModel: RemotesViewModel
 	@ObservedObject private var stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
 
@@ -14,6 +18,8 @@ struct RepositorySidebar: View {
 		windowViewModel: RepositoryWindowViewModel,
 		changesViewModel: ChangesViewModel,
 		operationViewModel: RepositoryOperationViewModel,
+		referencesViewModel: RepositoryReferencesViewModel,
+		remotesViewModel: RemotesViewModel,
 		stashesViewModel: StashesViewModel,
 		repositoryID: RepositoryTab.ID
 	) {
@@ -21,6 +27,8 @@ struct RepositorySidebar: View {
 		self.windowViewModel = windowViewModel
 		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
 		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
+		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
+		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
 		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
 		self.repositoryID = repositoryID
 	}
@@ -30,10 +38,11 @@ struct RepositorySidebar: View {
 			RepositoryNavigationRows(
 				workspace: viewModel,
 				changesViewModel: changesViewModel,
-				operationViewModel: operationViewModel,
+				referencesViewModel: referencesViewModel,
+				remotesViewModel: remotesViewModel,
 				stashesViewModel: stashesViewModel,
 				repositoryID: repositoryID,
-				onCreateBranch: { operationViewModel.didPresentNewBranch() }
+				onCreateBranch: { referencesViewModel.didPresentNewBranch() }
 			)
 		}
 		.listStyle(.sidebar)
@@ -68,14 +77,14 @@ struct RepositorySidebar: View {
 		{
 			switch selection {
 			case .branch(_, let id):
-				if let branch = operationViewModel.branches.first(where: { $0.id == id }) {
+				if let branch = referencesViewModel.branches.first(where: { $0.id == id }) {
 					Button("Switch to \(branch.name)", systemImage: "arrow.triangle.branch") {
 						selectBranch(branch)
-						operationViewModel.didRequestSwitchBranch()
+						referencesViewModel.didRequestSwitchBranch()
 					}
 					.disabled(branch.isCurrent)
 
-					if let currentBranch = operationViewModel.currentBranch, !branch.isCurrent {
+					if let currentBranch = referencesViewModel.currentBranch, !branch.isCurrent {
 						Button(
 							"Merge \(branch.name) into \(currentBranch.name)",
 							systemImage: "arrow.triangle.merge"
@@ -94,14 +103,14 @@ struct RepositorySidebar: View {
 					}
 
 					Button("Rename…", systemImage: "pencil") {
-						operationViewModel.didPresentBranchRename(branch)
+						referencesViewModel.didPresentBranchRename(branch)
 					}
-					.disabled(!operationViewModel.operationState.isIdle || operationViewModel.isLoading)
+					.disabled(!referencesViewModel.operationState.isIdle || referencesViewModel.isLoading)
 
 					Divider()
 
 					Button("Delete Branch", systemImage: "trash", role: .destructive) {
-						operationViewModel.didPresentBranchDeletion(branch)
+						referencesViewModel.didPresentBranchDeletion(branch)
 					}
 					.disabled(branch.isCurrent)
 				}
@@ -124,7 +133,7 @@ struct RepositorySidebar: View {
 					}
 				}
 			case .remoteBranch(_, let id):
-				if let remoteBranch = operationViewModel.remoteBranches.first(where: { $0.id == id }) {
+				if let remoteBranch = remotesViewModel.remoteBranches.first(where: { $0.id == id }) {
 					if let localBranch = localBranch(tracking: remoteBranch) {
 						Button(
 							"Switch to \(localBranch.name)",
@@ -141,13 +150,13 @@ struct RepositorySidebar: View {
 
 					Divider()
 					Button("Delete Remote Branch…", systemImage: "trash", role: .destructive) {
-						operationViewModel.didPresentRemoteBranchDeletion(remoteBranch)
+						remotesViewModel.didPresentBranchDeletion(remoteBranch)
 					}
 				}
 			case .tag(_, let id):
-				if let tag = operationViewModel.tags.first(where: { $0.id == id }) {
+				if let tag = referencesViewModel.tags.first(where: { $0.id == id }) {
 					Button("Delete Tag", systemImage: "trash", role: .destructive) {
-						operationViewModel.didPresentTagDeletion(tag)
+						referencesViewModel.didPresentTagDeletion(tag)
 					}
 				}
 			case .section, .remote:
@@ -167,14 +176,14 @@ struct RepositorySidebar: View {
 
 		switch selection {
 		case .branch(_, let id):
-			guard let branch = operationViewModel.branches.first(where: { $0.id == id }) else {
+			guard let branch = referencesViewModel.branches.first(where: { $0.id == id }) else {
 				return
 			}
 			selectBranch(branch)
-			operationViewModel.didRequestSwitchBranch()
+			referencesViewModel.didRequestSwitchBranch()
 		case .remoteBranch(_, let id):
 			guard
-				let remoteBranch = operationViewModel.remoteBranches.first(where: { $0.id == id })
+				let remoteBranch = remotesViewModel.remoteBranches.first(where: { $0.id == id })
 			else { return }
 			switchToRemoteBranch(remoteBranch)
 		case .section, .remote, .tag, .stash:
@@ -185,22 +194,22 @@ struct RepositorySidebar: View {
 	private func switchToRemoteBranch(_ remoteBranch: GitRemoteBranch) {
 		if let localBranch = localBranch(tracking: remoteBranch) {
 			selectBranch(localBranch)
-			operationViewModel.didRequestSwitchBranch()
+			referencesViewModel.didRequestSwitchBranch()
 		} else {
-			operationViewModel.didRequestCreateLocalBranch(from: remoteBranch)
+			referencesViewModel.didRequestCreateLocalBranch(from: remoteBranch)
 		}
 	}
 
 	private func localBranch(tracking remoteBranch: GitRemoteBranch) -> GitBranch? {
-		operationViewModel.branches.first { $0.upstream == remoteBranch.fullName }
-			?? operationViewModel.branches.first { $0.name == remoteBranch.name }
+		referencesViewModel.branches.first { $0.upstream == remoteBranch.fullName }
+			?? referencesViewModel.branches.first { $0.name == remoteBranch.name }
 	}
 
 	private func selectBranch(_ branch: GitBranch) {
 		windowViewModel.selectSidebarItem(
 			.branch(repositoryID: repositoryID, id: branch.id)
 		)
-		operationViewModel.selectedBranchID = branch.id
+		referencesViewModel.selectedBranchID = branch.id
 	}
 
 	private func selectStash(_ stash: GitStash) {

@@ -2,6 +2,8 @@ import DomainGitInterface
 import XCTest
 
 @testable import FeatureRepository
+@testable import FeatureRepositoryChanges
+@testable import FeatureRepositoryHistory
 
 @MainActor
 final class WorkspaceChildViewModelTests: XCTestCase {
@@ -9,8 +11,14 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		var workspace: RepositoryWorkspace? = makeRepositoryWorkspace()
 		let viewModel = workspace?.viewModel
 		weak let changesViewModel = workspace?.changesViewModel
+		weak let changesDiffViewModel = workspace?.changesDiffViewModel
+		weak let commitViewModel = workspace?.commitViewModel
+		weak let conflictViewModel = workspace?.conflictViewModel
 		weak let historyViewModel = workspace?.historyViewModel
 		weak let operationViewModel = workspace?.operationViewModel
+		weak let referencesViewModel = workspace?.referencesViewModel
+		weak let syncViewModel = workspace?.syncViewModel
+		weak let remotesViewModel = workspace?.remotesViewModel
 		weak let stashesViewModel = workspace?.stashesViewModel
 		weak let treeViewModel = workspace?.treeViewModel
 		weak let diffPreferences = workspace?.diffPreferences
@@ -19,8 +27,14 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 
 		XCTAssertNotNil(viewModel)
 		XCTAssertNil(changesViewModel)
+		XCTAssertNil(changesDiffViewModel)
+		XCTAssertNil(commitViewModel)
+		XCTAssertNil(conflictViewModel)
 		XCTAssertNil(historyViewModel)
 		XCTAssertNil(operationViewModel)
+		XCTAssertNil(referencesViewModel)
+		XCTAssertNil(syncViewModel)
+		XCTAssertNil(remotesViewModel)
 		XCTAssertNil(stashesViewModel)
 		XCTAssertNil(treeViewModel)
 		XCTAssertNil(diffPreferences)
@@ -30,8 +44,9 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		let workspace = makeRepositoryWorkspace()
 		let preferences = workspace.diffPreferences
 		let changesViewModel = workspace.changesViewModel
+		let changesDiffViewModel = workspace.changesDiffViewModel
 		let historyViewModel = workspace.historyViewModel
-		let operationViewModel = workspace.operationViewModel
+		let referencesViewModel = workspace.referencesViewModel
 		let change = WorkingTreeChange(
 			path: "README.md",
 			previousPath: nil,
@@ -70,8 +85,8 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 
 		XCTAssertEqual(changesViewModel.changes, [change])
 		XCTAssertEqual(historyViewModel.commitGraphItems.map(\.commit), [commit])
-		XCTAssertEqual(operationViewModel.branches, [branch])
-		XCTAssertTrue(changesViewModel.preferences === preferences)
+		XCTAssertEqual(referencesViewModel.branches, [branch])
+		XCTAssertTrue(changesDiffViewModel.preferences === preferences)
 	}
 
 	func testHistoryViewModelCancelsPendingDebouncedSearch() async throws {

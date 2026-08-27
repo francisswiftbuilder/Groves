@@ -6,7 +6,6 @@ import Foundation
 final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var selectedSection: WorkspaceSection? = .changes
 	@Published var expandedSidebarGroups: Set<RepositorySidebarGroup> = []
-	@Published var pendingRepositoryConfirmation: PendingRepositoryConfirmation?
 	@Published private(set) var repositoryURL: URL?
 	@Published private(set) var isLoading = false
 	@Published private(set) var isLoadingContent: Bool
@@ -44,69 +43,8 @@ final class WorkspaceViewModel: ObservableObject {
 		repositoryURL?.lastPathComponent ?? "No Repository"
 	}
 
-	var discardConfirmationTitle: String {
-		pendingRepositoryConfirmation?.title ?? "Discard Changes?"
-	}
-
-	var pendingDiscardChanges: [WorkingTreeChange]? {
-		guard case .discard(let changes) = pendingRepositoryConfirmation else { return nil }
-		return changes
-	}
-
-	var pendingTagDeletion: GitTag? {
-		guard case .deleteTag(let tag) = pendingRepositoryConfirmation else { return nil }
-		return tag
-	}
-
-	var isPresentingForcePushConfirmation: Bool {
-		guard case .forcePush = pendingRepositoryConfirmation else { return false }
-		return true
-	}
-
-	var deleteTagConfirmationTitle: String {
-		guard let pendingTagDeletion else { return "Delete Tag?" }
-		return "Delete “\(pendingTagDeletion.name)”?"
-	}
-
 	func didSelectSection(_ section: WorkspaceSection) {
 		selectedSection = section
-	}
-
-	func didDismissDiscardConfirmation() {
-		pendingRepositoryConfirmation = nil
-	}
-
-	func didConfirmDiscardChanges() {
-		guard pendingDiscardChanges != nil else { return }
-		didConfirmPendingRepositoryConfirmation()
-	}
-
-	func didDismissTagDeletion() {
-		pendingRepositoryConfirmation = nil
-	}
-
-	func didConfirmTagDeletion(_ tag: GitTag) {
-		guard pendingTagDeletion == tag else { return }
-		didConfirmPendingRepositoryConfirmation()
-	}
-
-	func didDismissForcePushConfirmation() {
-		pendingRepositoryConfirmation = nil
-	}
-
-	func didConfirmForcePush() {
-		guard isPresentingForcePushConfirmation else { return }
-		didConfirmPendingRepositoryConfirmation()
-	}
-
-	func didDismissPendingRepositoryConfirmation() {
-		pendingRepositoryConfirmation = nil
-	}
-
-	func didConfirmPendingRepositoryConfirmation() {
-		guard let confirmation = pendingRepositoryConfirmation else { return }
-		pendingRepositoryConfirmation = nil
-		actions.confirmRepositoryAction(confirmation)
 	}
 
 	func didActivateSidebarSelection(_ selection: RepositorySidebarSelection) {
