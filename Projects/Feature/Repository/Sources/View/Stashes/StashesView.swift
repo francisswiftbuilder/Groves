@@ -1,4 +1,8 @@
 import DomainGitInterface
+import FeatureRepositoryChanges
+import FeatureRepositoryDiff
+import FeatureRepositoryInterface
+import FeatureRepositoryUI
 import SwiftUI
 
 struct StashesView: View {
@@ -73,6 +77,21 @@ struct StashesView: View {
 				}
 			}
 		}
+		.confirmationDialog(
+			"Delete Stash",
+			isPresented: pendingDropPresentation
+		) {
+			Button("Delete Stash", role: .destructive) {
+				stashesViewModel.didConfirmStashDrop()
+			}
+			Button("Cancel", role: .cancel) {
+				stashesViewModel.didDismissStashDrop()
+			}
+		} message: {
+			if let stash = stashesViewModel.pendingDrop {
+				Text("\(stash.reference) · \(stash.subject) will be permanently removed.")
+			}
+		}
 		.task(id: stashesViewModel.diff) {
 			let diff = stashesViewModel.diff
 			let files = await Task.detached(priority: .userInitiated) {
@@ -85,6 +104,17 @@ struct StashesView: View {
 			}
 			stashesViewModel.didSelectStashFile(selectedFile)
 		}
+	}
+
+	private var pendingDropPresentation: Binding<Bool> {
+		Binding(
+			get: { stashesViewModel.pendingDrop != nil },
+			set: { isPresented in
+				if !isPresented {
+					stashesViewModel.didDismissStashDrop()
+				}
+			}
+		)
 	}
 
 	private var stashSelection: Binding<String?> {

@@ -81,7 +81,8 @@ struct GitRepositoryStub: GitRepository {
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> String {
-		source == .staged ? stagedDiff : unstagedDiff
+		await recorder?.record(.loadDiff(source))
+		return source == .staged ? stagedDiff : unstagedDiff
 	}
 	func requestAmendDiff(
 		for change: GitAmendChange,
@@ -128,7 +129,9 @@ struct GitRepositoryStub: GitRepository {
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
 		at repositoryURL: URL
-	) async throws {}
+	) async throws {
+		await recorder?.record(.applyDiffLine(action))
+	}
 	func requestApplyDiffHunk(
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,

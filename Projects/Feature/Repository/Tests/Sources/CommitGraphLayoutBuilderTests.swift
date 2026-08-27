@@ -3,6 +3,8 @@ import Foundation
 import XCTest
 
 @testable import FeatureRepository
+@testable import FeatureRepositoryDiff
+@testable import FeatureRepositoryHistory
 
 final class CommitGraphLayoutBuilderTests: XCTestCase {
 	func testBuildPlacesLinearHistoryInSingleLane() {

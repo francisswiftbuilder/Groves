@@ -1,4 +1,5 @@
 import DomainGitInterface
+import FeatureRepositoryInterface
 import Foundation
 
 struct StashesViewModelDependencies {

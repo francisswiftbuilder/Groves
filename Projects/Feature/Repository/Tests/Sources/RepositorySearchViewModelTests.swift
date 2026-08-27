@@ -1,6 +1,7 @@
 import XCTest
 
 @testable import FeatureRepository
+@testable import FeatureRepositoryDiff
 
 @MainActor
 final class RepositorySearchViewModelTests: XCTestCase {

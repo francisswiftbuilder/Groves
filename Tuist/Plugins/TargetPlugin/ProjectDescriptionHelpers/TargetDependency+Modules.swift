@@ -21,23 +21,28 @@ extension TargetDependency {
 
 extension TargetDependency {
 	public static func feature(implements module: ModuleFeatureType? = nil) -> Self {
-		return .target(name: ModulePath.feature(module).name)
+		let modulePath = ModulePath.feature(module)
+		return .project(target: modulePath.name, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func feature(interface module: ModuleFeatureType) -> Self {
-		return .target(name: ModulePath.feature(module).interface)
+		let modulePath = ModulePath.feature(module)
+		return .project(target: modulePath.interface, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func feature(tests module: ModuleFeatureType) -> Self {
-		return .target(name: ModulePath.feature(module).tests)
+		let modulePath = ModulePath.feature(module)
+		return .project(target: modulePath.tests, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func feature(testing module: ModuleFeatureType) -> Self {
-		return .target(name: ModulePath.feature(module).testing)
+		let modulePath = ModulePath.feature(module)
+		return .project(target: modulePath.testing, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func feature(example module: ModuleFeatureType) -> Self {
-		return .target(name: ModulePath.feature(module).example)
+		let modulePath = ModulePath.feature(module)
+		return .project(target: modulePath.example, path: .relativeToRoot(modulePath.path))
 	}
 }
 
@@ -45,19 +50,23 @@ extension TargetDependency {
 
 extension TargetDependency {
 	public static func domain(implements module: ModuleDomainType? = nil) -> Self {
-		return .target(name: ModulePath.domain(module).name)
+		let modulePath = ModulePath.domain(module)
+		return .project(target: modulePath.name, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func domain(interface module: ModuleDomainType) -> Self {
-		return .target(name: ModulePath.domain(module).interface)
+		let modulePath = ModulePath.domain(module)
+		return .project(target: modulePath.interface, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func domain(tests module: ModuleDomainType) -> Self {
-		return .target(name: ModulePath.domain(module).tests)
+		let modulePath = ModulePath.domain(module)
+		return .project(target: modulePath.tests, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func domain(testing module: ModuleDomainType) -> Self {
-		return .target(name: ModulePath.domain(module).testing)
+		let modulePath = ModulePath.domain(module)
+		return .project(target: modulePath.testing, path: .relativeToRoot(modulePath.path))
 	}
 }
 
@@ -65,19 +74,23 @@ extension TargetDependency {
 
 extension TargetDependency {
 	public static func data(implements module: ModuleDataType? = nil) -> Self {
-		return .target(name: ModulePath.data(module).name)
+		let modulePath = ModulePath.data(module)
+		return .project(target: modulePath.name, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func data(interface module: ModuleDataType) -> Self {
-		return .target(name: ModulePath.data(module).interface)
+		let modulePath = ModulePath.data(module)
+		return .project(target: modulePath.interface, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func data(tests module: ModuleDataType) -> Self {
-		return .target(name: ModulePath.data(module).tests)
+		let modulePath = ModulePath.data(module)
+		return .project(target: modulePath.tests, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func data(testing module: ModuleDataType) -> Self {
-		return .target(name: ModulePath.data(module).testing)
+		let modulePath = ModulePath.data(module)
+		return .project(target: modulePath.testing, path: .relativeToRoot(modulePath.path))
 	}
 }
 
@@ -85,19 +98,23 @@ extension TargetDependency {
 
 extension TargetDependency {
 	public static func core(implements module: ModuleCoreType? = nil) -> Self {
-		return .target(name: ModulePath.core(module).name)
+		let modulePath = ModulePath.core(module)
+		return .project(target: modulePath.name, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func core(interface module: ModuleCoreType) -> Self {
-		return .target(name: ModulePath.core(module).interface)
+		let modulePath = ModulePath.core(module)
+		return .project(target: modulePath.interface, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func core(tests module: ModuleCoreType) -> Self {
-		return .target(name: ModulePath.core(module).tests)
+		let modulePath = ModulePath.core(module)
+		return .project(target: modulePath.tests, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func core(testing module: ModuleCoreType) -> Self {
-		return .target(name: ModulePath.core(module).testing)
+		let modulePath = ModulePath.core(module)
+		return .project(target: modulePath.testing, path: .relativeToRoot(modulePath.path))
 	}
 }
 
@@ -105,37 +122,12 @@ extension TargetDependency {
 
 extension TargetDependency {
 	public static func shared(implements module: ModuleSharedType? = nil) -> Self {
-		return .target(name: ModulePath.shared(module).name)
+		let modulePath = ModulePath.shared(module)
+		return .project(target: modulePath.name, path: .relativeToRoot(modulePath.path))
 	}
 
 	public static func shared(interface module: ModuleSharedType) -> Self {
-		return .target(name: ModulePath.shared(module).interface)
-	}
-}
-
-extension TargetDependency {
-	public static func module<Module>(feature module: Module) -> TargetDependency
-	where Module: ModuleFeatureType {
-		.project(target: "Feature\(module.name)", path: .feature(implementation: module))
-	}
-
-	public static func module<Module>(domain module: Module) -> TargetDependency
-	where Module: ModuleDomainType {
-		.project(target: "Domain\(module.name)", path: .domain(implementation: module))
-	}
-
-	public static func module<Module>(data module: Module) -> TargetDependency
-	where Module: ModuleDataType {
-		.project(target: "Data\(module.name)", path: .data(implementation: module))
-	}
-
-	public static func module<Module>(core module: Module) -> TargetDependency
-	where Module: ModuleCoreType {
-		.project(target: "Core\(module.name)", path: .core(implementation: module))
-	}
-
-	public static func module<Module>(shared module: Module) -> TargetDependency
-	where Module: ModuleSharedType {
-		.project(target: "Shared\(module.name)", path: .shared(implementation: module))
+		let modulePath = ModulePath.shared(module)
+		return .project(target: modulePath.interface, path: .relativeToRoot(modulePath.path))
 	}
 }
