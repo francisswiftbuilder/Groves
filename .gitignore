@@ -4,6 +4,7 @@
 Tuist/.build/
 Tuist/Plugins/**/.build/
 Tuist/Derived/
+Projects/**/Derived/
 Tuist/Cache/
 Tuist/Dependencies/
 Tuist/Graph/

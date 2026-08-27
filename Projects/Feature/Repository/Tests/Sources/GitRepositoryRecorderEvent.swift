@@ -4,6 +4,8 @@ import Foundation
 enum GitRepositoryRecorderEvent: Equatable, Sendable {
 	case repositoryRoot(URL)
 	case clone(remoteURL: String, directoryURL: URL)
+	case loadDiff(GitDiffSource)
+	case applyDiffLine(GitDiffLineAction)
 	case stage(path: String)
 	case merge(branchName: String)
 	case createBranch(name: String, commitHash: String?)

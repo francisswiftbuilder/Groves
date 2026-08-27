@@ -15,11 +15,19 @@ struct RepositoryTabsView: View {
 					viewModel: repositoryTab.workspace.viewModel,
 					windowViewModel: windowViewModel,
 					changesViewModel: repositoryTab.workspace.changesViewModel,
+					changesDiffViewModel: repositoryTab.workspace.changesDiffViewModel,
+					commitViewModel: repositoryTab.workspace.commitViewModel,
+					conflictViewModel: repositoryTab.workspace.conflictViewModel,
 					historyViewModel: repositoryTab.workspace.historyViewModel,
 					operationViewModel: repositoryTab.workspace.operationViewModel,
+					referencesViewModel: repositoryTab.workspace.referencesViewModel,
+					syncViewModel: repositoryTab.workspace.syncViewModel,
+					remotesViewModel: repositoryTab.workspace.remotesViewModel,
 					stashesViewModel: repositoryTab.workspace.stashesViewModel,
 					treeViewModel: repositoryTab.workspace.treeViewModel,
 					diffPreferences: repositoryTab.workspace.diffPreferences,
+					commitActions: repositoryTab.workspace.commitActions,
+					focusedActions: repositoryTab.workspace.focusedActions,
 					repositoryID: repositoryTab.id
 				)
 			} else {
@@ -47,6 +55,9 @@ struct RepositoryTabsView: View {
 				RepositoryWorkspaceToolbar(
 					viewModel: repositoryTab.workspace.viewModel,
 					operationViewModel: repositoryTab.workspace.operationViewModel,
+					referencesViewModel: repositoryTab.workspace.referencesViewModel,
+					syncViewModel: repositoryTab.workspace.syncViewModel,
+					remotesViewModel: repositoryTab.workspace.remotesViewModel,
 					onCreateBranch: presentNewBranch
 				)
 			}
@@ -79,7 +90,7 @@ struct RepositoryTabsView: View {
 	}
 
 	private func presentNewBranch() {
-		repositoryTab?.workspace.operationViewModel.didPresentNewBranch()
+		repositoryTab?.workspace.referencesViewModel.didPresentNewBranch()
 	}
 
 	private func presentRepositoryImporter() {

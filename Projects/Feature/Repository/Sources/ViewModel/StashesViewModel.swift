@@ -1,5 +1,7 @@
 import Combine
 import DomainGitInterface
+import FeatureRepositoryDiff
+import FeatureRepositoryInterface
 import Foundation
 
 @MainActor
@@ -12,6 +14,7 @@ final class StashesViewModel: ObservableObject {
 	@Published private(set) var imageDiff: GitImageDiff?
 	@Published private(set) var isLoadingImageDiff = false
 	@Published private(set) var isLoading = false
+	@Published var pendingDrop: GitStash?
 
 	private let dependencies: StashesViewModelDependencies
 	private let actions: StashesViewModelActions
@@ -48,10 +51,6 @@ final class StashesViewModel: ObservableObject {
 
 	private var didReceiveError: @MainActor (String) -> Void {
 		actions.didReceiveError
-	}
-
-	private var didRequestDropConfirmation: @MainActor (GitStash) -> Void {
-		actions.didRequestDropConfirmation
 	}
 
 	deinit {
@@ -169,7 +168,17 @@ final class StashesViewModel: ObservableObject {
 
 	func didPresentStashDrop(_ stash: GitStash) {
 		guard !isLoading else { return }
-		didRequestDropConfirmation(stash)
+		pendingDrop = stash
+	}
+
+	func didDismissStashDrop() {
+		pendingDrop = nil
+	}
+
+	func didConfirmStashDrop() {
+		guard let stash = pendingDrop else { return }
+		pendingDrop = nil
+		didConfirmDrop(stash)
 	}
 
 	func didConfirmDrop(_ stash: GitStash) {
