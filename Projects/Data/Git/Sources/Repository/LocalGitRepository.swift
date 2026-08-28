@@ -56,11 +56,16 @@ public struct LocalGitRepository: GitRepository {
 			throw GitRepositoryError.repositoryAlreadyExists
 		}
 
-		_ = try await runner.requestRun(
-			arguments: ["clone", "--", remoteURL, repositoryURL.path],
-			at: directoryURL,
-			isNetworkOperation: true
-		)
+		do {
+			_ = try await runner.requestRun(
+				arguments: ["clone", "--", remoteURL, repositoryURL.path],
+				at: directoryURL,
+				isNetworkOperation: true
+			)
+		} catch {
+			try? FileManager.default.removeItem(at: repositoryURL)
+			throw error
+		}
 		return repositoryURL
 	}
 
