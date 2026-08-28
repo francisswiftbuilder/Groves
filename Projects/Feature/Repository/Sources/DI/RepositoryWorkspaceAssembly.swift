@@ -5,6 +5,7 @@ import FeatureRepositoryHistory
 import FeatureRepositoryInterface
 import FeatureRepositoryOperations
 import FeatureRepositoryStashes
+import FeatureRepositoryTree
 import Foundation
 
 @MainActor

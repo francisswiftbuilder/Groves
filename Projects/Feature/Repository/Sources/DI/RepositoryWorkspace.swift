@@ -4,6 +4,7 @@ import FeatureRepositoryHistory
 import FeatureRepositoryInterface
 import FeatureRepositoryOperations
 import FeatureRepositoryStashes
+import FeatureRepositoryTree
 
 @MainActor
 final class RepositoryWorkspace {

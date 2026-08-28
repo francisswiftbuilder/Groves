@@ -16,6 +16,7 @@ extension Module {
 		case RepositoryHistory
 		case RepositoryOperations
 		case RepositoryStashes
+		case RepositoryTree
 		public var name: String { rawValue }
 	}
 }
@@ -53,6 +54,7 @@ extension ModuleFeatureType where Self == Module.Feature {
 	public static var repositoryHistory: Module.Feature { Module.Feature.RepositoryHistory }
 	public static var repositoryOperations: Module.Feature { Module.Feature.RepositoryOperations }
 	public static var repositoryStashes: Module.Feature { Module.Feature.RepositoryStashes }
+	public static var repositoryTree: Module.Feature { Module.Feature.RepositoryTree }
 }
 
 extension ModuleDomainType where Self == Module.Domain {

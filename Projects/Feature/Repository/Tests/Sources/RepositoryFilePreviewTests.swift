@@ -3,6 +3,7 @@ import Foundation
 import XCTest
 
 @testable import FeatureRepository
+@testable import FeatureRepositoryTree
 
 final class RepositoryFilePreviewTests: XCTestCase {
 	func testMakeCreatesTextPreviewForUTF8Content() {
