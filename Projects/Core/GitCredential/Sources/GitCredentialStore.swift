@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-public final class GitCredentialStore: @unchecked Sendable {
+public final class GitCredentialStore: GitCredentialPersisting, @unchecked Sendable {
 	private let service: String
 	private let pendingService: String
 	private let encoder = JSONEncoder()
