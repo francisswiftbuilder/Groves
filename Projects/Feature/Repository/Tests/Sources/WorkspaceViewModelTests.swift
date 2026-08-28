@@ -7,6 +7,7 @@ import XCTest
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryHistory
 @testable import FeatureRepositoryOperations
+@testable import FeatureRepositoryTree
 
 @MainActor
 final class WorkspaceViewModelTests: XCTestCase {

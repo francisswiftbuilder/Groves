@@ -13,6 +13,7 @@ public let allTargets: [Target] = [
 	.featureRepositoryHistory,
 	.featureRepositoryOperations,
 	.featureRepositoryStashes,
+	.featureRepositoryTree,
 	.domainGit,
 	.domainGitInterface,
 	.dataGit,
@@ -36,6 +37,7 @@ extension Destinations {
 		environment.destinations
 	}
 	public static var featureRepositoryStashesDestinations: Destinations { environment.destinations }
+	public static var featureRepositoryTreeDestinations: Destinations { environment.destinations }
 	public static var domainGitDestinations: Destinations { environment.destinations }
 	public static var domainGitInterfaceDestinations: Destinations { environment.destinations }
 	public static var dataGitDestinations: Destinations { environment.destinations }
@@ -69,6 +71,9 @@ extension DeploymentTargets {
 	public static var featureRepositoryStashesDeploymentTargets: DeploymentTargets {
 		environment.deploymentTargets
 	}
+	public static var featureRepositoryTreeDeploymentTargets: DeploymentTargets {
+		environment.deploymentTargets
+	}
 	public static var domainGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
 	public static var domainGitInterfaceDeploymentTargets: DeploymentTargets {
 		environment.deploymentTargets
@@ -100,6 +105,7 @@ public protocol TargetDependencies {
 	static var featureRepositoryHistoryDependencies: [TargetDependency] { get }
 	static var featureRepositoryOperationsDependencies: [TargetDependency] { get }
 	static var featureRepositoryStashesDependencies: [TargetDependency] { get }
+	static var featureRepositoryTreeDependencies: [TargetDependency] { get }
 	static var domainGitDependencies: [TargetDependency] { get }
 	static var domainGitInterfaceDependencies: [TargetDependency] { get }
 	static var dataGitDependencies: [TargetDependency] { get }
@@ -119,6 +125,7 @@ extension TargetDependencies {
 	public static var featureRepositoryHistoryDependencies: [TargetDependency] { [] }
 	public static var featureRepositoryOperationsDependencies: [TargetDependency] { [] }
 	public static var featureRepositoryStashesDependencies: [TargetDependency] { [] }
+	public static var featureRepositoryTreeDependencies: [TargetDependency] { [] }
 	public static var domainGitDependencies: [TargetDependency] { [] }
 	public static var domainGitInterfaceDependencies: [TargetDependency] { [] }
 	public static var dataGitDependencies: [TargetDependency] { [] }
@@ -138,6 +145,7 @@ public protocol InfoPlists {
 	static var featureRepositoryHistoryInfoPlist: InfoPlist { get }
 	static var featureRepositoryOperationsInfoPlist: InfoPlist { get }
 	static var featureRepositoryStashesInfoPlist: InfoPlist { get }
+	static var featureRepositoryTreeInfoPlist: InfoPlist { get }
 	static var domainGitInfoPlist: InfoPlist { get }
 	static var domainGitInterfaceInfoPlist: InfoPlist { get }
 	static var dataGitInfoPlist: InfoPlist { get }
@@ -157,6 +165,7 @@ extension InfoPlists {
 	public static var featureRepositoryHistoryInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
 	public static var featureRepositoryOperationsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
 	public static var featureRepositoryStashesInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+	public static var featureRepositoryTreeInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
 	public static var domainGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
 	public static var domainGitInterfaceInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
 	public static var dataGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
@@ -176,6 +185,7 @@ public protocol BundlePrefixes {
 	static var featureRepositoryHistoryBundlePrefix: String { get }
 	static var featureRepositoryOperationsBundlePrefix: String { get }
 	static var featureRepositoryStashesBundlePrefix: String { get }
+	static var featureRepositoryTreeBundlePrefix: String { get }
 	static var domainGitBundlePrefix: String { get }
 	static var domainGitInterfaceBundlePrefix: String { get }
 	static var dataGitBundlePrefix: String { get }
@@ -195,6 +205,7 @@ extension BundlePrefixes {
 	public static var featureRepositoryHistoryBundlePrefix: String { environment.organizationName }
 	public static var featureRepositoryOperationsBundlePrefix: String { environment.organizationName }
 	public static var featureRepositoryStashesBundlePrefix: String { environment.organizationName }
+	public static var featureRepositoryTreeBundlePrefix: String { environment.organizationName }
 	public static var domainGitBundlePrefix: String { environment.organizationName }
 	public static var domainGitInterfaceBundlePrefix: String { environment.organizationName }
 	public static var dataGitBundlePrefix: String { environment.organizationName }
@@ -214,6 +225,7 @@ public protocol TargetSettings {
 	static var featureRepositoryHistorySettings: Settings? { get }
 	static var featureRepositoryOperationsSettings: Settings? { get }
 	static var featureRepositoryStashesSettings: Settings? { get }
+	static var featureRepositoryTreeSettings: Settings? { get }
 	static var domainGitSettings: Settings? { get }
 	static var domainGitInterfaceSettings: Settings? { get }
 	static var dataGitSettings: Settings? { get }
@@ -233,6 +245,7 @@ extension TargetSettings {
 	public static var featureRepositoryHistorySettings: Settings? { nil }
 	public static var featureRepositoryOperationsSettings: Settings? { nil }
 	public static var featureRepositoryStashesSettings: Settings? { nil }
+	public static var featureRepositoryTreeSettings: Settings? { nil }
 	public static var domainGitSettings: Settings? { nil }
 	public static var domainGitInterfaceSettings: Settings? { nil }
 	public static var dataGitSettings: Settings? { nil }
@@ -252,6 +265,7 @@ public protocol TargetScripts {
 	static var featureRepositoryHistoryTargetScripts: [TargetScript] { get }
 	static var featureRepositoryOperationsTargetScripts: [TargetScript] { get }
 	static var featureRepositoryStashesTargetScripts: [TargetScript] { get }
+	static var featureRepositoryTreeTargetScripts: [TargetScript] { get }
 	static var domainGitTargetScripts: [TargetScript] { get }
 	static var domainGitInterfaceTargetScripts: [TargetScript] { get }
 	static var dataGitTargetScripts: [TargetScript] { get }
@@ -271,6 +285,7 @@ extension TargetScripts {
 	public static var featureRepositoryHistoryTargetScripts: [TargetScript] { [] }
 	public static var featureRepositoryOperationsTargetScripts: [TargetScript] { [] }
 	public static var featureRepositoryStashesTargetScripts: [TargetScript] { [] }
+	public static var featureRepositoryTreeTargetScripts: [TargetScript] { [] }
 	public static var domainGitTargetScripts: [TargetScript] { [] }
 	public static var domainGitInterfaceTargetScripts: [TargetScript] { [] }
 	public static var dataGitTargetScripts: [TargetScript] { [] }
@@ -290,6 +305,7 @@ public protocol CoreDataModels {
 	static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { get }
 	static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { get }
 	static var featureRepositoryStashesCoreDataModels: [CoreDataModel] { get }
+	static var featureRepositoryTreeCoreDataModels: [CoreDataModel] { get }
 	static var domainGitCoreDataModels: [CoreDataModel] { get }
 	static var domainGitInterfaceCoreDataModels: [CoreDataModel] { get }
 	static var dataGitCoreDataModels: [CoreDataModel] { get }
@@ -309,6 +325,7 @@ extension CoreDataModels {
 	public static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { [] }
 	public static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { [] }
 	public static var featureRepositoryStashesCoreDataModels: [CoreDataModel] { [] }
+	public static var featureRepositoryTreeCoreDataModels: [CoreDataModel] { [] }
 	public static var domainGitCoreDataModels: [CoreDataModel] { [] }
 	public static var domainGitInterfaceCoreDataModels: [CoreDataModel] { [] }
 	public static var dataGitCoreDataModels: [CoreDataModel] { [] }

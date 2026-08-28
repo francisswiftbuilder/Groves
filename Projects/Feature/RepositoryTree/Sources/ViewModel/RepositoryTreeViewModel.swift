@@ -3,7 +3,7 @@ import DomainGitInterface
 import Foundation
 
 @MainActor
-final class RepositoryTreeViewModel: ObservableObject {
+public final class RepositoryTreeViewModel: ObservableObject {
 	@Published private(set) var fileTree: [RepositoryTreeNode] = []
 	@Published private(set) var selectedTreeNodeID: String?
 	@Published var expandedTreeNodeIDs: Set<String> = []
@@ -13,7 +13,7 @@ final class RepositoryTreeViewModel: ObservableObject {
 	private var repositoryURL: URL?
 	private var filePreviewTask: Task<Void, Never>?
 
-	init(dependencies: RepositoryTreeViewModelDependencies) {
+	public init(dependencies: RepositoryTreeViewModelDependencies) {
 		self.dependencies = dependencies
 	}
 
@@ -36,7 +36,7 @@ final class RepositoryTreeViewModel: ObservableObject {
 		visibleTreeItems.first { $0.id == selectedTreeNodeID }
 	}
 
-	func apply(_ snapshot: RepositorySnapshot, repositoryURL: URL?) {
+	public func apply(_ snapshot: RepositorySnapshot, repositoryURL: URL?) {
 		self.repositoryURL = repositoryURL
 		if fileTree != snapshot.fileTree {
 			fileTree = snapshot.fileTree
@@ -45,7 +45,7 @@ final class RepositoryTreeViewModel: ObservableObject {
 		didSelectTreeNode(node(id: selectedTreeNodeID, in: fileTree))
 	}
 
-	func reset() {
+	public func reset() {
 		filePreviewTask?.cancel()
 		selectedTreeNodeID = nil
 		expandedTreeNodeIDs = []

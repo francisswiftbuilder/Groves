@@ -4,12 +4,16 @@ import DomainGitInterface
 import Foundation
 import SwiftUI
 
-struct RepositoryTreeView: View {
+public struct RepositoryTreeView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
-	@ObservedObject var viewModel: RepositoryTreeViewModel
+	@ObservedObject private var viewModel: RepositoryTreeViewModel
 	@FocusState private var isTreeFocused: Bool
 
-	var body: some View {
+	public init(viewModel: RepositoryTreeViewModel) {
+		_viewModel = ObservedObject(wrappedValue: viewModel)
+	}
+
+	public var body: some View {
 		Group {
 			if viewModel.fileTree.isEmpty {
 				EmptyStateView(
