@@ -42,7 +42,9 @@ public struct LocalGitRepository: GitRepository {
 		into directoryURL: URL
 	) async throws -> URL {
 		let remoteURL = remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard let repositoryName = repositoryName(from: remoteURL) else {
+		guard let repositoryName = repositoryName(from: remoteURL),
+			GitRemoteURLValidator.containsEmbeddedCredential(remoteURL) == false
+		else {
 			throw GitRepositoryError.invalidRemoteURL
 		}
 
@@ -1129,6 +1131,7 @@ public struct LocalGitRepository: GitRepository {
 		pushURL: String?,
 		at repositoryURL: URL
 	) async throws {
+		try validateRemoteURLs(fetchURL: fetchURL, pushURL: pushURL)
 		_ = try await runner.requestRun(
 			arguments: ["remote", "add", name, fetchURL], at: repositoryURL)
 		try await requestSetPushURL(pushURL, for: name, at: repositoryURL)
@@ -1149,9 +1152,17 @@ public struct LocalGitRepository: GitRepository {
 		pushURL: String?,
 		at repositoryURL: URL
 	) async throws {
+		try validateRemoteURLs(fetchURL: fetchURL, pushURL: pushURL)
 		_ = try await runner.requestRun(
 			arguments: ["remote", "set-url", name, fetchURL], at: repositoryURL)
 		try await requestSetPushURL(pushURL, for: name, at: repositoryURL)
+	}
+
+	private func validateRemoteURLs(fetchURL: String, pushURL: String?) throws {
+		for url in [fetchURL, pushURL].compactMap({ $0 })
+		where GitRemoteURLValidator.containsEmbeddedCredential(url) {
+			throw GitRepositoryError.invalidRemoteURL
+		}
 	}
 
 	public func requestDeleteRemote(named name: String, at repositoryURL: URL) async throws {
