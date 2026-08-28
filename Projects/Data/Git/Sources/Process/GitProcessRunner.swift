@@ -1,5 +1,4 @@
 import CoreGitCredential
-import Darwin
 import DomainGitInterface
 import Foundation
 
@@ -28,6 +27,10 @@ actor GitProcessRunner {
 				decisionStore.discard(operationID: operationID)
 			}
 		}
+
+		let trustScope = isNetworkOperation ? try? GitSSHTrustScope() : nil
+		defer { trustScope?.remove() }
+
 		let fileManager = FileManager.default
 		let temporaryDirectory = fileManager.temporaryDirectory
 			.appendingPathComponent("Trees-\(UUID().uuidString)", isDirectory: true)
@@ -68,7 +71,8 @@ actor GitProcessRunner {
 		process.environment = processEnvironment(
 			merging: environment,
 			isNetworkOperation: isNetworkOperation,
-			operationID: operationID
+			operationID: operationID,
+			trustScope: trustScope
 		)
 		process.standardOutput = standardOutputHandle
 		process.standardError = standardErrorHandle
@@ -114,19 +118,21 @@ actor GitProcessRunner {
 	private func processEnvironment(
 		merging environment: [String: String],
 		isNetworkOperation: Bool,
-		operationID: String
+		operationID: String,
+		trustScope: GitSSHTrustScope?
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment
 		if isNetworkOperation {
 			let policy = configuration.networkPolicy
 			result["GIT_HTTP_LOW_SPEED_LIMIT"] = String(policy.lowSpeedLimit)
 			result["GIT_HTTP_LOW_SPEED_TIME"] = String(Int(policy.lowSpeedTime))
-			result["GIT_SSH_COMMAND"] = [
-				"ssh",
-				"-o ConnectTimeout=\(Int(policy.sshConnectTimeout))",
-				"-o ServerAliveInterval=\(Int(policy.sshServerAliveInterval))",
-				"-o ServerAliveCountMax=\(policy.sshServerAliveCountMax)",
-			].joined(separator: " ")
+			result["GIT_SSH_COMMAND"] =
+				([
+					"ssh",
+					"-o ConnectTimeout=\(Int(policy.sshConnectTimeout))",
+					"-o ServerAliveInterval=\(Int(policy.sshServerAliveInterval))",
+					"-o ServerAliveCountMax=\(policy.sshServerAliveCountMax)",
+				] + (trustScope?.sshOptions ?? [])).joined(separator: " ")
 			result["GIT_TERMINAL_PROMPT"] = "0"
 			if let helperURL = configuration.askPassHelperURL {
 				result["GIT_ASKPASS"] = helperURL.path
@@ -196,37 +202,23 @@ actor GitProcessRunner {
 		standardOutputHandle: FileHandle,
 		standardErrorHandle: FileHandle
 	) async throws -> Int32 {
-		try await withTaskCancellationHandler {
+		let lifecycle = GitProcessLifecycle(
+			process: process,
+			gracePeriod: configuration.terminationGracePeriod
+		)
+		try Task.checkCancellation()
+		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
-				process.terminationHandler = { process in
-					continuation.resume(returning: process.terminationStatus)
-				}
-
-				do {
-					try process.run()
-					standardInputHandle?.closeFile()
-					standardOutputHandle.closeFile()
-					standardErrorHandle.closeFile()
-				} catch {
-					standardInputHandle?.closeFile()
-					standardOutputHandle.closeFile()
-					standardErrorHandle.closeFile()
-					continuation.resume(throwing: error)
-				}
+				lifecycle.start(
+					onTermination: { continuation.resume(returning: $0) },
+					onFailure: { continuation.resume(throwing: $0) }
+				)
+				standardInputHandle?.closeFile()
+				standardOutputHandle.closeFile()
+				standardErrorHandle.closeFile()
 			}
 		} onCancel: {
-			Self.terminate(process, gracePeriod: configuration.terminationGracePeriod)
-		}
-	}
-
-	nonisolated private static func terminate(_ process: Process, gracePeriod: TimeInterval) {
-		guard process.isRunning else { return }
-		process.terminate()
-		let processIdentifier = process.processIdentifier
-		DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + gracePeriod) {
-			if process.isRunning {
-				kill(processIdentifier, SIGKILL)
-			}
+			lifecycle.cancel()
 		}
 	}
 
@@ -238,6 +230,12 @@ actor GitProcessRunner {
 			|| lowercasedMessage.contains("no matching host key")
 		{
 			return .hostVerification(message)
+		}
+		if lowercasedMessage.contains("operation too slow")
+			|| lowercasedMessage.contains("operation timed out")
+			|| lowercasedMessage.contains("timeout after")
+		{
+			return .timeout
 		}
 		if lowercasedMessage.contains("authentication failed")
 			|| lowercasedMessage.contains("permission denied")
