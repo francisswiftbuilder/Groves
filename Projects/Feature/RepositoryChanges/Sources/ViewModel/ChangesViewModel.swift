@@ -157,7 +157,7 @@ public final class ChangesViewModel: ObservableObject {
 		changes = snapshot.changes
 		amendChanges = snapshot.amendChanges
 		operationState = snapshot.operationState
-		preserveSelection()
+		preserveSelection(forceReload: true)
 	}
 
 	public func reset() {
@@ -181,7 +181,7 @@ public final class ChangesViewModel: ObservableObject {
 		didChangeSelectedChanges()
 	}
 
-	func didChangeSelectedChanges(forceDiffReload: Bool = false) {
+	func didChangeSelectedChanges(forceReload: Bool = false) {
 		guard
 			selectedChangeIDs.count == 1,
 			let selection = selectedChangeIDs.first
@@ -199,14 +199,14 @@ public final class ChangesViewModel: ObservableObject {
 				return
 			}
 			let source: GitDiffSource = selection.isStaged ? .staged : .unstaged
-			didSelectDiff(.workingTree(selection, change, source), forceDiffReload)
+			didSelectDiff(.workingTree(selection, change, source), forceReload)
 		case .amend(let id):
 			didSelectConflict(nil)
 			guard isAmendingCommit, let change = amendChanges.first(where: { $0.id == id }) else {
 				didSelectDiff(nil, false)
 				return
 			}
-			didSelectDiff(.amend(selection, change), forceDiffReload)
+			didSelectDiff(.amend(selection, change), forceReload)
 		case .conflict(let path):
 			guard let conflict = conflicts.first(where: { $0.path == path }) else {
 				didSelectConflict(nil)
@@ -348,7 +348,7 @@ public final class ChangesViewModel: ObservableObject {
 		}
 		changes = refreshedChanges
 		selectedChangeIDs = refreshedSelection
-		didChangeSelectedChanges(forceDiffReload: true)
+		didChangeSelectedChanges(forceReload: true)
 	}
 
 	private func mergingWorkingTreeChanges(
@@ -372,7 +372,7 @@ public final class ChangesViewModel: ObservableObject {
 		return mergedChanges
 	}
 
-	private func preserveSelection() {
+	private func preserveSelection(forceReload: Bool = false) {
 		var availableSelections = availableWorkingTreeSelections(in: displayedWorkingTreeChanges)
 		availableSelections.formUnion(conflicts.map { WorkspaceChangeSelection.conflict($0.path) })
 		if isAmendingCommit {
@@ -395,7 +395,7 @@ public final class ChangesViewModel: ObservableObject {
 		{
 			selectedChangeIDs = [.amend(firstChangeID)]
 		}
-		didChangeSelectedChanges()
+		didChangeSelectedChanges(forceReload: forceReload)
 	}
 
 	private func availableWorkingTreeSelections(
