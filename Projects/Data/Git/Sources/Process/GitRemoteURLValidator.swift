@@ -49,7 +49,11 @@ enum GitRemoteURLValidator {
 			guard pair.count == 2, let name = pair.first, pair[1].isEmpty == false else {
 				return false
 			}
-			return credentialQueryKeys.contains(name.lowercased())
+			let rawName = String(name)
+			guard let decodedName = rawName.removingPercentEncoding else {
+				return rawName.contains("%")
+			}
+			return credentialQueryKeys.contains(decodedName.lowercased())
 		}
 	}
 }
