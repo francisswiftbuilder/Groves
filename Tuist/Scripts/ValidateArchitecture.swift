@@ -32,6 +32,15 @@ register(
 	ProjectTarget(name: "App", layer: "App", module: "App", isInterface: false),
 	at: rootURL.appending(path: "App/Sources").path
 )
+register(
+	ProjectTarget(
+		name: "TreesAskPass",
+		layer: "App",
+		module: "TreesAskPass",
+		isInterface: false
+	),
+	at: rootURL.appending(path: "App/Helpers/TreesAskPass/Sources").path
+)
 
 for layer in layers {
 	let layerURL = rootURL.appending(path: layer, directoryHint: .isDirectory)
@@ -56,26 +65,36 @@ for layer in layers {
 			),
 			at: moduleURL.appending(path: "Interface/Sources").path
 		)
-		guard fileManager.fileExists(atPath: moduleURL.appending(path: "Tests").path) else {
-			continue
-		}
-		targetsByName[layer + module + "Tests"] = ProjectTarget(
-			name: layer + module + "Tests",
-			layer: layer,
-			module: module,
-			isInterface: false
+		register(
+			ProjectTarget(
+				name: layer + module + "Tests",
+				layer: layer,
+				module: module,
+				isInterface: false
+			),
+			at: moduleURL.appending(path: "Tests/Sources").path
+		)
+		register(
+			ProjectTarget(
+				name: layer + module + "Testing",
+				layer: layer,
+				module: module,
+				isInterface: false
+			),
+			at: moduleURL.appending(path: "Testing/Sources").path
 		)
 	}
 }
 
-if fileManager.fileExists(atPath: rootURL.appending(path: "App/UnitTests").path) {
-	targetsByName["AppTests"] = ProjectTarget(
+register(
+	ProjectTarget(
 		name: "AppTests",
 		layer: "App",
 		module: "App",
 		isInterface: false
-	)
-}
+	),
+	at: rootURL.appending(path: "App/UnitTests/Sources").path
+)
 
 func owningTarget(of path: String) -> ProjectTarget? {
 	targetsBySourceDirectory
@@ -100,7 +119,10 @@ func violation(from source: ProjectTarget, to dependency: ProjectTarget) -> Stri
 	return nil
 }
 
-let importRegex = try NSRegularExpression(pattern: #"^import ([A-Za-z_][A-Za-z0-9_]*)"#)
+let importRegex = try NSRegularExpression(
+	pattern:
+		#"^\s*(?:(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?|private|fileprivate|internal|package|public)\s+)*import(?:\s+(?:class|struct|enum|protocol|typealias|func|var|let))?\s+([A-Za-z_][A-Za-z0-9_]*)"#
+)
 let keys: [URLResourceKey] = [.isRegularFileKey]
 let enumerator = fileManager.enumerator(
 	at: rootURL,
