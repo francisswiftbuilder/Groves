@@ -60,7 +60,8 @@ public struct LocalGitRepository: GitRepository {
 			_ = try await runner.requestRun(
 				arguments: ["clone", "--", remoteURL, repositoryURL.path],
 				at: directoryURL,
-				isNetworkOperation: true
+				isNetworkOperation: true,
+				requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(remoteURL)
 			)
 		} catch {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -1027,18 +1028,34 @@ public struct LocalGitRepository: GitRepository {
 	}
 
 	public func requestFetch(remote name: String, at repositoryURL: URL) async throws {
+		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
+			named: name,
+			usesPushURL: false,
+			at: repositoryURL
+		)
 		_ = try await runner.requestRun(
 			arguments: ["fetch", name],
 			at: repositoryURL,
-			isNetworkOperation: true
+			isNetworkOperation: true,
+			requiresSSHTrustScope: requiresSSHTrustScope
 		)
 	}
 
 	public func requestFetchAll(at repositoryURL: URL) async throws {
+		let remoteNames = try await requestRemoteNames(at: repositoryURL)
+		var requiresSSHTrustScope = false
+		for remoteName in remoteNames where requiresSSHTrustScope == false {
+			requiresSSHTrustScope = try await requestRemoteUsesSSH(
+				named: remoteName,
+				usesPushURL: false,
+				at: repositoryURL
+			)
+		}
 		_ = try await runner.requestRun(
 			arguments: ["fetch", "--all"],
 			at: repositoryURL,
-			isNetworkOperation: true
+			isNetworkOperation: true,
+			requiresSSHTrustScope: requiresSSHTrustScope
 		)
 	}
 
@@ -1103,10 +1120,12 @@ public struct LocalGitRepository: GitRepository {
 
 	public func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		try await requestEnsureIdle(at: repositoryURL)
+		let requiresSSHTrustScope = try await requestPushUsesSSH(target, at: repositoryURL)
 		_ = try await runner.requestRun(
 			arguments: pushArguments(for: target),
 			at: repositoryURL,
-			isNetworkOperation: true
+			isNetworkOperation: true,
+			requiresSSHTrustScope: requiresSSHTrustScope
 		)
 	}
 
@@ -1114,19 +1133,27 @@ public struct LocalGitRepository: GitRepository {
 		try await requestEnsureIdle(at: repositoryURL)
 		var arguments = pushArguments(for: target)
 		arguments.insert("--force-with-lease", at: 1)
+		let requiresSSHTrustScope = try await requestPushUsesSSH(target, at: repositoryURL)
 		_ = try await runner.requestRun(
 			arguments: arguments,
 			at: repositoryURL,
-			isNetworkOperation: true
+			isNetworkOperation: true,
+			requiresSSHTrustScope: requiresSSHTrustScope
 		)
 	}
 
 	public func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
 		try await requestEnsureIdle(at: repositoryURL)
+		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
+			named: name,
+			usesPushURL: true,
+			at: repositoryURL
+		)
 		_ = try await runner.requestRun(
 			arguments: ["push", name, "--tags"],
 			at: repositoryURL,
-			isNetworkOperation: true
+			isNetworkOperation: true,
+			requiresSSHTrustScope: requiresSSHTrustScope
 		)
 	}
 
@@ -1179,11 +1206,76 @@ public struct LocalGitRepository: GitRepository {
 		at repositoryURL: URL
 	) async throws {
 		try await requestEnsureIdle(at: repositoryURL)
+		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
+			named: branch.remoteName,
+			usesPushURL: true,
+			at: repositoryURL
+		)
 		_ = try await runner.requestRun(
 			arguments: ["push", branch.remoteName, "--delete", branch.name],
 			at: repositoryURL,
-			isNetworkOperation: true
+			isNetworkOperation: true,
+			requiresSSHTrustScope: requiresSSHTrustScope
 		)
+	}
+
+	private func requestPushUsesSSH(
+		_ target: GitPushTarget,
+		at repositoryURL: URL
+	) async throws -> Bool {
+		let remoteName: String?
+		switch target {
+		case .upstream:
+			remoteName = try await requestPushRemoteName(at: repositoryURL)
+		case .setUpstream(let name, _):
+			remoteName = name
+		}
+		guard let remoteName else { return false }
+		return try await requestRemoteUsesSSH(
+			named: remoteName,
+			usesPushURL: true,
+			at: repositoryURL
+		)
+	}
+
+	private func requestPushRemoteName(at repositoryURL: URL) async throws -> String? {
+		let branches = try await requestBranches(at: repositoryURL)
+		guard let currentBranch = branches.first(where: \.isCurrent) else { return nil }
+		for key in ["branch.\(currentBranch.name).pushRemote", "remote.pushDefault"] {
+			let result = try await runner.requestRun(
+				arguments: ["config", "--get", key],
+				at: repositoryURL,
+				acceptedTerminationStatuses: [0, 1]
+			)
+			let name = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+			if name.isEmpty == false { return name }
+		}
+		return currentBranch.upstream?.split(separator: "/", maxSplits: 1).first.map(String.init)
+	}
+
+	private func requestRemoteNames(at repositoryURL: URL) async throws -> [String] {
+		let result = try await runner.requestRun(arguments: ["remote"], at: repositoryURL)
+		return result.standardOutput.split(whereSeparator: \.isNewline).map(String.init)
+	}
+
+	private func requestRemoteUsesSSH(
+		named name: String,
+		usesPushURL: Bool,
+		at repositoryURL: URL
+	) async throws -> Bool {
+		var arguments = ["remote", "get-url"]
+		if usesPushURL {
+			arguments.append("--push")
+		}
+		arguments.append(contentsOf: ["--all", name])
+		let result = try await runner.requestRun(
+			arguments: arguments,
+			at: repositoryURL,
+			acceptedTerminationStatuses: [0, 2]
+		)
+		return result.standardOutput
+			.split(whereSeparator: \.isNewline)
+			.contains { GitRemoteURLValidator.isSSHRemote(String($0)) }
 	}
 
 	private func pushArguments(for target: GitPushTarget) -> [String] {

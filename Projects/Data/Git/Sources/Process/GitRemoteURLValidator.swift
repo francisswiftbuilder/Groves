@@ -34,6 +34,22 @@ enum GitRemoteURLValidator {
 		return authority[authority.startIndex..<userInfoEnd].contains(":")
 	}
 
+	static func isSSHRemote(_ remoteURL: String) -> Bool {
+		let remoteURL = remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+		if let separator = remoteURL.range(of: schemeSeparator) {
+			let scheme = remoteURL[remoteURL.startIndex..<separator.lowerBound].lowercased()
+			return scheme == "ssh" || scheme == "git+ssh"
+		}
+		guard remoteURL.hasPrefix("/") == false,
+			remoteURL.hasPrefix("./") == false,
+			remoteURL.hasPrefix("../") == false,
+			let separator = remoteURL.firstIndex(of: ":"),
+			separator != remoteURL.startIndex
+		else { return false }
+		let host = remoteURL[remoteURL.startIndex..<separator]
+		return host.contains("/") == false && host.contains("\\") == false
+	}
+
 	private static func secureShellPathContainsPassword(_ remoteURL: String) -> Bool {
 		guard let userInfoEnd = remoteURL.firstIndex(of: "@") else { return false }
 		let userInfo = remoteURL[remoteURL.startIndex..<userInfoEnd]

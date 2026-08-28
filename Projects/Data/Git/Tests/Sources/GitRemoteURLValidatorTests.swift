@@ -142,4 +142,27 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 			)
 		)
 	}
+
+	func testSSHRemoteDetection() {
+		let sshRemoteURLs = [
+			"ssh://git@github.com/owner/repo.git",
+			"git+ssh://git@github.com/owner/repo.git",
+			"git@github.com:owner/repo.git",
+			"github.com:owner/repo.git",
+		]
+		let nonSSHRemoteURLs = [
+			"https://github.com/owner/repo.git",
+			"git://github.com/owner/repo.git",
+			"file:///Users/trees/repo",
+			"/Users/trees/repo",
+			"../sibling/repo",
+		]
+
+		for remoteURL in sshRemoteURLs {
+			XCTAssertTrue(GitRemoteURLValidator.isSSHRemote(remoteURL))
+		}
+		for remoteURL in nonSSHRemoteURLs {
+			XCTAssertFalse(GitRemoteURLValidator.isSSHRemote(remoteURL))
+		}
+	}
 }
