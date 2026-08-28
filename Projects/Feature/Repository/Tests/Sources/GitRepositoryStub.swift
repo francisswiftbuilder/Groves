@@ -17,6 +17,8 @@ struct GitRepositoryStub: GitRepository {
 	let stagedDiff: String
 	let unstagedDiff: String
 	let clonedRepositoryURL: URL?
+	let stashes: [GitStash]
+	let diffGate: GitDiffGate?
 
 	init(
 		recorder: GitRepositoryRecorder? = nil,
@@ -28,7 +30,9 @@ struct GitRepositoryStub: GitRepository {
 		tags: [GitTag] = [],
 		stagedDiff: String = "",
 		unstagedDiff: String = "",
-		clonedRepositoryURL: URL? = nil
+		clonedRepositoryURL: URL? = nil,
+		stashes: [GitStash] = [],
+		diffGate: GitDiffGate? = nil
 	) {
 		self.recorder = recorder
 		self.changes = changes
@@ -40,6 +44,8 @@ struct GitRepositoryStub: GitRepository {
 		self.stagedDiff = stagedDiff
 		self.unstagedDiff = unstagedDiff
 		self.clonedRepositoryURL = clonedRepositoryURL
+		self.stashes = stashes
+		self.diffGate = diffGate
 	}
 
 	func requestRepositoryRoot(at url: URL) async throws -> URL {
@@ -65,14 +71,17 @@ struct GitRepositoryStub: GitRepository {
 		for stash: GitStash,
 		options: GitDiffOptions,
 		at repositoryURL: URL
-	) async throws -> String { "" }
+	) async throws -> String {
+		await diffGate?.enter(GitDiffGateLabel.stash(options: options))
+		return GitDiffGateLabel.stashDiff(options: options)
+	}
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] { branches }
 	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] { remotes }
 	func requestOperationState(at repositoryURL: URL) async throws -> RepositoryOperationState {
 		operationState
 	}
 	func requestTags(at repositoryURL: URL) async throws -> [GitTag] { tags }
-	func requestStashes(at repositoryURL: URL) async throws -> [GitStash] { [] }
+	func requestStashes(at repositoryURL: URL) async throws -> [GitStash] { stashes }
 	func requestFileTree(at repositoryURL: URL) async throws -> [RepositoryTreeNode] { [] }
 	func requestFileContents(at path: String, in repositoryURL: URL) async throws -> Data { Data() }
 	func requestDiff(
@@ -82,6 +91,7 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws -> String {
 		await recorder?.record(.loadDiff(source))
+		await diffGate?.enter(GitDiffGateLabel.workingTree(options: options))
 		return source == .staged ? stagedDiff : unstagedDiff
 	}
 	func requestAmendDiff(
@@ -186,7 +196,14 @@ struct GitRepositoryStub: GitRepository {
 		for conflict: GitConflict,
 		at repositoryURL: URL
 	) async throws -> GitConflictContent {
-		GitConflictContent(base: nil, current: nil, incoming: nil, workingTree: nil, hunks: [])
+		await diffGate?.enter(GitDiffGateLabel.conflictContent(path: conflict.path))
+		return GitConflictContent(
+			base: nil,
+			current: nil,
+			incoming: nil,
+			workingTree: nil,
+			hunks: []
+		)
 	}
 	func requestResolveConflictHunk(
 		_ hunk: GitConflictHunk,
