@@ -11,7 +11,6 @@ public enum Module: String, ModuleAppType {
 
 public extension Module {
   enum Feature: String, CaseIterable, ModuleFeatureType {
-    case Repository
     case RepositoryChanges
     case RepositoryHistory
     case RepositoryOperations
@@ -49,7 +48,6 @@ extension ModuleAppType where Self == Module {
 }
 
 extension ModuleFeatureType where Self == Module.Feature {
-  public static var repository: Module.Feature { Module.Feature.Repository }
   public static var repositoryChanges: Module.Feature { Module.Feature.RepositoryChanges }
   public static var repositoryHistory: Module.Feature { Module.Feature.RepositoryHistory }
   public static var repositoryOperations: Module.Feature { Module.Feature.RepositoryOperations }

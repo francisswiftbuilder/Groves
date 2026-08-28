@@ -53,7 +53,21 @@ public var askPassSettings: Settings {
 }
 
 extension Settings: TargetSettings {
+	// The unit tests run against the app bundle, and a static archive only hands the linker the
+	// object files the app itself names. Load every object in debug so the tests can reach the
+	// types the app never mentions; the shipping configurations stay lean.
 	public static var appSettings: Settings? {
-		.settings(base: appTargetSettings)
+		.settings(
+			base: appTargetSettings,
+			configurations: ConfigurationType.configurations().map { configuration in
+				configuration.name == "Debug"
+					? .debug(
+						name: configuration.name,
+						settings: ["OTHER_LDFLAGS": .array(["$(inherited)", "-all_load"])],
+						xcconfig: ConfigurationType.debug.xcconfig
+					)
+					: configuration
+			}
+		)
 	}
 }
