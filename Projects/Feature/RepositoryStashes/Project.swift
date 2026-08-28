@@ -17,13 +17,19 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.featureRepositoryStashes
+		.featureRepositoryStashes,
+		.featureRepositoryStashesTests,
 	],
 	schemes: [
 		.scheme(
 			name: "FeatureRepositoryStashes",
 			shared: true,
-			buildAction: .buildAction(targets: [.featureRepositoryStashes])
+			buildAction: .buildAction(targets: [.featureRepositoryStashes]),
+			testAction: .targets(
+				[.testableTarget(target: .featureRepositoryStashesTests)],
+				configuration: .debug,
+				options: .options(coverage: true)
+			)
 		)
 	]
 )

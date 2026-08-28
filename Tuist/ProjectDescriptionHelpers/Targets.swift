@@ -7,10 +7,13 @@ import TargetPlugin
 public let allTargets: [Target] = [
   .app,
   .featureRepositoryChanges,
+  .featureRepositoryChangesTests,
   .featureRepositoryHistory,
   .featureRepositoryHistoryTests,
   .featureRepositoryOperations,
+  .featureRepositoryOperationsTests,
   .featureRepositoryStashes,
+  .featureRepositoryStashesTests,
   .featureRepositoryTree,
   .featureRepositoryTreeTests,
   .domainGit,
@@ -27,10 +30,13 @@ public let allTargets: [Target] = [
 public extension Destinations {
   static var appDestinations: Destinations { environment.destinations }
   static var featureRepositoryChangesDestinations: Destinations { environment.destinations }
+  static var featureRepositoryChangesTestsDestinations: Destinations { environment.destinations }
   static var featureRepositoryHistoryDestinations: Destinations { environment.destinations }
   static var featureRepositoryHistoryTestsDestinations: Destinations { environment.destinations }
   static var featureRepositoryOperationsDestinations: Destinations { environment.destinations }
+  static var featureRepositoryOperationsTestsDestinations: Destinations { environment.destinations }
   static var featureRepositoryStashesDestinations: Destinations { environment.destinations }
+  static var featureRepositoryStashesTestsDestinations: Destinations { environment.destinations }
   static var featureRepositoryTreeDestinations: Destinations { environment.destinations }
   static var featureRepositoryTreeTestsDestinations: Destinations { environment.destinations }
   static var domainGitDestinations: Destinations { environment.destinations }
@@ -47,10 +53,13 @@ public extension Destinations {
 public extension DeploymentTargets {
   static var appDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryChangesDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryChangesTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryHistoryDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryHistoryTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryOperationsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryOperationsTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryStashesDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var featureRepositoryStashesTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryTreeDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryTreeTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var domainGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
@@ -67,10 +76,13 @@ public extension DeploymentTargets {
 public protocol TargetDependencies {
   static var appDependencies: [TargetDependency] { get }
   static var featureRepositoryChangesDependencies: [TargetDependency] { get }
+  static var featureRepositoryChangesTestsDependencies: [TargetDependency] { get }
   static var featureRepositoryHistoryDependencies: [TargetDependency] { get }
   static var featureRepositoryHistoryTestsDependencies: [TargetDependency] { get }
   static var featureRepositoryOperationsDependencies: [TargetDependency] { get }
+  static var featureRepositoryOperationsTestsDependencies: [TargetDependency] { get }
   static var featureRepositoryStashesDependencies: [TargetDependency] { get }
+  static var featureRepositoryStashesTestsDependencies: [TargetDependency] { get }
   static var featureRepositoryTreeDependencies: [TargetDependency] { get }
   static var featureRepositoryTreeTestsDependencies: [TargetDependency] { get }
   static var domainGitDependencies: [TargetDependency] { get }
@@ -87,10 +99,13 @@ public protocol TargetDependencies {
 public extension TargetDependencies {
   static var appDependencies: [TargetDependency] { [] }
   static var featureRepositoryChangesDependencies: [TargetDependency] { [] }
+  static var featureRepositoryChangesTestsDependencies: [TargetDependency] { [] }
   static var featureRepositoryHistoryDependencies: [TargetDependency] { [] }
   static var featureRepositoryHistoryTestsDependencies: [TargetDependency] { [] }
   static var featureRepositoryOperationsDependencies: [TargetDependency] { [] }
+  static var featureRepositoryOperationsTestsDependencies: [TargetDependency] { [] }
   static var featureRepositoryStashesDependencies: [TargetDependency] { [] }
+  static var featureRepositoryStashesTestsDependencies: [TargetDependency] { [] }
   static var featureRepositoryTreeDependencies: [TargetDependency] { [] }
   static var featureRepositoryTreeTestsDependencies: [TargetDependency] { [] }
   static var domainGitDependencies: [TargetDependency] { [] }
@@ -107,10 +122,13 @@ public extension TargetDependencies {
 public protocol InfoPlists {
   static var appInfoPlist: InfoPlist { get }
   static var featureRepositoryChangesInfoPlist: InfoPlist { get }
+  static var featureRepositoryChangesTestsInfoPlist: InfoPlist { get }
   static var featureRepositoryHistoryInfoPlist: InfoPlist { get }
   static var featureRepositoryHistoryTestsInfoPlist: InfoPlist { get }
   static var featureRepositoryOperationsInfoPlist: InfoPlist { get }
+  static var featureRepositoryOperationsTestsInfoPlist: InfoPlist { get }
   static var featureRepositoryStashesInfoPlist: InfoPlist { get }
+  static var featureRepositoryStashesTestsInfoPlist: InfoPlist { get }
   static var featureRepositoryTreeInfoPlist: InfoPlist { get }
   static var featureRepositoryTreeTestsInfoPlist: InfoPlist { get }
   static var domainGitInfoPlist: InfoPlist { get }
@@ -127,10 +145,13 @@ public protocol InfoPlists {
 public extension InfoPlists {
   static var appInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryChangesInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryChangesTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryHistoryInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryHistoryTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryOperationsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryOperationsTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryStashesInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var featureRepositoryStashesTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryTreeInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryTreeTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var domainGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
@@ -147,10 +168,13 @@ public extension InfoPlists {
 public protocol BundlePrefixes {
   static var appBundlePrefix: String { get }
   static var featureRepositoryChangesBundlePrefix: String { get }
+  static var featureRepositoryChangesTestsBundlePrefix: String { get }
   static var featureRepositoryHistoryBundlePrefix: String { get }
   static var featureRepositoryHistoryTestsBundlePrefix: String { get }
   static var featureRepositoryOperationsBundlePrefix: String { get }
+  static var featureRepositoryOperationsTestsBundlePrefix: String { get }
   static var featureRepositoryStashesBundlePrefix: String { get }
+  static var featureRepositoryStashesTestsBundlePrefix: String { get }
   static var featureRepositoryTreeBundlePrefix: String { get }
   static var featureRepositoryTreeTestsBundlePrefix: String { get }
   static var domainGitBundlePrefix: String { get }
@@ -167,10 +191,13 @@ public protocol BundlePrefixes {
 public extension BundlePrefixes {
   static var appBundlePrefix: String { environment.organizationName }
   static var featureRepositoryChangesBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryChangesTestsBundlePrefix: String { environment.organizationName }
   static var featureRepositoryHistoryBundlePrefix: String { environment.organizationName }
   static var featureRepositoryHistoryTestsBundlePrefix: String { environment.organizationName }
   static var featureRepositoryOperationsBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryOperationsTestsBundlePrefix: String { environment.organizationName }
   static var featureRepositoryStashesBundlePrefix: String { environment.organizationName }
+  static var featureRepositoryStashesTestsBundlePrefix: String { environment.organizationName }
   static var featureRepositoryTreeBundlePrefix: String { environment.organizationName }
   static var featureRepositoryTreeTestsBundlePrefix: String { environment.organizationName }
   static var domainGitBundlePrefix: String { environment.organizationName }
@@ -187,10 +214,13 @@ public extension BundlePrefixes {
 public protocol TargetSettings {
   static var appSettings: Settings? { get }
   static var featureRepositoryChangesSettings: Settings? { get }
+  static var featureRepositoryChangesTestsSettings: Settings? { get }
   static var featureRepositoryHistorySettings: Settings? { get }
   static var featureRepositoryHistoryTestsSettings: Settings? { get }
   static var featureRepositoryOperationsSettings: Settings? { get }
+  static var featureRepositoryOperationsTestsSettings: Settings? { get }
   static var featureRepositoryStashesSettings: Settings? { get }
+  static var featureRepositoryStashesTestsSettings: Settings? { get }
   static var featureRepositoryTreeSettings: Settings? { get }
   static var featureRepositoryTreeTestsSettings: Settings? { get }
   static var domainGitSettings: Settings? { get }
@@ -207,10 +237,13 @@ public protocol TargetSettings {
 public extension TargetSettings {
   static var appSettings: Settings? { nil }
   static var featureRepositoryChangesSettings: Settings? { nil }
+  static var featureRepositoryChangesTestsSettings: Settings? { nil }
   static var featureRepositoryHistorySettings: Settings? { nil }
   static var featureRepositoryHistoryTestsSettings: Settings? { nil }
   static var featureRepositoryOperationsSettings: Settings? { nil }
+  static var featureRepositoryOperationsTestsSettings: Settings? { nil }
   static var featureRepositoryStashesSettings: Settings? { nil }
+  static var featureRepositoryStashesTestsSettings: Settings? { nil }
   static var featureRepositoryTreeSettings: Settings? { nil }
   static var featureRepositoryTreeTestsSettings: Settings? { nil }
   static var domainGitSettings: Settings? { nil }
@@ -227,10 +260,13 @@ public extension TargetSettings {
 public protocol TargetScripts {
   static var appTargetScripts: [TargetScript] { get }
   static var featureRepositoryChangesTargetScripts: [TargetScript] { get }
+  static var featureRepositoryChangesTestsTargetScripts: [TargetScript] { get }
   static var featureRepositoryHistoryTargetScripts: [TargetScript] { get }
   static var featureRepositoryHistoryTestsTargetScripts: [TargetScript] { get }
   static var featureRepositoryOperationsTargetScripts: [TargetScript] { get }
+  static var featureRepositoryOperationsTestsTargetScripts: [TargetScript] { get }
   static var featureRepositoryStashesTargetScripts: [TargetScript] { get }
+  static var featureRepositoryStashesTestsTargetScripts: [TargetScript] { get }
   static var featureRepositoryTreeTargetScripts: [TargetScript] { get }
   static var featureRepositoryTreeTestsTargetScripts: [TargetScript] { get }
   static var domainGitTargetScripts: [TargetScript] { get }
@@ -247,10 +283,13 @@ public protocol TargetScripts {
 public extension TargetScripts {
   static var appTargetScripts: [TargetScript] { [] }
   static var featureRepositoryChangesTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryChangesTestsTargetScripts: [TargetScript] { [] }
   static var featureRepositoryHistoryTargetScripts: [TargetScript] { [] }
   static var featureRepositoryHistoryTestsTargetScripts: [TargetScript] { [] }
   static var featureRepositoryOperationsTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryOperationsTestsTargetScripts: [TargetScript] { [] }
   static var featureRepositoryStashesTargetScripts: [TargetScript] { [] }
+  static var featureRepositoryStashesTestsTargetScripts: [TargetScript] { [] }
   static var featureRepositoryTreeTargetScripts: [TargetScript] { [] }
   static var featureRepositoryTreeTestsTargetScripts: [TargetScript] { [] }
   static var domainGitTargetScripts: [TargetScript] { [] }
@@ -267,10 +306,13 @@ public extension TargetScripts {
 public protocol CoreDataModels {
   static var appCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryChangesCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryChangesTestsCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryHistoryTestsCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryOperationsTestsCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryStashesCoreDataModels: [CoreDataModel] { get }
+  static var featureRepositoryStashesTestsCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryTreeCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryTreeTestsCoreDataModels: [CoreDataModel] { get }
   static var domainGitCoreDataModels: [CoreDataModel] { get }
@@ -287,10 +329,13 @@ public protocol CoreDataModels {
 public extension CoreDataModels {
   static var appCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryChangesCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryChangesTestsCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryHistoryTestsCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryOperationsTestsCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryStashesCoreDataModels: [CoreDataModel] { [] }
+  static var featureRepositoryStashesTestsCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryTreeCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryTreeTestsCoreDataModels: [CoreDataModel] { [] }
   static var domainGitCoreDataModels: [CoreDataModel] { [] }
