@@ -4,6 +4,7 @@ import DomainGitInterface
 import FeatureRepositoryChanges
 import FeatureRepositoryHistory
 import FeatureRepositoryOperations
+import FeatureRepositoryStashes
 import SwiftUI
 
 struct WorkspaceDetail: View {

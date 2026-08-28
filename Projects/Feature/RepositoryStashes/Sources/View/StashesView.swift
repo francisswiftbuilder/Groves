@@ -3,14 +3,14 @@ import CoreRepositoryUI
 import DomainGitInterface
 import SwiftUI
 
-struct StashesView: View {
+public struct StashesView: View {
 	@ObservedObject private var stashesViewModel: StashesViewModel
 	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
 	@State private var selectedFileID: CommitDiffFile.ID?
 	@State private var parsedFiles: [CommitDiffFile] = []
 	let onDiffOptionsChanged: () -> Void
 
-	init(
+	public init(
 		stashesViewModel: StashesViewModel,
 		diffPreferences: WorkspaceDiffPreferences,
 		onDiffOptionsChanged: @escaping () -> Void
@@ -20,7 +20,7 @@ struct StashesView: View {
 		self.onDiffOptionsChanged = onDiffOptionsChanged
 	}
 
-	var body: some View {
+	public var body: some View {
 		Group {
 			if stashesViewModel.stashes.isEmpty {
 				EmptyStateView(

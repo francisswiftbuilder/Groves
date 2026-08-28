@@ -3,6 +3,7 @@ import XCTest
 
 @testable import FeatureRepository
 @testable import FeatureRepositoryChanges
+@testable import FeatureRepositoryStashes
 
 @MainActor
 final class WorkspaceStaleRequestTests: XCTestCase {

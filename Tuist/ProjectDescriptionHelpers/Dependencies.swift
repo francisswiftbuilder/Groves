@@ -41,6 +41,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 			.core(implements: .repositoryDiff),
 			.feature(implements: .repositoryHistory),
 			.feature(implements: .repositoryOperations),
+			.feature(implements: .repositoryStashes),
 			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
@@ -71,6 +72,14 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		]
 	}
 
+	public static var featureRepositoryStashesDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryDiff),
+			.core(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
 	public static var featureRepositoryInterfaceDependencies: [TargetDependency] {
 		[
 			.domain(interface: .git)
@@ -84,6 +93,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 			.core(implements: .repositoryDiff),
 			.feature(implements: .repositoryHistory),
 			.feature(implements: .repositoryOperations),
+			.feature(implements: .repositoryStashes),
 			.core(implements: .repositoryUI),
 			.domain(implements: .git),
 		]
