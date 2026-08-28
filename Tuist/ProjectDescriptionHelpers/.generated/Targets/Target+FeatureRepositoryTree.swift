@@ -5,27 +5,27 @@ import ProjectDescription
 import TargetPlugin
 
 extension Target {
-	public static var featureRepositoryTree: Target {
-		.feature(
-			implements: .repositoryTree,
-			factory: .init(
-				destinations: .featureRepositoryTreeDestinations,
-				bundlePrefix: .featureRepositoryTreeBundlePrefix,
-				deploymentTargets: .featureRepositoryTreeDeploymentTargets,
-				infoPlist: .featureRepositoryTreeInfoPlist,
-				scripts: .featureRepositoryTreeTargetScripts,
-				dependencies: .featureRepositoryTreeDependencies,
-				settings: .featureRepositoryTreeSettings,
-				coreDataModels: .featureRepositoryTreeCoreDataModels
-			)
-		)
-	}
+  public static var featureRepositoryTree: Target {
+    .feature(
+      implements: .repositoryTree,
+      factory: .init(
+        destinations: .featureRepositoryTreeDestinations,
+        bundlePrefix: .featureRepositoryTreeBundlePrefix,
+        deploymentTargets: .featureRepositoryTreeDeploymentTargets,
+        infoPlist: .featureRepositoryTreeInfoPlist,
+        scripts: .featureRepositoryTreeTargetScripts,
+        dependencies: .featureRepositoryTreeDependencies,
+        settings: .featureRepositoryTreeSettings,
+        coreDataModels: .featureRepositoryTreeCoreDataModels
+      )
+    )
+  }
 }
 
 extension TargetReference {
-	public static var featureRepositoryTree: TargetReference {
-		.feature(
-			implements: .repositoryTree
-		)
-	}
+  public static var featureRepositoryTree: TargetReference {
+    .feature(
+      implements: .repositoryTree
+    )
+  }
 }

@@ -5,27 +5,27 @@ import ProjectDescription
 import TargetPlugin
 
 extension Target {
-	public static var featureRepositoryStashes: Target {
-		.feature(
-			implements: .repositoryStashes,
-			factory: .init(
-				destinations: .featureRepositoryStashesDestinations,
-				bundlePrefix: .featureRepositoryStashesBundlePrefix,
-				deploymentTargets: .featureRepositoryStashesDeploymentTargets,
-				infoPlist: .featureRepositoryStashesInfoPlist,
-				scripts: .featureRepositoryStashesTargetScripts,
-				dependencies: .featureRepositoryStashesDependencies,
-				settings: .featureRepositoryStashesSettings,
-				coreDataModels: .featureRepositoryStashesCoreDataModels
-			)
-		)
-	}
+  public static var featureRepositoryStashes: Target {
+    .feature(
+      implements: .repositoryStashes,
+      factory: .init(
+        destinations: .featureRepositoryStashesDestinations,
+        bundlePrefix: .featureRepositoryStashesBundlePrefix,
+        deploymentTargets: .featureRepositoryStashesDeploymentTargets,
+        infoPlist: .featureRepositoryStashesInfoPlist,
+        scripts: .featureRepositoryStashesTargetScripts,
+        dependencies: .featureRepositoryStashesDependencies,
+        settings: .featureRepositoryStashesSettings,
+        coreDataModels: .featureRepositoryStashesCoreDataModels
+      )
+    )
+  }
 }
 
 extension TargetReference {
-	public static var featureRepositoryStashes: TargetReference {
-		.feature(
-			implements: .repositoryStashes
-		)
-	}
+  public static var featureRepositoryStashes: TargetReference {
+    .feature(
+      implements: .repositoryStashes
+    )
+  }
 }
