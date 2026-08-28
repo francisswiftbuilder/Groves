@@ -30,7 +30,7 @@ let project = Project(
 			dependencies: [
 				.core(implements: .gitCredential)
 			],
-			settings: .settings(base: baseSettings)
+			settings: askPassSettings
 		),
 	],
 	schemes: [
