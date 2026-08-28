@@ -1,4 +1,5 @@
 import Combine
+import CoreRepositoryDiff
 import DomainGitInterface
 import Foundation
 

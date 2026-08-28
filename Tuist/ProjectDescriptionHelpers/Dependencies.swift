@@ -21,6 +21,13 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		]
 	}
 
+	public static var coreRepositoryDiffDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
 	public static var coreRepositoryUIDependencies: [TargetDependency] {
 		[
 			.domain(interface: .git)
@@ -31,7 +38,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		[
 			.feature(interface: .repository),
 			.feature(implements: .repositoryChanges),
-			.feature(implements: .repositoryDiff),
+			.core(implements: .repositoryDiff),
 			.feature(implements: .repositoryHistory),
 			.feature(implements: .repositoryOperations),
 			.core(implements: .repositoryUI),
@@ -42,15 +49,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 	public static var featureRepositoryChangesDependencies: [TargetDependency] {
 		[
 			.feature(interface: .repository),
-			.feature(implements: .repositoryDiff),
-			.core(implements: .repositoryUI),
-			.domain(interface: .git),
-		]
-	}
-
-	public static var featureRepositoryDiffDependencies: [TargetDependency] {
-		[
-			.feature(interface: .repository),
+			.core(implements: .repositoryDiff),
 			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
@@ -59,7 +58,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 	public static var featureRepositoryHistoryDependencies: [TargetDependency] {
 		[
 			.feature(interface: .repository),
-			.feature(implements: .repositoryDiff),
+			.core(implements: .repositoryDiff),
 			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
@@ -74,7 +73,8 @@ extension Array: TargetDependencies where Element == TargetDependency {
 
 	public static var featureRepositoryInterfaceDependencies: [TargetDependency] {
 		[
-			.domain(interface: .git)
+			.core(implements: .repositoryDiff),
+			.domain(interface: .git),
 		]
 	}
 
@@ -82,7 +82,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		[
 			.feature(implements: .repository),
 			.feature(implements: .repositoryChanges),
-			.feature(implements: .repositoryDiff),
+			.core(implements: .repositoryDiff),
 			.feature(implements: .repositoryHistory),
 			.feature(implements: .repositoryOperations),
 			.core(implements: .repositoryUI),

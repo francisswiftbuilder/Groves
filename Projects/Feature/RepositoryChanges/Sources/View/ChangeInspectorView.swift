@@ -1,6 +1,6 @@
+import CoreRepositoryDiff
 import CoreRepositoryUI
 import DomainGitInterface
-import FeatureRepositoryDiff
 import Foundation
 import SwiftUI
 

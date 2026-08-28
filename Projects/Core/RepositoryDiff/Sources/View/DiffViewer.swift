@@ -1,5 +1,4 @@
 import DomainGitInterface
-import FeatureRepositoryInterface
 import SwiftUI
 
 struct DiffViewer: View {

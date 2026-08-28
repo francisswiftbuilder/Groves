@@ -3,7 +3,7 @@ import ProjectDescription
 import ProjectDescriptionHelpers
 
 let project = Project(
-	name: "FeatureRepositoryDiff",
+	name: "CoreRepositoryDiff",
 	options: .options(
 		automaticSchemesOptions: .disabled,
 		textSettings: .textSettings(
@@ -17,13 +17,13 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.featureRepositoryDiff
+		.coreRepositoryDiff
 	],
 	schemes: [
 		.scheme(
-			name: "FeatureRepositoryDiff",
+			name: "CoreRepositoryDiff",
 			shared: true,
-			buildAction: .buildAction(targets: [.featureRepositoryDiff])
+			buildAction: .buildAction(targets: [.coreRepositoryDiff])
 		)
 	]
 )
