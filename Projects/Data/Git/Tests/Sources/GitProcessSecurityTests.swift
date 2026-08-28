@@ -99,7 +99,8 @@ final class GitProcessSecurityTests: XCTestCase {
 			_ = try await runner.requestRun(
 				arguments: ["-c", "alias.mark=!touch '\(markerURL.path)'", "mark"],
 				at: repositoryURL,
-				isNetworkOperation: true
+				isNetworkOperation: true,
+				requiresSSHTrustScope: true
 			)
 			XCTFail("Expected hostVerification")
 		} catch GitRepositoryError.hostVerification {
@@ -111,6 +112,30 @@ final class GitProcessSecurityTests: XCTestCase {
 			FileManager.default.fileExists(atPath: markerURL.path),
 			"An unusable trust scope must not fall back to the user's known_hosts"
 		)
+	}
+
+	func testHTTPSNetworkOperationRunsWithoutAnSSHTrustScope() async throws {
+		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let unusableKnownHostsURL = repositoryURL.appending(
+			path: "known_hosts",
+			directoryHint: .isDirectory
+		)
+		try FileManager.default.createDirectory(
+			at: unusableKnownHostsURL,
+			withIntermediateDirectories: true
+		)
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(userKnownHostsURL: unusableKnownHostsURL)
+		)
+
+		let result = try await runner.requestRun(
+			arguments: ["rev-parse", "--is-inside-work-tree"],
+			at: repositoryURL,
+			isNetworkOperation: true
+		)
+
+		XCTAssertTrue(result.standardOutput.contains("true"))
 	}
 
 	func testLocalOperationsRunWithoutATrustScope() async throws {

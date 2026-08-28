@@ -21,7 +21,8 @@ actor GitProcessRunner {
 		standardInput: String? = nil,
 		environment: [String: String] = [:],
 		acceptedTerminationStatuses: Set<Int32> = [0],
-		isNetworkOperation: Bool = false
+		isNetworkOperation: Bool = false,
+		requiresSSHTrustScope: Bool = false
 	) async throws -> GitCommandResult {
 		let operationID = UUID().uuidString
 		var didSucceed = false
@@ -33,7 +34,7 @@ actor GitProcessRunner {
 		}
 
 		var trustScope: GitSSHTrustScope?
-		if isNetworkOperation {
+		if isNetworkOperation && requiresSSHTrustScope {
 			trustScope = try makeTrustScope()
 		}
 		defer { trustScope?.remove() }
@@ -56,6 +57,7 @@ actor GitProcessRunner {
 		process.environment = processEnvironment(
 			merging: environment,
 			operationID: operationID,
+			isNetworkOperation: isNetworkOperation,
 			trustScope: trustScope
 		)
 		process.standardOutput = standardOutputPipe
@@ -119,20 +121,14 @@ actor GitProcessRunner {
 	private func processEnvironment(
 		merging environment: [String: String],
 		operationID: String,
+		isNetworkOperation: Bool,
 		trustScope: GitSSHTrustScope?
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment
-		if let trustScope {
+		if isNetworkOperation {
 			let policy = configuration.networkPolicy
 			result["GIT_HTTP_LOW_SPEED_LIMIT"] = String(policy.lowSpeedLimit)
 			result["GIT_HTTP_LOW_SPEED_TIME"] = String(Int(policy.lowSpeedTime))
-			result["GIT_SSH_COMMAND"] =
-				([
-					"ssh",
-					"-o ConnectTimeout=\(Int(policy.sshConnectTimeout))",
-					"-o ServerAliveInterval=\(Int(policy.sshServerAliveInterval))",
-					"-o ServerAliveCountMax=\(policy.sshServerAliveCountMax)",
-				] + trustScope.sshOptions).joined(separator: " ")
 			result["GIT_TERMINAL_PROMPT"] = "0"
 			if let helperURL = configuration.askPassHelperURL {
 				result["GIT_ASKPASS"] = helperURL.path
@@ -140,6 +136,16 @@ actor GitProcessRunner {
 				result["SSH_ASKPASS_REQUIRE"] = "force"
 				result["TREES_OPERATION_IDENTIFIER"] = operationID
 			}
+		}
+		if let trustScope {
+			let policy = configuration.networkPolicy
+			result["GIT_SSH_COMMAND"] =
+				([
+					"ssh",
+					"-o ConnectTimeout=\(Int(policy.sshConnectTimeout))",
+					"-o ServerAliveInterval=\(Int(policy.sshServerAliveInterval))",
+					"-o ServerAliveCountMax=\(policy.sshServerAliveCountMax)",
+				] + trustScope.sshOptions).joined(separator: " ")
 		}
 		return result.merging(environment) { _, new in new }
 	}
