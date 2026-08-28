@@ -40,12 +40,19 @@ public struct StashesView: View {
 					}
 					.listStyle(.inset)
 				} center: {
-					List(stashesViewModel.files, selection: fileSelection) { file in
-						CommitChangedFileRow(file: file)
-							.tag(file.id)
-							.listRowSeparator(.hidden)
+					if stashesViewModel.isLoadingDiff {
+						LoadingStateView(
+							title: "Loading Stash Diff",
+							message: "Reading the files changed by this stash."
+						)
+					} else {
+						List(stashesViewModel.files, selection: fileSelection) { file in
+							CommitChangedFileRow(file: file)
+								.tag(file.id)
+								.listRowSeparator(.hidden)
+						}
+						.listStyle(.plain)
 					}
-					.listStyle(.plain)
 				} trailing: {
 					CommitDiffView(
 						options: $diffPreferences.options,
@@ -55,7 +62,8 @@ public struct StashesView: View {
 						beforeImageTitle: "Base",
 						afterImageTitle: "Stash",
 						changedFileCount: stashesViewModel.files.count,
-						isLoading: stashesViewModel.isLoadingImageDiff,
+						isLoading: stashesViewModel.isLoadingDiff
+							|| stashesViewModel.isLoadingImageDiff,
 						onOptionsChanged: onDiffOptionsChanged
 					)
 				}
