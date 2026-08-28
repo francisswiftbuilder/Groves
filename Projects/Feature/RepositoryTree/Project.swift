@@ -17,13 +17,19 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.featureRepositoryTree
+		.featureRepositoryTree,
+		.featureRepositoryTreeTests,
 	],
 	schemes: [
 		.scheme(
 			name: "FeatureRepositoryTree",
 			shared: true,
-			buildAction: .buildAction(targets: [.featureRepositoryTree])
+			buildAction: .buildAction(targets: [.featureRepositoryTree]),
+			testAction: .targets(
+				[.testableTarget(target: .featureRepositoryTreeTests)],
+				configuration: .debug,
+				options: .options(coverage: true)
+			)
 		)
 	]
 )

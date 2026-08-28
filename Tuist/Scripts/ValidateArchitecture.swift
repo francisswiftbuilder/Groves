@@ -19,8 +19,6 @@ let allowedLayers: [String: Set<String>] = [
 	"Data": ["Data", "Core", "Domain", "Shared"],
 	"Shared": ["Shared"],
 ]
-let workspaceCompositionTargets: Set<String> = ["FeatureRepository"]
-
 var targetsBySourceDirectory: [String: ProjectTarget] = [:]
 var targetsByName: [String: ProjectTarget] = [:]
 
@@ -58,7 +56,25 @@ for layer in layers {
 			),
 			at: moduleURL.appending(path: "Interface/Sources").path
 		)
+		guard fileManager.fileExists(atPath: moduleURL.appending(path: "Tests").path) else {
+			continue
+		}
+		targetsByName[layer + module + "Tests"] = ProjectTarget(
+			name: layer + module + "Tests",
+			layer: layer,
+			module: module,
+			isInterface: false
+		)
 	}
+}
+
+if fileManager.fileExists(atPath: rootURL.appending(path: "App/UnitTests").path) {
+	targetsByName["AppTests"] = ProjectTarget(
+		name: "AppTests",
+		layer: "App",
+		module: "App",
+		isInterface: false
+	)
 }
 
 func owningTarget(of path: String) -> ProjectTarget? {
@@ -77,8 +93,7 @@ func violation(from source: ProjectTarget, to dependency: ProjectTarget) -> Stri
 	}
 	if source.layer == "Feature",
 		dependency.layer == "Feature",
-		source.module != dependency.module,
-		!workspaceCompositionTargets.contains(source.name)
+		source.module != dependency.module
 	{
 		return "a feature must not depend on another feature"
 	}
@@ -114,6 +129,53 @@ while let fileURL = enumerator?.nextObject() as? URL {
 		}
 		guard let reason = violation(from: source, to: dependency) else { continue }
 		violations.insert("\(source.name) imports \(dependency.name): \(reason)")
+	}
+}
+
+// An import is only half the contract: a target can also widen the graph by declaring a
+// dependency it never imports, so the declarations are checked against the same rules.
+let layerPrefixes = ["app": "App"].merging(
+	layers.map { ($0.lowercased(), $0) },
+	uniquingKeysWith: { first, _ in first }
+)
+let declarationRegex = try NSRegularExpression(
+	pattern: #"^\s*public static var ([A-Za-z0-9_]+)Dependencies:"#
+)
+let dependencyRegex = try NSRegularExpression(
+	pattern: #"^\s*\.([a-z]+)\((implements|interface): \.([A-Za-z0-9_]+)\)"#
+)
+let declarationsURL = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+	.appending(path: "Tuist/ProjectDescriptionHelpers/Dependencies.swift")
+
+func capitalizingFirstLetter(_ value: String) -> String {
+	guard let first = value.first else { return value }
+	return first.uppercased() + value.dropFirst()
+}
+
+func capturedGroups(_ regex: NSRegularExpression, in value: String) -> [String]? {
+	let range = NSRange(value.startIndex..<value.endIndex, in: value)
+	guard let match = regex.firstMatch(in: value, range: range) else { return nil }
+	return (1..<match.numberOfRanges).compactMap {
+		Range(match.range(at: $0), in: value).map { range in String(value[range]) }
+	}
+}
+
+if let contents = try? String(contentsOf: declarationsURL, encoding: .utf8) {
+	var source: ProjectTarget?
+	for line in contents.split(separator: "\n", omittingEmptySubsequences: false) {
+		let value = String(line)
+		if let groups = capturedGroups(declarationRegex, in: value) {
+			source = targetsByName[capitalizingFirstLetter(groups[0])]
+			continue
+		}
+		guard let source, let groups = capturedGroups(dependencyRegex, in: value) else { continue }
+		guard let prefix = layerPrefixes[groups[0]] else { continue }
+		let name =
+			prefix + capitalizingFirstLetter(groups[2])
+			+ (groups[1] == "interface" ? "Interface" : "")
+		guard let dependency = targetsByName[name] else { continue }
+		guard let reason = violation(from: source, to: dependency) else { continue }
+		violations.insert("\(source.name) declares \(dependency.name): \(reason)")
 	}
 }
 

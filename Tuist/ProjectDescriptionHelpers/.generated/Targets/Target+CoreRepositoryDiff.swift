@@ -20,12 +20,34 @@ extension Target {
       )
     )
   }
+
+  public static var coreRepositoryDiffTests: Target {
+    .core(
+      tests: .repositoryDiff,
+      factory: .init(
+        destinations: .coreRepositoryDiffTestsDestinations,
+        bundlePrefix: .coreRepositoryDiffTestsBundlePrefix,
+        deploymentTargets: .coreRepositoryDiffTestsDeploymentTargets,
+        infoPlist: .coreRepositoryDiffTestsInfoPlist,
+        scripts: .coreRepositoryDiffTestsTargetScripts,
+        dependencies: .coreRepositoryDiffTestsDependencies,
+        settings: .coreRepositoryDiffTestsSettings,
+        coreDataModels: .coreRepositoryDiffTestsCoreDataModels
+      )
+    )
+  }
 }
 
 extension TargetReference {
   public static var coreRepositoryDiff: TargetReference {
     .core(
       implements: .repositoryDiff
+    )
+  }
+
+  public static var coreRepositoryDiffTests: TargetReference {
+    .core(
+      tests: .repositoryDiff
     )
   }
 }

@@ -41,9 +41,7 @@ let project = Project(
 			deploymentTargets: environment.deploymentTargets,
 			infoPlist: .default,
 			sources: TreesProduct.appTestsSources,
-			dependencies: [
-				.target(name: Module.App.name)
-			],
+			dependencies: .appTestsDependencies,
 			settings: appTestsSettings
 		),
 	],

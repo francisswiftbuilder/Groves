@@ -17,13 +17,19 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.coreRepositoryDiff
+		.coreRepositoryDiff,
+		.coreRepositoryDiffTests,
 	],
 	schemes: [
 		.scheme(
 			name: "CoreRepositoryDiff",
 			shared: true,
-			buildAction: .buildAction(targets: [.coreRepositoryDiff])
+			buildAction: .buildAction(targets: [.coreRepositoryDiff]),
+			testAction: .targets(
+				[.testableTarget(target: .coreRepositoryDiffTests)],
+				configuration: .debug,
+				options: .options(coverage: true)
+			)
 		)
 	]
 )
