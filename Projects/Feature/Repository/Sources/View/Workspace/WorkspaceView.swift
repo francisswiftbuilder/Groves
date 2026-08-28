@@ -4,6 +4,7 @@ import FeatureRepositoryChanges
 import FeatureRepositoryHistory
 import FeatureRepositoryInterface
 import FeatureRepositoryOperations
+import FeatureRepositoryStashes
 import SwiftUI
 
 struct WorkspaceView: View {

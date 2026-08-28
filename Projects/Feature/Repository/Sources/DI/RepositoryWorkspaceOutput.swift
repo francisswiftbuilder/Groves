@@ -1,4 +1,5 @@
 import FeatureRepositoryChanges
+import FeatureRepositoryStashes
 
 @MainActor
 final class RepositoryWorkspaceOutput {

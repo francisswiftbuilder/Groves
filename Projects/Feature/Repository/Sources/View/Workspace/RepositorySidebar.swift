@@ -1,6 +1,7 @@
 import DomainGitInterface
 import FeatureRepositoryChanges
 import FeatureRepositoryOperations
+import FeatureRepositoryStashes
 import SwiftUI
 
 struct RepositorySidebar: View {

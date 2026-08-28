@@ -4,6 +4,7 @@ import XCTest
 @testable import FeatureRepository
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryHistory
+@testable import FeatureRepositoryStashes
 
 @MainActor
 final class WorkspaceChildViewModelTests: XCTestCase {

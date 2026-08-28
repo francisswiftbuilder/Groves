@@ -3,6 +3,7 @@ import FeatureRepositoryChanges
 import FeatureRepositoryHistory
 import FeatureRepositoryInterface
 import FeatureRepositoryOperations
+import FeatureRepositoryStashes
 
 @MainActor
 final class RepositoryWorkspace {

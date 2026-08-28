@@ -2,6 +2,7 @@ import DomainGitInterface
 import FeatureRepositoryChanges
 import FeatureRepositoryInterface
 import FeatureRepositoryOperations
+import FeatureRepositoryStashes
 import SwiftUI
 
 struct RepositoryNavigationRows: View {

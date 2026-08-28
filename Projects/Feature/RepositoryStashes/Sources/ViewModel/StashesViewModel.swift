@@ -4,11 +4,11 @@ import DomainGitInterface
 import Foundation
 
 @MainActor
-final class StashesViewModel: ObservableObject {
-	@Published var selectedStashID: String?
+public final class StashesViewModel: ObservableObject {
+	@Published public var selectedStashID: String?
 	@Published var newStashMessage = ""
 	@Published var includeUntrackedInStash = true
-	@Published private(set) var stashes: [GitStash] = []
+	@Published public private(set) var stashes: [GitStash] = []
 	@Published private(set) var diff = ""
 	@Published private(set) var imageDiff: GitImageDiff?
 	@Published private(set) var isLoadingImageDiff = false
@@ -24,7 +24,7 @@ final class StashesViewModel: ObservableObject {
 	private var activeDiffRequestID: Int?
 	private var diffRequestSequence = 0
 
-	init(
+	public init(
 		dependencies: StashesViewModelDependencies,
 		actions: StashesViewModelActions
 	) {
@@ -62,7 +62,7 @@ final class StashesViewModel: ObservableObject {
 		stashes.first { $0.id == selectedStashID }
 	}
 
-	func apply(_ snapshot: RepositorySnapshot) {
+	public func apply(_ snapshot: RepositorySnapshot) {
 		hasChanges = snapshot.changes.isEmpty == false
 		if stashes != snapshot.stashes {
 			stashes = snapshot.stashes
@@ -72,7 +72,7 @@ final class StashesViewModel: ObservableObject {
 		}
 	}
 
-	func reset() {
+	public func reset() {
 		mutationTask?.cancel()
 		diffTask?.cancel()
 		imageDiffTask?.cancel()
@@ -87,7 +87,7 @@ final class StashesViewModel: ObservableObject {
 		hasChanges = false
 	}
 
-	func didChangeWorkingTreeState(hasChanges: Bool) {
+	public func didChangeWorkingTreeState(hasChanges: Bool) {
 		self.hasChanges = hasChanges
 	}
 
@@ -105,7 +105,7 @@ final class StashesViewModel: ObservableObject {
 		}
 	}
 
-	func didRequestApplyStash() {
+	public func didRequestApplyStash() {
 		guard let repositoryURL = repositoryURL(), let stash = selectedStash else { return }
 		requestMutation {
 			try await self.useCase.applyStash(stash, at: repositoryURL)
@@ -121,7 +121,7 @@ final class StashesViewModel: ObservableObject {
 		requestDiff()
 	}
 
-	func didChangeDiffOptions() {
+	public func didChangeDiffOptions() {
 		requestDiff()
 	}
 
@@ -183,14 +183,14 @@ final class StashesViewModel: ObservableObject {
 		}
 	}
 
-	func didRequestPopStash() {
+	public func didRequestPopStash() {
 		guard let repositoryURL = repositoryURL(), let stash = selectedStash else { return }
 		requestMutation {
 			try await self.useCase.popStash(stash, at: repositoryURL)
 		}
 	}
 
-	func didPresentStashDrop(_ stash: GitStash) {
+	public func didPresentStashDrop(_ stash: GitStash) {
 		guard !isLoading else { return }
 		pendingDrop = stash
 	}
