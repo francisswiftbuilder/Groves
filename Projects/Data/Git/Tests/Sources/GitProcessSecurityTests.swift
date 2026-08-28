@@ -79,6 +79,63 @@ final class GitProcessSecurityTests: XCTestCase {
 		XCTAssertTrue(result.standardOutput.contains("line 199999 of a very large staged file"))
 	}
 
+	func testUnusableKnownHostsFileStopsTheNetworkOperation() async throws {
+		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let unusableKnownHostsURL = repositoryURL.appending(
+			path: "known_hosts",
+			directoryHint: .isDirectory
+		)
+		try FileManager.default.createDirectory(
+			at: unusableKnownHostsURL,
+			withIntermediateDirectories: true
+		)
+		let markerURL = repositoryURL.appending(path: "started.marker")
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(userKnownHostsURL: unusableKnownHostsURL)
+		)
+
+		do {
+			_ = try await runner.requestRun(
+				arguments: ["-c", "alias.mark=!touch '\(markerURL.path)'", "mark"],
+				at: repositoryURL,
+				isNetworkOperation: true
+			)
+			XCTFail("Expected hostVerification")
+		} catch GitRepositoryError.hostVerification {
+		} catch {
+			XCTFail("Unexpected error: \(error)")
+		}
+
+		XCTAssertFalse(
+			FileManager.default.fileExists(atPath: markerURL.path),
+			"An unusable trust scope must not fall back to the user's known_hosts"
+		)
+	}
+
+	func testLocalOperationsRunWithoutATrustScope() async throws {
+		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let unusableKnownHostsURL = repositoryURL.appending(
+			path: "known_hosts",
+			directoryHint: .isDirectory
+		)
+		try FileManager.default.createDirectory(
+			at: unusableKnownHostsURL,
+			withIntermediateDirectories: true
+		)
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(userKnownHostsURL: unusableKnownHostsURL)
+		)
+
+		let result = try await runner.requestRun(
+			arguments: ["rev-parse", "--is-inside-work-tree"],
+			at: repositoryURL
+		)
+
+		XCTAssertTrue(result.standardOutput.contains("true"))
+	}
+
 	func testEmbeddedCredentialRemoteURLIsRejected() async throws {
 		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }

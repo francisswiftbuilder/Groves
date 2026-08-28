@@ -47,6 +47,54 @@ final class GitSSHTrustScopeTests: XCTestCase {
 		XCTAssertFalse(FileManager.default.fileExists(atPath: scope.knownHostsURL.path))
 	}
 
+	func testUnreadableKnownHostsFileFailsWithoutLeavingATemporaryCopy() throws {
+		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		defer { try? FileManager.default.removeItem(at: directoryURL) }
+		let userKnownHostsURL = directoryURL.appending(path: "known_hosts")
+		try Data("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAexisting\n".utf8)
+			.write(to: userKnownHostsURL)
+		try FileManager.default.setAttributes(
+			[.posixPermissions: 0o000],
+			ofItemAtPath: userKnownHostsURL.path
+		)
+		defer {
+			try? FileManager.default.setAttributes(
+				[.posixPermissions: 0o600],
+				ofItemAtPath: userKnownHostsURL.path
+			)
+		}
+		let temporaryCopiesBefore = Self.temporaryTrustScopeCount()
+
+		XCTAssertThrowsError(try GitSSHTrustScope(userKnownHostsURL: userKnownHostsURL))
+
+		XCTAssertEqual(
+			Self.temporaryTrustScopeCount(),
+			temporaryCopiesBefore,
+			"A failed trust scope must not leave a temporary known_hosts copy behind"
+		)
+	}
+
+	func testUnusableKnownHostsPathFails() throws {
+		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		defer { try? FileManager.default.removeItem(at: directoryURL) }
+		let userKnownHostsURL = directoryURL.appending(
+			path: "known_hosts",
+			directoryHint: .isDirectory
+		)
+		try FileManager.default.createDirectory(
+			at: userKnownHostsURL, withIntermediateDirectories: true)
+
+		XCTAssertThrowsError(try GitSSHTrustScope(userKnownHostsURL: userKnownHostsURL))
+	}
+
+	private static func temporaryTrustScopeCount() -> Int {
+		let contents =
+			(try? FileManager.default.contentsOfDirectory(
+				atPath: FileManager.default.temporaryDirectory.path
+			)) ?? []
+		return contents.filter { $0.hasPrefix("TreesKnownHosts-") }.count
+	}
+
 	func testTrustScopeKeepsHostKeyCheckingInteractive() throws {
 		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
