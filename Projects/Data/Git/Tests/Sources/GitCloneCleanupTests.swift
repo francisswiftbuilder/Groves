@@ -99,4 +99,32 @@ final class GitCloneCleanupTests: XCTestCase {
 		let remotes = try await repository.requestRemotes(at: repositoryURL)
 		XCTAssertTrue(remotes.isEmpty)
 	}
+
+	func testEmbeddedCredentialRemoteURLIsRejectedWhenUpdatingRemotes() async throws {
+		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let repository = LocalGitRepository()
+		try await repository.requestAddRemote(
+			named: "origin",
+			fetchURL: "ssh://git@github.com/owner/repo.git",
+			pushURL: nil,
+			at: repositoryURL
+		)
+
+		do {
+			try await repository.requestUpdateRemote(
+				named: "origin",
+				fetchURL: "https://trees@github.com/owner/repo.git",
+				pushURL: nil,
+				at: repositoryURL
+			)
+			XCTFail("Expected invalidRemoteURL")
+		} catch GitRepositoryError.invalidRemoteURL {
+		} catch {
+			XCTFail("Unexpected error: \(error)")
+		}
+
+		let remotes = try await repository.requestRemotes(at: repositoryURL)
+		XCTAssertEqual(remotes.first?.fetchURL, "ssh://git@github.com/owner/repo.git")
+	}
 }
