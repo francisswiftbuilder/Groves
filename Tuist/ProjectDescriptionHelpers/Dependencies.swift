@@ -72,6 +72,13 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		]
 	}
 
+	public static var featureRepositoryChangesTestsDependencies: [TargetDependency] {
+		[
+			.feature(implements: .repositoryChanges),
+			.domain(interface: .git),
+		]
+	}
+
 	public static var featureRepositoryHistoryDependencies: [TargetDependency] {
 		[
 			.core(implements: .repositoryDiff),
@@ -82,6 +89,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 
 	public static var featureRepositoryHistoryTestsDependencies: [TargetDependency] {
 		[
+			.core(implements: .repositoryDiff),
 			.feature(implements: .repositoryHistory),
 			.domain(interface: .git),
 		]
@@ -94,10 +102,25 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		]
 	}
 
+	public static var featureRepositoryOperationsTestsDependencies: [TargetDependency] {
+		[
+			.feature(implements: .repositoryOperations),
+			.domain(interface: .git),
+		]
+	}
+
 	public static var featureRepositoryStashesDependencies: [TargetDependency] {
 		[
 			.core(implements: .repositoryDiff),
 			.core(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryStashesTestsDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryDiff),
+			.feature(implements: .repositoryStashes),
 			.domain(interface: .git),
 		]
 	}

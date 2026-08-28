@@ -20,12 +20,34 @@ extension Target {
       )
     )
   }
+
+  public static var featureRepositoryChangesTests: Target {
+    .feature(
+      tests: .repositoryChanges,
+      factory: .init(
+        destinations: .featureRepositoryChangesTestsDestinations,
+        bundlePrefix: .featureRepositoryChangesTestsBundlePrefix,
+        deploymentTargets: .featureRepositoryChangesTestsDeploymentTargets,
+        infoPlist: .featureRepositoryChangesTestsInfoPlist,
+        scripts: .featureRepositoryChangesTestsTargetScripts,
+        dependencies: .featureRepositoryChangesTestsDependencies,
+        settings: .featureRepositoryChangesTestsSettings,
+        coreDataModels: .featureRepositoryChangesTestsCoreDataModels
+      )
+    )
+  }
 }
 
 extension TargetReference {
   public static var featureRepositoryChanges: TargetReference {
     .feature(
       implements: .repositoryChanges
+    )
+  }
+
+  public static var featureRepositoryChangesTests: TargetReference {
+    .feature(
+      tests: .repositoryChanges
     )
   }
 }
