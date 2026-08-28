@@ -50,7 +50,6 @@ extension Array: TargetDependencies where Element == TargetDependency {
 
 	public static var featureRepositoryChangesDependencies: [TargetDependency] {
 		[
-			.feature(interface: .repository),
 			.core(implements: .repositoryDiff),
 			.core(implements: .repositoryUI),
 			.domain(interface: .git),
@@ -59,7 +58,6 @@ extension Array: TargetDependencies where Element == TargetDependency {
 
 	public static var featureRepositoryHistoryDependencies: [TargetDependency] {
 		[
-			.feature(interface: .repository),
 			.core(implements: .repositoryDiff),
 			.core(implements: .repositoryUI),
 			.domain(interface: .git),
