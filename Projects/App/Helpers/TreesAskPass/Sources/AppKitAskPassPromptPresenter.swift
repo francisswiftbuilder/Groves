@@ -1,8 +1,9 @@
 import AppKit
+import CoreGitCredential
 import Foundation
 
 @MainActor
-final class AppKitAskPassPromptPresenter: AskPassPromptPresenting {
+final class AppKitAskPassPromptPresenter: GitCredentialPromptPresenting {
 	private let parentProcessIdentifier: Int32?
 	private let parentMonitor: any AskPassParentMonitoring
 
@@ -16,8 +17,8 @@ final class AppKitAskPassPromptPresenter: AskPassPromptPresenting {
 
 	func presentPrompt(
 		_ prompt: String,
-		kind: AskPassPromptKind
-	) throws -> AskPassPromptResult {
+		kind: GitCredentialPromptKind
+	) throws -> GitCredentialPromptAnswer {
 		NSApplication.shared.setActivationPolicy(.accessory)
 		NSApplication.shared.activate(ignoringOtherApps: true)
 		let alert = NSAlert()
@@ -28,7 +29,7 @@ final class AppKitAskPassPromptPresenter: AskPassPromptPresenting {
 			alert.addButton(withTitle: "Trust Once")
 			alert.addButton(withTitle: "Cancel")
 			guard runModal(alert) == .alertFirstButtonReturn else { throw CancellationError() }
-			return AskPassPromptResult(value: "yes", shouldSave: false)
+			return GitCredentialPromptAnswer(value: "yes", shouldSave: false)
 		}
 
 		let input: NSTextField = kind == .secret ? NSSecureTextField() : NSTextField()
@@ -46,7 +47,7 @@ final class AppKitAskPassPromptPresenter: AskPassPromptPresenting {
 		alert.addButton(withTitle: "Continue")
 		alert.addButton(withTitle: "Cancel")
 		guard runModal(alert) == .alertFirstButtonReturn else { throw CancellationError() }
-		return AskPassPromptResult(
+		return GitCredentialPromptAnswer(
 			value: input.stringValue,
 			shouldSave: kind == .secret && saveButton.state == .on
 		)

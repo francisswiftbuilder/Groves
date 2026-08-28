@@ -1,11 +1,11 @@
 import Foundation
 
-enum AskPassPromptKind {
+public enum GitCredentialPromptKind: Hashable, Sendable {
 	case username
 	case secret
 	case hostTrust
 
-	init(prompt: String) {
+	public init(prompt: String) {
 		let lowercased = prompt.lowercased()
 		if lowercased.contains("authenticity of host") || lowercased.contains("fingerprint") {
 			self = .hostTrust

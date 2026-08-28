@@ -37,6 +37,16 @@ public struct GitCredentialDescriptor: Codable, Hashable, Identifiable, Sendable
 		)
 	}
 
+	public static func sshKey(forPassphrasePrompt prompt: String) -> GitCredentialDescriptor? {
+		guard prompt.localizedCaseInsensitiveContains("passphrase"),
+			let firstQuote = prompt.firstIndex(of: "'"),
+			let secondQuote = prompt[prompt.index(after: firstQuote)...].firstIndex(of: "'")
+		else { return nil }
+		let path = String(prompt[prompt.index(after: firstQuote)..<secondQuote])
+		guard path.isEmpty == false else { return nil }
+		return .sshKey(at: path)
+	}
+
 	private static func scope(forCanonicalPath path: String) -> String {
 		SHA256.hash(data: Data(path.utf8))
 			.prefix(8)
