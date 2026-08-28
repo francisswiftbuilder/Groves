@@ -32,7 +32,10 @@ format:
 structure-lint:
 	swift Tuist/Scripts/ValidateSingleTypeFiles.swift
 
-lint: structure-lint
+architecture-lint:
+	swift Tuist/Scripts/ValidateArchitecture.swift
+
+lint: structure-lint architecture-lint
 	xcrun swift-format lint --strict --parallel --configuration .swift-format $(SWIFT_SOURCES)
 
-.PHONY: generate clean module sync format structure-lint lint
+.PHONY: generate clean module sync format structure-lint architecture-lint lint
