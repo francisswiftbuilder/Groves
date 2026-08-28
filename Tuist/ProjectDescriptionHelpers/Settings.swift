@@ -35,6 +35,19 @@ public let baseSettings: SettingsDictionary = [
 	"SWIFT_STRICT_CONCURRENCY": "complete",
 ]
 
+// The app target renames its product, so the generated TEST_HOST keeps the target name for the
+// executable and no longer matches the bundle. Point it at the renamed product instead.
+public var appTestsSettings: Settings {
+	let executablePath =
+		"$(BUILT_PRODUCTS_DIR)/\(environment.name).app"
+		+ "/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/\(environment.name)"
+	let testHostSettings: SettingsDictionary = [
+		"TEST_HOST": .string(executablePath),
+		"BUNDLE_LOADER": "$(TEST_HOST)",
+	]
+	return .settings(base: baseSettings.merging(testHostSettings) { _, host in host })
+}
+
 public var askPassSettings: Settings {
 	.settings(base: baseSettings.merging(developmentSigningSettings) { _, signing in signing })
 }
