@@ -92,7 +92,7 @@ actor GitProcessRunner {
 			}
 			throw repositoryError(for: standardError)
 		}
-		try credentialStore.commitPending(operationID: operationID)
+		commitPendingCredentials(operationID: operationID)
 		decisionStore.discard(operationID: operationID)
 		didSucceed = true
 
@@ -101,6 +101,14 @@ actor GitProcessRunner {
 			standardOutput: standardOutput,
 			standardError: standardError
 		)
+	}
+
+	private func commitPendingCredentials(operationID: String) {
+		do {
+			try credentialStore.commitPending(operationID: operationID)
+		} catch {
+			try? credentialStore.discardPending(operationID: operationID)
+		}
 	}
 
 	private func processEnvironment(
