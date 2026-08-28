@@ -18,6 +18,7 @@ struct GitRepositoryStub: GitRepository {
 	let unstagedDiff: String
 	let clonedRepositoryURL: URL?
 	let stashes: [GitStash]
+	let stashDiffs: [String: String]
 	let diffGate: GitDiffGate?
 
 	init(
@@ -32,6 +33,7 @@ struct GitRepositoryStub: GitRepository {
 		unstagedDiff: String = "",
 		clonedRepositoryURL: URL? = nil,
 		stashes: [GitStash] = [],
+		stashDiffs: [String: String] = [:],
 		diffGate: GitDiffGate? = nil
 	) {
 		self.recorder = recorder
@@ -45,6 +47,7 @@ struct GitRepositoryStub: GitRepository {
 		self.unstagedDiff = unstagedDiff
 		self.clonedRepositoryURL = clonedRepositoryURL
 		self.stashes = stashes
+		self.stashDiffs = stashDiffs
 		self.diffGate = diffGate
 	}
 
@@ -73,7 +76,7 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws -> String {
 		await diffGate?.enter(GitDiffGateLabel.stash(options: options))
-		return GitDiffGateLabel.stashDiff(options: options)
+		return stashDiffs[stash.id] ?? GitDiffGateLabel.stashDiff(options: options)
 	}
 	func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] { branches }
 	func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] { remotes }
@@ -128,7 +131,8 @@ struct GitRepositoryStub: GitRepository {
 		previousPath: String?,
 		at repositoryURL: URL
 	) async throws -> GitImageDiff {
-		GitImageDiff(before: nil, after: nil)
+		await diffGate?.enter(GitDiffGateLabel.stashImageDiff(path: path))
+		return GitImageDiff(before: nil, after: Data(path.utf8))
 	}
 	func requestStage(path: String, at repositoryURL: URL) async throws {
 		await recorder?.record(.stage(path: path))

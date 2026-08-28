@@ -14,6 +14,10 @@ enum GitDiffGateLabel {
 		"stash diff ignoresWhitespace=\(options.ignoresWhitespace)"
 	}
 
+	static func stashImageDiff(path: String) -> String {
+		"stash image diff \(path)"
+	}
+
 	static func conflictContent(path: String) -> String {
 		"conflictContent-\(path)"
 	}

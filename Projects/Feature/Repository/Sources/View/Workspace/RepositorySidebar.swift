@@ -217,6 +217,6 @@ struct RepositorySidebar: View {
 		windowViewModel.selectSidebarItem(
 			.stash(repositoryID: repositoryID, id: stash.id)
 		)
-		stashesViewModel.selectedStashID = stash.id
+		stashesViewModel.didSelectStash(stash.id)
 	}
 }
