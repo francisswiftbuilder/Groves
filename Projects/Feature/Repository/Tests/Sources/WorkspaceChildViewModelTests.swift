@@ -133,4 +133,47 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 
 		XCTAssertEqual(historyViewModel.displayedCommitGraphItems.count, commits.count)
 	}
+
+	func testStashesViewModelTracksWorkingTreeStateWithoutTheChangesViewModel() {
+		let workspace = makeRepositoryWorkspace()
+		let stashesViewModel = workspace.stashesViewModel
+		let change = WorkingTreeChange(
+			path: "README.md",
+			previousPath: nil,
+			indexState: .modified,
+			workingTreeState: .unchanged
+		)
+
+		XCTAssertFalse(stashesViewModel.hasChanges)
+
+		workspace.viewModel.didProduceSnapshot(makeSnapshot(changes: [change]))
+
+		XCTAssertTrue(stashesViewModel.hasChanges)
+
+		workspace.viewModel.didProduceSnapshot(makeSnapshot(changes: []))
+
+		XCTAssertFalse(stashesViewModel.hasChanges)
+
+		stashesViewModel.didChangeWorkingTreeState(hasChanges: true)
+
+		XCTAssertTrue(stashesViewModel.hasChanges)
+
+		stashesViewModel.reset()
+
+		XCTAssertFalse(stashesViewModel.hasChanges)
+	}
+
+	private func makeSnapshot(changes: [WorkingTreeChange]) -> RepositorySnapshot {
+		RepositorySnapshot(
+			changes: changes,
+			amendChanges: [],
+			commits: [],
+			branches: [],
+			remotes: [],
+			operationState: .normal,
+			tags: [],
+			stashes: [],
+			fileTree: []
+		)
+	}
 }

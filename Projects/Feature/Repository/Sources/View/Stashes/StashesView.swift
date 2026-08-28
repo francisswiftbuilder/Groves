@@ -1,11 +1,9 @@
 import CoreRepositoryDiff
 import CoreRepositoryUI
 import DomainGitInterface
-import FeatureRepositoryChanges
 import SwiftUI
 
 struct StashesView: View {
-	@ObservedObject private var changesViewModel: ChangesViewModel
 	@ObservedObject private var stashesViewModel: StashesViewModel
 	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
 	@State private var selectedFileID: CommitDiffFile.ID?
@@ -13,12 +11,10 @@ struct StashesView: View {
 	let onDiffOptionsChanged: () -> Void
 
 	init(
-		changesViewModel: ChangesViewModel,
 		stashesViewModel: StashesViewModel,
 		diffPreferences: WorkspaceDiffPreferences,
 		onDiffOptionsChanged: @escaping () -> Void
 	) {
-		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
 		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
 		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
 		self.onDiffOptionsChanged = onDiffOptionsChanged
@@ -70,7 +66,7 @@ struct StashesView: View {
 		.navigationTitle("Stashes")
 		.navigationSubtitle("\(stashesViewModel.stashes.count) stashes")
 		.safeAreaInset(edge: .bottom) {
-			StashActionBar(viewModel: stashesViewModel, changesViewModel: changesViewModel) {
+			StashActionBar(viewModel: stashesViewModel) {
 				if let stash = stashesViewModel.selectedStash {
 					stashesViewModel.didPresentStashDrop(stash)
 				}
