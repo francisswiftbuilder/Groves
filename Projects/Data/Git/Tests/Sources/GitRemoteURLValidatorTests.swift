@@ -54,6 +54,22 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		}
 	}
 
+	func testPercentEncodedCredentialQueryItemsAreRejected() {
+		let remoteURLs = [
+			"https://github.com/owner/repo.git?to%6ben=secret",
+			"https://github.com/owner/repo.git?%61ccess_token=secret",
+			"https://github.com/owner/repo.git?private%5Ftoken=secret",
+			"https://github.com/owner/repo.git?tok%ZZen=secret",
+		]
+
+		for remoteURL in remoteURLs {
+			XCTAssertTrue(
+				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
+				"\(remoteURL) embeds an encoded credential query item"
+			)
+		}
+	}
+
 	func testQueryItemsWithoutCredentialsAreAccepted() {
 		let remoteURLs = [
 			"https://github.com/owner/repo.git?ref=main",
