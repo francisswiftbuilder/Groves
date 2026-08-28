@@ -41,7 +41,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		XCTAssertNil(diffPreferences)
 	}
 
-	func testSnapshotIsDistributedAcrossChildViewModels() {
+	func testSnapshotIsDistributedAcrossChildViewModels() async throws {
 		let workspace = makeRepositoryWorkspace()
 		let preferences = workspace.diffPreferences
 		let changesViewModel = workspace.changesViewModel
@@ -83,6 +83,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		)
 
 		workspace.viewModel.didProduceSnapshot(snapshot)
+		try await waitUntil { historyViewModel.commitGraphItems.isEmpty == false }
 
 		XCTAssertEqual(changesViewModel.changes, [change])
 		XCTAssertEqual(historyViewModel.commitGraphItems.map(\.commit), [commit])
@@ -128,6 +129,8 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		)
 
 		workspace.viewModel.didProduceSnapshot(snapshot)
+		try await waitUntil { historyViewModel.commitGraphItems.count == commits.count }
+
 		historyViewModel.didChangeSearchText("missing")
 		historyViewModel.cancelTasks()
 		try await Task.sleep(for: .milliseconds(200))
@@ -162,6 +165,21 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		stashesViewModel.reset()
 
 		XCTAssertFalse(stashesViewModel.hasChanges)
+	}
+
+	private func waitUntil(
+		timeout: Duration = .seconds(2),
+		condition: @escaping @MainActor () -> Bool
+	) async throws {
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: timeout)
+		while !condition() {
+			guard clock.now < deadline else {
+				XCTFail("Timed out waiting for condition")
+				return
+			}
+			try await Task.sleep(for: .milliseconds(10))
+		}
 	}
 
 	private func makeSnapshot(changes: [WorkingTreeChange]) -> RepositorySnapshot {

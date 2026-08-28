@@ -21,8 +21,11 @@ public final class HistoryViewModel: ObservableObject {
 	private var commitDiffRequestSequence = 0
 	private var activeCommitImageDiffRequestID: Int?
 	private var commitImageDiffRequestSequence = 0
+	private var commits: [GitCommit] = []
+	private var snapshotRevision = 0
 	private var commitDiffTask: Task<Void, Never>?
 	private var commitImageDiffTask: Task<Void, Never>?
+	private var layoutTask: Task<Void, Never>?
 	private var searchTask: Task<Void, Never>?
 	private let dependencies: HistoryViewModelDependencies
 	private let actions: HistoryViewModelActions
@@ -66,24 +69,27 @@ public final class HistoryViewModel: ObservableObject {
 	deinit {
 		commitDiffTask?.cancel()
 		commitImageDiffTask?.cancel()
+		layoutTask?.cancel()
 		searchTask?.cancel()
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		guard commitGraphItems.map(\.commit) != snapshot.commits else { return }
-		commitGraphItems = CommitGraphLayoutBuilder.build(commits: snapshot.commits)
-		requestFilter()
-		preserveSelection()
+		guard commits != snapshot.commits else { return }
+		commits = snapshot.commits
+		requestLayout()
 	}
 
 	func cancelTasks() {
 		commitDiffTask?.cancel()
 		commitImageDiffTask?.cancel()
+		layoutTask?.cancel()
 		searchTask?.cancel()
 	}
 
 	public func reset() {
 		cancelTasks()
+		snapshotRevision += 1
+		commits = []
 		selectedCommitID = nil
 		selectedCommitFileID = nil
 		commitGraphItems = []
@@ -218,10 +224,28 @@ public final class HistoryViewModel: ObservableObject {
 			?? selectedCommitFiles.first
 	}
 
+	private func requestLayout() {
+		layoutTask?.cancel()
+		searchTask?.cancel()
+		snapshotRevision += 1
+		let revision = snapshotRevision
+		let requestedCommits = commits
+		layoutTask = Task {
+			let items = await Task.detached(priority: .userInitiated) {
+				CommitGraphLayoutBuilder.build(commits: requestedCommits)
+			}.value
+			guard Task.isCancelled == false, snapshotRevision == revision else { return }
+			commitGraphItems = items
+			requestFilter()
+			preserveSelection()
+		}
+	}
+
 	private func requestFilter() {
 		searchTask?.cancel()
 		let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-		let commits = commitGraphItems.map(\.commit)
+		let requestedCommits = commits
+		let revision = snapshotRevision
 		guard !query.isEmpty else {
 			displayedCommitGraphItems = commitGraphItems
 			return
@@ -233,10 +257,11 @@ public final class HistoryViewModel: ObservableObject {
 				return
 			}
 			let items = await Task.detached(priority: .userInitiated) {
-				let filteredCommits = commits.filter { Self.commit($0, matches: query) }
+				let filteredCommits = requestedCommits.filter { Self.commit($0, matches: query) }
 				return CommitGraphLayoutBuilder.build(commits: filteredCommits)
 			}.value
-			guard !Task.isCancelled,
+			guard Task.isCancelled == false,
+				snapshotRevision == revision,
 				searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query
 			else { return }
 			displayedCommitGraphItems = items

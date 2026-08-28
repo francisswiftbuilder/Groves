@@ -6,6 +6,10 @@ enum GitDiffGateLabel {
 		"workingTree-\(options.ignoresWhitespace)"
 	}
 
+	static func commitDiff(hash: String) -> String {
+		"commit diff \(hash)"
+	}
+
 	static func stash(options: GitDiffOptions) -> String {
 		"stash-\(options.ignoresWhitespace)"
 	}
