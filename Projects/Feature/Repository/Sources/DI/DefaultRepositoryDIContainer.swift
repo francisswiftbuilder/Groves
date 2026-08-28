@@ -5,8 +5,10 @@ import SwiftUI
 @MainActor
 public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 	private let viewModelResult: Result<RepositoryTabsViewModel, Error>
+	private let noticeCenter: RepositoryNoticeCenter
 
 	public init(dependencies: some RepositoryDIDependencies) {
+		noticeCenter = dependencies.makeRepositoryNoticeCenter()
 		viewModelResult = Result {
 			let workspaceAssembly = RepositoryWorkspaceAssembly(
 				dependencies: .init(
@@ -33,6 +35,7 @@ public final class DefaultRepositoryDIContainer: RepositoryDIContainer {
 			return AnyView(
 				RepositoryRootView(
 					viewModel: viewModel,
+					noticeCenter: noticeCenter,
 					repositoryID: repositoryID
 				)
 			)

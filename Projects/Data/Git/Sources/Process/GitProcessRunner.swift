@@ -4,11 +4,15 @@ import Foundation
 
 actor GitProcessRunner {
 	private let configuration: GitProcessConfiguration
-	private let credentialStore = GitCredentialStore()
+	private let credentialStore: any GitCredentialPersisting
 	private let decisionStore = GitCredentialSaveDecisionStore()
 
-	init(configuration: GitProcessConfiguration = GitProcessConfiguration()) {
+	init(
+		configuration: GitProcessConfiguration = GitProcessConfiguration(),
+		credentialStore: any GitCredentialPersisting = GitCredentialStore()
+	) {
 		self.configuration = configuration
+		self.credentialStore = credentialStore
 	}
 
 	func requestRun(
@@ -108,6 +112,7 @@ actor GitProcessRunner {
 			try credentialStore.commitPending(operationID: operationID)
 		} catch {
 			try? credentialStore.discardPending(operationID: operationID)
+			configuration.noticeHandler?(.credentialPersistenceFailed)
 		}
 	}
 

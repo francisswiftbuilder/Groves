@@ -11,12 +11,16 @@ final class AppDIContainer: RepositoryDIDependencies {
 	static let shared = AppDIContainer()
 	private let repository: any GitRepository
 	private let savedRepositoryStoreResult: Result<any SavedRepositoryStore, Error>
+	private let noticeCenter: RepositoryNoticeCenter
 	private lazy var repositoryDIContainer = DefaultRepositoryDIContainer(dependencies: self)
 
 	private init() {
+		let noticeCenter = RepositoryNoticeCenter()
+		self.noticeCenter = noticeCenter
 		repository = LocalGitRepository(
 			configuration: GitProcessConfiguration(
-				askPassHelperURL: TreesAskPassLocator.bundledHelperURL
+				askPassHelperURL: TreesAskPassLocator.bundledHelperURL,
+				noticeHandler: { notice in noticeCenter.post(notice) }
 			)
 		)
 		savedRepositoryStoreResult = Result {
@@ -53,6 +57,10 @@ final class AppDIContainer: RepositoryDIDependencies {
 
 	func makeRepositoryExternalEditorOpener() -> any RepositoryExternalEditorOpening {
 		WorkspaceExternalEditorOpener()
+	}
+
+	func makeRepositoryNoticeCenter() -> RepositoryNoticeCenter {
+		noticeCenter
 	}
 
 	func makeRepositoryRootView(repositoryID: Binding<UUID?>) -> AnyView {

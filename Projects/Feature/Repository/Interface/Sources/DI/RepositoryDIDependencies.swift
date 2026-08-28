@@ -9,4 +9,5 @@ public protocol RepositoryDIDependencies: AnyObject {
 	func makeRepositoryStashesUseCase() -> any RepositoryStashesUseCase
 	func makeRepositoryOperationsUseCase() -> any RepositoryOperationsUseCase
 	func makeRepositoryExternalEditorOpener() -> any RepositoryExternalEditorOpening
+	func makeRepositoryNoticeCenter() -> RepositoryNoticeCenter
 }
