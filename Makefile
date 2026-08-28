@@ -24,7 +24,9 @@ sync:
 	swift Tuist/Scripts/SyncTargets.swift
 	swift Tuist/Scripts/SyncSchemes.swift
 
-SWIFT_SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.swift' | while read -r file; do test -f "$$file" && grep -L '^// AUTO-GENERATED' "$$file"; done)
+# Recursively expanded on purpose: only format and lint need this list, and walking every
+# tracked Swift file costs over a second on targets that never reference it.
+SWIFT_SOURCES = $(shell git ls-files --cached --others --exclude-standard '*.swift' | while read -r file; do test -f "$$file" && grep -L '^// AUTO-GENERATED' "$$file"; done)
 
 format:
 	xcrun swift-format --in-place --parallel --configuration .swift-format $(SWIFT_SOURCES)
