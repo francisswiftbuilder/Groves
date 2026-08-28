@@ -290,9 +290,7 @@ final class RepositoryWorkspaceAssembly {
 					[weak changesDiffViewModel, weak historyViewModel, weak stashesViewModel] in
 					changesDiffViewModel?.didChangeDiffOptions()
 					historyViewModel?.didChangeDiffOptions()
-					if let selectedStashID = stashesViewModel?.selectedStashID {
-						stashesViewModel?.didSelectStash(selectedStashID)
-					}
+					stashesViewModel?.didChangeDiffOptions()
 				},
 				focusConflict: { [weak changesViewModel] conflict in
 					await changesViewModel?.didSelectChanges([.conflict(conflict.path)])

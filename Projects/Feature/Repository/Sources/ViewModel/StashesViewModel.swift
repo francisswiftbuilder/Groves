@@ -19,7 +19,10 @@ final class StashesViewModel: ObservableObject {
 	private let dependencies: StashesViewModelDependencies
 	private let actions: StashesViewModelActions
 	private var mutationTask: Task<Void, Never>?
+	private var diffTask: Task<Void, Never>?
 	private var imageDiffTask: Task<Void, Never>?
+	private var activeDiffRequestID: Int?
+	private var diffRequestSequence = 0
 
 	init(
 		dependencies: StashesViewModelDependencies,
@@ -55,6 +58,7 @@ final class StashesViewModel: ObservableObject {
 
 	deinit {
 		mutationTask?.cancel()
+		diffTask?.cancel()
 		imageDiffTask?.cancel()
 	}
 
@@ -73,7 +77,9 @@ final class StashesViewModel: ObservableObject {
 
 	func reset() {
 		mutationTask?.cancel()
+		diffTask?.cancel()
 		imageDiffTask?.cancel()
+		activeDiffRequestID = nil
 		selectedStashID = nil
 		newStashMessage = ""
 		stashes = []
@@ -110,19 +116,35 @@ final class StashesViewModel: ObservableObject {
 		imageDiffTask?.cancel()
 		imageDiff = nil
 		isLoadingImageDiff = false
+		requestDiff()
+	}
+
+	func didChangeDiffOptions() {
+		requestDiff()
+	}
+
+	private func requestDiff() {
+		diffTask?.cancel()
+		activeDiffRequestID = nil
 		guard let repositoryURL = repositoryURL(), let stash = selectedStash else { return }
-		Task {
+		diffRequestSequence += 1
+		let requestID = diffRequestSequence
+		activeDiffRequestID = requestID
+		diffTask = Task {
 			do {
 				let requestedDiff = try await useCase.loadDiff(
 					for: stash,
 					options: preferences.options,
 					at: repositoryURL
 				)
-				guard selectedStashID == stash.id else { return }
+				guard activeDiffRequestID == requestID else { return }
+				activeDiffRequestID = nil
 				diff = requestedDiff
 			} catch is CancellationError {
 				return
 			} catch {
+				guard activeDiffRequestID == requestID else { return }
+				activeDiffRequestID = nil
 				didReceiveError(error.localizedDescription)
 			}
 		}
