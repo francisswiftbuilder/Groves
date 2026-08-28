@@ -1,3 +1,4 @@
+import CoreRepositoryDiff
 import FeatureRepositoryChanges
 import FeatureRepositoryHistory
 import FeatureRepositoryInterface

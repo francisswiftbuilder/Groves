@@ -1,3 +1,4 @@
+import CoreRepositoryDiff
 import DomainGitInterface
 import FeatureRepositoryChanges
 import FeatureRepositoryHistory

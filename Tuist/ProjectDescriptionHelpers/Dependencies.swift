@@ -73,8 +73,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 
 	public static var featureRepositoryInterfaceDependencies: [TargetDependency] {
 		[
-			.core(implements: .repositoryDiff),
-			.domain(interface: .git),
+			.domain(interface: .git)
 		]
 	}
 

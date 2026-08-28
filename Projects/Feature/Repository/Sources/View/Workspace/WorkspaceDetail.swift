@@ -1,8 +1,8 @@
+import CoreRepositoryDiff
 import CoreRepositoryUI
 import DomainGitInterface
 import FeatureRepositoryChanges
 import FeatureRepositoryHistory
-import FeatureRepositoryInterface
 import FeatureRepositoryOperations
 import SwiftUI
 

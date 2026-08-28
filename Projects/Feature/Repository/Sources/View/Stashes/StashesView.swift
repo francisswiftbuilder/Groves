@@ -2,7 +2,6 @@ import CoreRepositoryDiff
 import CoreRepositoryUI
 import DomainGitInterface
 import FeatureRepositoryChanges
-import FeatureRepositoryInterface
 import SwiftUI
 
 struct StashesView: View {
