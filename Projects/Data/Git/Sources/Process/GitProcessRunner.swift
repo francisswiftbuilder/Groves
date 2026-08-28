@@ -28,7 +28,10 @@ actor GitProcessRunner {
 			}
 		}
 
-		let trustScope = isNetworkOperation ? try? GitSSHTrustScope() : nil
+		var trustScope: GitSSHTrustScope?
+		if isNetworkOperation {
+			trustScope = try makeTrustScope()
+		}
 		defer { trustScope?.remove() }
 
 		let standardOutputPipe = Pipe()
@@ -48,7 +51,6 @@ actor GitProcessRunner {
 			)
 		process.environment = processEnvironment(
 			merging: environment,
-			isNetworkOperation: isNetworkOperation,
 			operationID: operationID,
 			trustScope: trustScope
 		)
@@ -93,6 +95,14 @@ actor GitProcessRunner {
 		)
 	}
 
+	private func makeTrustScope() throws -> GitSSHTrustScope {
+		do {
+			return try GitSSHTrustScope(userKnownHostsURL: configuration.userKnownHostsURL)
+		} catch {
+			throw GitRepositoryError.hostVerification("")
+		}
+	}
+
 	private func commitPendingCredentials(operationID: String) {
 		do {
 			try credentialStore.commitPending(operationID: operationID)
@@ -103,12 +113,11 @@ actor GitProcessRunner {
 
 	private func processEnvironment(
 		merging environment: [String: String],
-		isNetworkOperation: Bool,
 		operationID: String,
 		trustScope: GitSSHTrustScope?
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment
-		if isNetworkOperation {
+		if let trustScope {
 			let policy = configuration.networkPolicy
 			result["GIT_HTTP_LOW_SPEED_LIMIT"] = String(policy.lowSpeedLimit)
 			result["GIT_HTTP_LOW_SPEED_TIME"] = String(Int(policy.lowSpeedTime))
@@ -118,7 +127,7 @@ actor GitProcessRunner {
 					"-o ConnectTimeout=\(Int(policy.sshConnectTimeout))",
 					"-o ServerAliveInterval=\(Int(policy.sshServerAliveInterval))",
 					"-o ServerAliveCountMax=\(policy.sshServerAliveCountMax)",
-				] + (trustScope?.sshOptions ?? [])).joined(separator: " ")
+				] + trustScope.sshOptions).joined(separator: " ")
 			result["GIT_TERMINAL_PROMPT"] = "0"
 			if let helperURL = configuration.askPassHelperURL {
 				result["GIT_ASKPASS"] = helperURL.path

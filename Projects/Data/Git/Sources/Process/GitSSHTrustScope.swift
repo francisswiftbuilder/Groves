@@ -1,6 +1,11 @@
 import Foundation
 
 struct GitSSHTrustScope: Sendable {
+	private static let missingFileCodes: Set<CocoaError.Code> = [
+		.fileReadNoSuchFile,
+		.fileNoSuchFile,
+	]
+
 	let knownHostsURL: URL
 
 	init(userKnownHostsURL: URL? = nil, fileManager: FileManager = .default) throws {
@@ -10,12 +15,25 @@ struct GitSSHTrustScope: Sendable {
 			.appending(path: ".ssh/known_hosts", directoryHint: .notDirectory)
 		knownHostsURL = fileManager.temporaryDirectory
 			.appending(path: "TreesKnownHosts-\(UUID().uuidString)", directoryHint: .notDirectory)
-		let contents = (try? Data(contentsOf: userKnownHostsURL)) ?? Data()
+		let contents = try Self.contents(of: userKnownHostsURL)
 		try contents.write(to: knownHostsURL, options: .atomic)
-		try fileManager.setAttributes(
-			[.posixPermissions: 0o600],
-			ofItemAtPath: knownHostsURL.path
-		)
+		do {
+			try fileManager.setAttributes(
+				[.posixPermissions: 0o600],
+				ofItemAtPath: knownHostsURL.path
+			)
+		} catch {
+			try? fileManager.removeItem(at: knownHostsURL)
+			throw error
+		}
+	}
+
+	private static func contents(of userKnownHostsURL: URL) throws -> Data {
+		do {
+			return try Data(contentsOf: userKnownHostsURL)
+		} catch let error as CocoaError where Self.missingFileCodes.contains(error.code) {
+			return Data()
+		}
 	}
 
 	var sshOptions: [String] {
