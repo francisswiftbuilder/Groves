@@ -1,7 +1,6 @@
 import Combine
+import CoreRepositoryDiff
 import DomainGitInterface
-import FeatureRepositoryDiff
-import FeatureRepositoryInterface
 import Foundation
 
 @MainActor
@@ -16,11 +15,18 @@ public final class HistoryViewModel: ObservableObject {
 	@Published var historyFocusRequest: HistoryFocusRequest?
 	@Published var isLoadingCommitDiff = false
 	@Published var isLoadingCommitImageDiff = false
-	var displayedCommitDiffID: String?
-	var requestedCommitDiffID: String?
-	var commitDiffTask: Task<Void, Never>?
-	var commitImageDiffTask: Task<Void, Never>?
-	var searchTask: Task<Void, Never>?
+	private var displayedCommitDiffID: String?
+	private var requestedCommitDiffID: String?
+	private var activeCommitDiffRequestID: Int?
+	private var commitDiffRequestSequence = 0
+	private var activeCommitImageDiffRequestID: Int?
+	private var commitImageDiffRequestSequence = 0
+	private var commits: [GitCommit] = []
+	private var snapshotRevision = 0
+	private var commitDiffTask: Task<Void, Never>?
+	private var commitImageDiffTask: Task<Void, Never>?
+	private var layoutTask: Task<Void, Never>?
+	private var searchTask: Task<Void, Never>?
 	private let dependencies: HistoryViewModelDependencies
 	private let actions: HistoryViewModelActions
 
@@ -48,8 +54,8 @@ public final class HistoryViewModel: ObservableObject {
 		actions.didReceiveError
 	}
 
-	private var didSelectSection: @MainActor (WorkspaceSection) -> Void {
-		actions.didSelectSection
+	private var didRequestPresentation: @MainActor () -> Void {
+		actions.didRequestPresentation
 	}
 
 	private var didFocusBranch: @MainActor (GitBranch) -> Void {
@@ -63,24 +69,27 @@ public final class HistoryViewModel: ObservableObject {
 	deinit {
 		commitDiffTask?.cancel()
 		commitImageDiffTask?.cancel()
+		layoutTask?.cancel()
 		searchTask?.cancel()
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		guard commitGraphItems.map(\.commit) != snapshot.commits else { return }
-		commitGraphItems = CommitGraphLayoutBuilder.build(commits: snapshot.commits)
-		requestFilter()
-		preserveSelection()
+		guard commits != snapshot.commits else { return }
+		commits = snapshot.commits
+		requestLayout()
 	}
 
 	func cancelTasks() {
 		commitDiffTask?.cancel()
 		commitImageDiffTask?.cancel()
+		layoutTask?.cancel()
 		searchTask?.cancel()
 	}
 
 	public func reset() {
 		cancelTasks()
+		snapshotRevision += 1
+		commits = []
 		selectedCommitID = nil
 		selectedCommitFileID = nil
 		commitGraphItems = []
@@ -111,8 +120,7 @@ public final class HistoryViewModel: ObservableObject {
 	}
 
 	public func didChangeDiffOptions() {
-		displayedCommitDiffID = nil
-		didChangeSelectedCommit()
+		didChangeSelectedCommit(forceReload: true)
 	}
 
 	public func didOpenBranch(_ branch: GitBranch) {
@@ -150,16 +158,17 @@ public final class HistoryViewModel: ObservableObject {
 		focus(item)
 	}
 
-	func didChangeSelectedCommit() {
+	func didChangeSelectedCommit(forceReload: Bool = false) {
 		guard let repositoryURL = repositoryURL(), let commit = selectedCommit else {
 			commitDiffTask?.cancel()
-			requestedCommitDiffID = nil
-			isLoadingCommitDiff = false
 			selectedCommitFileID = nil
 			clearDisplayedCommitDiff()
 			return
 		}
-		guard displayedCommitDiffID != commit.id, requestedCommitDiffID != commit.id else {
+		guard
+			forceReload
+				|| (displayedCommitDiffID != commit.id && requestedCommitDiffID != commit.id)
+		else {
 			return
 		}
 
@@ -168,11 +177,15 @@ public final class HistoryViewModel: ObservableObject {
 			clearDisplayedCommitDiff()
 		}
 		requestedCommitDiffID = commit.id
+		commitDiffRequestSequence += 1
+		let requestID = commitDiffRequestSequence
+		activeCommitDiffRequestID = requestID
 		isLoadingCommitDiff = true
 
 		commitDiffTask = Task {
 			defer {
-				if requestedCommitDiffID == commit.id {
+				if activeCommitDiffRequestID == requestID {
+					activeCommitDiffRequestID = nil
 					requestedCommitDiffID = nil
 					isLoadingCommitDiff = false
 				}
@@ -186,7 +199,9 @@ public final class HistoryViewModel: ObservableObject {
 				let requestedFiles = await Task.detached(priority: .userInitiated) {
 					CommitDiffFileParser.parse(requestedDiff)
 				}.value
-				guard selectedCommitID == commit.id else { return }
+				guard activeCommitDiffRequestID == requestID, selectedCommitID == commit.id else {
+					return
+				}
 				selectedCommitFiles = requestedFiles
 				preserveSelectedCommitFile()
 				displayedCommitDiffID = commit.id
@@ -209,10 +224,28 @@ public final class HistoryViewModel: ObservableObject {
 			?? selectedCommitFiles.first
 	}
 
+	private func requestLayout() {
+		layoutTask?.cancel()
+		searchTask?.cancel()
+		snapshotRevision += 1
+		let revision = snapshotRevision
+		let requestedCommits = commits
+		layoutTask = Task {
+			let items = await Task.detached(priority: .userInitiated) {
+				CommitGraphLayoutBuilder.build(commits: requestedCommits)
+			}.value
+			guard Task.isCancelled == false, snapshotRevision == revision else { return }
+			commitGraphItems = items
+			requestFilter()
+			preserveSelection()
+		}
+	}
+
 	private func requestFilter() {
 		searchTask?.cancel()
 		let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-		let commits = commitGraphItems.map(\.commit)
+		let requestedCommits = commits
+		let revision = snapshotRevision
 		guard !query.isEmpty else {
 			displayedCommitGraphItems = commitGraphItems
 			return
@@ -224,10 +257,11 @@ public final class HistoryViewModel: ObservableObject {
 				return
 			}
 			let items = await Task.detached(priority: .userInitiated) {
-				let filteredCommits = commits.filter { Self.commit($0, matches: query) }
+				let filteredCommits = requestedCommits.filter { Self.commit($0, matches: query) }
 				return CommitGraphLayoutBuilder.build(commits: filteredCommits)
 			}.value
-			guard !Task.isCancelled,
+			guard Task.isCancelled == false,
+				snapshotRevision == revision,
 				searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query
 			else { return }
 			displayedCommitGraphItems = items
@@ -252,7 +286,7 @@ public final class HistoryViewModel: ObservableObject {
 		selectedCommitID = item.id
 		didChangeSelectedCommit()
 		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
-		didSelectSection(.history)
+		didRequestPresentation()
 	}
 
 	private func clearDisplayedCommitDiff() {
@@ -261,10 +295,12 @@ public final class HistoryViewModel: ObservableObject {
 		}
 		selectedCommitFileID = nil
 		commitImageDiffTask?.cancel()
+		activeCommitImageDiffRequestID = nil
 		commitImageDiff = nil
 		isLoadingCommitImageDiff = false
 		displayedCommitDiffID = nil
 		requestedCommitDiffID = nil
+		activeCommitDiffRequestID = nil
 		isLoadingCommitDiff = false
 	}
 
@@ -281,6 +317,7 @@ public final class HistoryViewModel: ObservableObject {
 
 	private func didChangeSelectedCommitImageDiff() {
 		commitImageDiffTask?.cancel()
+		activeCommitImageDiffRequestID = nil
 		commitImageDiff = nil
 		isLoadingCommitImageDiff = false
 		guard
@@ -290,9 +327,17 @@ public final class HistoryViewModel: ObservableObject {
 			DiffImageFileSupport.isSupported(path: file.path)
 		else { return }
 
+		commitImageDiffRequestSequence += 1
+		let requestID = commitImageDiffRequestSequence
+		activeCommitImageDiffRequestID = requestID
 		isLoadingCommitImageDiff = true
 		commitImageDiffTask = Task {
-			defer { isLoadingCommitImageDiff = false }
+			defer {
+				if activeCommitImageDiffRequestID == requestID {
+					activeCommitImageDiffRequestID = nil
+					isLoadingCommitImageDiff = false
+				}
+			}
 			do {
 				let requestedImageDiff = try await changesUseCase.loadCommitImageDiff(
 					for: commit,
@@ -300,9 +345,7 @@ public final class HistoryViewModel: ObservableObject {
 					previousPath: file.previousPath,
 					at: repositoryURL
 				)
-				guard selectedCommitID == commit.id, selectedCommitFile?.id == file.id else {
-					return
-				}
+				guard activeCommitImageDiffRequestID == requestID else { return }
 				commitImageDiff = requestedImageDiff
 			} catch is CancellationError {
 				return

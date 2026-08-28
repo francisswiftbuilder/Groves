@@ -4,10 +4,33 @@ extension Array: TargetDependencies where Element == TargetDependency {
 	public static var appDependencies: [TargetDependency] {
 		[
 			.core(implements: .gitCredential),
-			.feature(implements: .repository),
+			.core(implements: .repositoryDiff),
+			.core(implements: .repositoryUI),
+			.feature(implements: .repositoryChanges),
+			.feature(implements: .repositoryHistory),
+			.feature(implements: .repositoryOperations),
+			.feature(implements: .repositoryStashes),
+			.feature(implements: .repositoryTree),
+			.domain(interface: .git),
 			.domain(implements: .git),
 			.data(implements: .git),
 			.target(name: TreesProduct.askPassTargetName),
+		]
+	}
+
+	// The unit tests exercise types the app itself never names, so linking only the host bundle
+	// leaves those symbols out. Declare every module the tests import.
+	public static var appTestsDependencies: [TargetDependency] {
+		[
+			.target(name: Module.App.name),
+			.core(implements: .repositoryDiff),
+			.feature(implements: .repositoryChanges),
+			.feature(implements: .repositoryHistory),
+			.feature(implements: .repositoryOperations),
+			.feature(implements: .repositoryStashes),
+			.feature(implements: .repositoryTree),
+			.domain(interface: .git),
+			.domain(implements: .git),
 		]
 	}
 
@@ -21,72 +44,98 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		]
 	}
 
-	public static var featureRepositoryDependencies: [TargetDependency] {
+	public static var coreRepositoryDiffDependencies: [TargetDependency] {
 		[
-			.feature(interface: .repository),
-			.feature(implements: .repositoryChanges),
-			.feature(implements: .repositoryDiff),
-			.feature(implements: .repositoryHistory),
-			.feature(implements: .repositoryOperations),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
+		]
+	}
+
+	public static var coreRepositoryDiffTestsDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryDiff),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var coreRepositoryUIDependencies: [TargetDependency] {
+		[
+			.domain(interface: .git)
 		]
 	}
 
 	public static var featureRepositoryChangesDependencies: [TargetDependency] {
 		[
-			.feature(interface: .repository),
-			.feature(implements: .repositoryDiff),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryDiff),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
 	}
 
-	public static var featureRepositoryDiffDependencies: [TargetDependency] {
+	public static var featureRepositoryChangesTestsDependencies: [TargetDependency] {
 		[
-			.feature(interface: .repository),
-			.feature(implements: .repositoryUI),
+			.feature(implements: .repositoryChanges),
 			.domain(interface: .git),
 		]
 	}
 
 	public static var featureRepositoryHistoryDependencies: [TargetDependency] {
 		[
-			.feature(interface: .repository),
-			.feature(implements: .repositoryDiff),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryDiff),
+			.core(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryHistoryTestsDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryDiff),
+			.feature(implements: .repositoryHistory),
 			.domain(interface: .git),
 		]
 	}
 
 	public static var featureRepositoryOperationsDependencies: [TargetDependency] {
 		[
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
 	}
 
-	public static var featureRepositoryUIDependencies: [TargetDependency] {
+	public static var featureRepositoryOperationsTestsDependencies: [TargetDependency] {
 		[
-			.domain(interface: .git)
-		]
-	}
-
-	public static var featureRepositoryInterfaceDependencies: [TargetDependency] {
-		[
-			.domain(interface: .git)
-		]
-	}
-
-	public static var featureRepositoryTestsDependencies: [TargetDependency] {
-		[
-			.feature(implements: .repository),
-			.feature(implements: .repositoryChanges),
-			.feature(implements: .repositoryDiff),
-			.feature(implements: .repositoryHistory),
 			.feature(implements: .repositoryOperations),
-			.feature(implements: .repositoryUI),
-			.domain(implements: .git),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryStashesDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryDiff),
+			.core(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryStashesTestsDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryDiff),
+			.feature(implements: .repositoryStashes),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryTreeDependencies: [TargetDependency] {
+		[
+			.core(implements: .repositoryUI),
+			.domain(interface: .git),
+		]
+	}
+
+	public static var featureRepositoryTreeTestsDependencies: [TargetDependency] {
+		[
+			.feature(implements: .repositoryTree),
+			.domain(interface: .git),
 		]
 	}
 

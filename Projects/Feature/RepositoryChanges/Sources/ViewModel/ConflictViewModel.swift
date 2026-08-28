@@ -13,6 +13,8 @@ public final class ConflictViewModel: ObservableObject {
 	private let actions: ConflictViewModelActions
 	private var operationState: RepositoryOperationState = .normal
 	private var selectedConflict: GitConflict?
+	private var activeContentRequestID: Int?
+	private var contentRequestSequence = 0
 	private var contentTask: Task<Void, Never>?
 	private var mutationTask: Task<Void, Never>?
 
@@ -57,10 +59,15 @@ public final class ConflictViewModel: ObservableObject {
 	public func apply(_ snapshot: RepositorySnapshot) {
 		operationState = snapshot.operationState
 		guard let selectedConflict else { return }
-		if snapshot.operationState.conflicts.contains(where: { $0.id == selectedConflict.id }) == false
-		{
+		guard
+			let refreshedConflict = snapshot.operationState.conflicts.first(where: {
+				$0.id == selectedConflict.id
+			})
+		else {
 			didSelectConflict(nil)
+			return
 		}
+		didSelectConflict(refreshedConflict, forceReload: true)
 	}
 
 	public func reset() {
@@ -69,6 +76,7 @@ public final class ConflictViewModel: ObservableObject {
 		contentTask = nil
 		mutationTask = nil
 		selectedConflict = nil
+		activeContentRequestID = nil
 		content = nil
 		isLoadingContent = false
 		isLoading = false
@@ -76,27 +84,39 @@ public final class ConflictViewModel: ObservableObject {
 		operationState = .normal
 	}
 
-	public func didSelectConflict(_ conflict: GitConflict?) {
-		guard selectedConflict != conflict else { return }
+	public func didSelectConflict(_ conflict: GitConflict?, forceReload: Bool = false) {
+		let didChangeSelection = selectedConflict != conflict
+		guard forceReload || didChangeSelection else { return }
 		contentTask?.cancel()
 		selectedConflict = conflict
-		content = nil
+		if didChangeSelection {
+			content = nil
+		}
+		activeContentRequestID = nil
 		isLoadingContent = false
 		guard let conflict, let repositoryURL = dependencies.repositoryURL() else { return }
+		contentRequestSequence += 1
+		let requestID = contentRequestSequence
+		activeContentRequestID = requestID
 		contentTask = Task {
 			isLoadingContent = true
-			defer { isLoadingContent = false }
+			defer {
+				if activeContentRequestID == requestID {
+					activeContentRequestID = nil
+					isLoadingContent = false
+				}
+			}
 			do {
 				let loadedContent = try await dependencies.operationsUseCase.loadConflictContent(
 					for: conflict,
 					at: repositoryURL
 				)
-				guard selectedConflict == conflict else { return }
+				guard activeContentRequestID == requestID else { return }
 				content = loadedContent
 			} catch is CancellationError {
 				return
 			} catch {
-				guard selectedConflict == conflict else { return }
+				guard activeContentRequestID == requestID else { return }
 				content = nil
 			}
 		}

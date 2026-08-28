@@ -1,7 +1,6 @@
+import CoreRepositoryDiff
+import CoreRepositoryUI
 import DomainGitInterface
-import FeatureRepositoryDiff
-import FeatureRepositoryInterface
-import FeatureRepositoryUI
 import SwiftUI
 
 public struct HistoryView: View {

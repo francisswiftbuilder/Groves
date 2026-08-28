@@ -1,15 +1,18 @@
 import CoreGitCredential
-import Darwin
 import DomainGitInterface
 import Foundation
 
 actor GitProcessRunner {
 	private let configuration: GitProcessConfiguration
-	private let credentialStore = GitCredentialStore()
+	private let credentialStore: any GitCredentialPersisting
 	private let decisionStore = GitCredentialSaveDecisionStore()
 
-	init(configuration: GitProcessConfiguration = GitProcessConfiguration()) {
+	init(
+		configuration: GitProcessConfiguration = GitProcessConfiguration(),
+		credentialStore: any GitCredentialPersisting = GitCredentialStore()
+	) {
 		self.configuration = configuration
+		self.credentialStore = credentialStore
 	}
 
 	func requestRun(
@@ -18,7 +21,8 @@ actor GitProcessRunner {
 		standardInput: String? = nil,
 		environment: [String: String] = [:],
 		acceptedTerminationStatuses: Set<Int32> = [0],
-		isNetworkOperation: Bool = false
+		isNetworkOperation: Bool = false,
+		requiresSSHTrustScope: Bool = false
 	) async throws -> GitCommandResult {
 		let operationID = UUID().uuidString
 		var didSucceed = false
@@ -28,30 +32,15 @@ actor GitProcessRunner {
 				decisionStore.discard(operationID: operationID)
 			}
 		}
-		let fileManager = FileManager.default
-		let temporaryDirectory = fileManager.temporaryDirectory
-			.appendingPathComponent("Trees-\(UUID().uuidString)", isDirectory: true)
-		let standardOutputURL = temporaryDirectory.appendingPathComponent("stdout")
-		let standardErrorURL = temporaryDirectory.appendingPathComponent("stderr")
-		let standardInputURL = temporaryDirectory.appendingPathComponent("stdin")
 
-		try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-		fileManager.createFile(atPath: standardOutputURL.path, contents: nil)
-		fileManager.createFile(atPath: standardErrorURL.path, contents: nil)
-
-		defer {
-			try? fileManager.removeItem(at: temporaryDirectory)
+		var trustScope: GitSSHTrustScope?
+		if isNetworkOperation && requiresSSHTrustScope {
+			trustScope = try makeTrustScope()
 		}
+		defer { trustScope?.remove() }
 
-		let standardOutputHandle = try FileHandle(forWritingTo: standardOutputURL)
-		let standardErrorHandle = try FileHandle(forWritingTo: standardErrorURL)
-		let standardInputHandle: FileHandle?
-		if let standardInput {
-			try Data(standardInput.utf8).write(to: standardInputURL)
-			standardInputHandle = try FileHandle(forReadingFrom: standardInputURL)
-		} else {
-			standardInputHandle = nil
-		}
+		let standardOutputPipe = Pipe()
+		let standardErrorPipe = Pipe()
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/bin/sh")
 		process.arguments =
@@ -67,24 +56,33 @@ actor GitProcessRunner {
 			)
 		process.environment = processEnvironment(
 			merging: environment,
+			operationID: operationID,
 			isNetworkOperation: isNetworkOperation,
-			operationID: operationID
+			trustScope: trustScope
 		)
-		process.standardOutput = standardOutputHandle
-		process.standardError = standardErrorHandle
-		process.standardInput = standardInputHandle
+		process.standardOutput = standardOutputPipe
+		process.standardError = standardErrorPipe
+		let standardInputPipe = standardInput.map { _ in Pipe() }
+		process.standardInput = standardInputPipe ?? FileHandle.nullDevice
+
+		let standardOutputCollector = GitProcessOutputCollector(
+			pipe: standardOutputPipe,
+			label: "stdout"
+		)
+		let standardErrorCollector = GitProcessOutputCollector(
+			pipe: standardErrorPipe,
+			label: "stderr"
+		)
 
 		let terminationStatus = try await requestTerminationStatus(
 			for: process,
-			standardInputHandle: standardInputHandle,
-			standardOutputHandle: standardOutputHandle,
-			standardErrorHandle: standardErrorHandle,
+			standardInput: standardInput,
+			standardInputPipe: standardInputPipe,
 			timeout: isNetworkOperation ? configuration.networkPolicy.operationTimeout : nil
 		)
-		let standardOutputData = try Data(contentsOf: standardOutputURL)
-		let standardErrorData = try Data(contentsOf: standardErrorURL)
+		let standardOutputData = await standardOutputCollector.data()
+		let standardError = String(decoding: await standardErrorCollector.data(), as: UTF8.self)
 		let standardOutput = String(decoding: standardOutputData, as: UTF8.self)
-		let standardError = String(decoding: standardErrorData, as: UTF8.self)
 
 		guard acceptedTerminationStatuses.contains(terminationStatus) else {
 			if Task.isCancelled || standardError.contains("TREES_ASKPASS_CANCELLED") {
@@ -92,7 +90,7 @@ actor GitProcessRunner {
 			}
 			throw repositoryError(for: standardError)
 		}
-		try credentialStore.commitPending(operationID: operationID)
+		commitPendingCredentials(operationID: operationID)
 		decisionStore.discard(operationID: operationID)
 		didSucceed = true
 
@@ -103,22 +101,34 @@ actor GitProcessRunner {
 		)
 	}
 
+	private func makeTrustScope() throws -> GitSSHTrustScope {
+		do {
+			return try GitSSHTrustScope(userKnownHostsURL: configuration.userKnownHostsURL)
+		} catch {
+			throw GitRepositoryError.hostVerification("")
+		}
+	}
+
+	private func commitPendingCredentials(operationID: String) {
+		do {
+			try credentialStore.commitPending(operationID: operationID)
+		} catch {
+			try? credentialStore.discardPending(operationID: operationID)
+			configuration.noticeHandler?(.credentialPersistenceFailed)
+		}
+	}
+
 	private func processEnvironment(
 		merging environment: [String: String],
+		operationID: String,
 		isNetworkOperation: Bool,
-		operationID: String
+		trustScope: GitSSHTrustScope?
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment
 		if isNetworkOperation {
 			let policy = configuration.networkPolicy
 			result["GIT_HTTP_LOW_SPEED_LIMIT"] = String(policy.lowSpeedLimit)
 			result["GIT_HTTP_LOW_SPEED_TIME"] = String(Int(policy.lowSpeedTime))
-			result["GIT_SSH_COMMAND"] = [
-				"ssh",
-				"-o ConnectTimeout=\(Int(policy.sshConnectTimeout))",
-				"-o ServerAliveInterval=\(Int(policy.sshServerAliveInterval))",
-				"-o ServerAliveCountMax=\(policy.sshServerAliveCountMax)",
-			].joined(separator: " ")
 			result["GIT_TERMINAL_PROMPT"] = "0"
 			if let helperURL = configuration.askPassHelperURL {
 				result["GIT_ASKPASS"] = helperURL.path
@@ -126,6 +136,16 @@ actor GitProcessRunner {
 				result["SSH_ASKPASS_REQUIRE"] = "force"
 				result["TREES_OPERATION_IDENTIFIER"] = operationID
 			}
+		}
+		if let trustScope {
+			let policy = configuration.networkPolicy
+			result["GIT_SSH_COMMAND"] =
+				([
+					"ssh",
+					"-o ConnectTimeout=\(Int(policy.sshConnectTimeout))",
+					"-o ServerAliveInterval=\(Int(policy.sshServerAliveInterval))",
+					"-o ServerAliveCountMax=\(policy.sshServerAliveCountMax)",
+				] + trustScope.sshOptions).joined(separator: " ")
 		}
 		return result.merging(environment) { _, new in new }
 	}
@@ -147,17 +167,15 @@ actor GitProcessRunner {
 
 	private func requestTerminationStatus(
 		for process: Process,
-		standardInputHandle: FileHandle?,
-		standardOutputHandle: FileHandle,
-		standardErrorHandle: FileHandle,
+		standardInput: String?,
+		standardInputPipe: Pipe?,
 		timeout: TimeInterval?
 	) async throws -> Int32 {
 		guard let timeout else {
 			return try await waitForTermination(
 				of: process,
-				standardInputHandle: standardInputHandle,
-				standardOutputHandle: standardOutputHandle,
-				standardErrorHandle: standardErrorHandle
+				standardInput: standardInput,
+				standardInputPipe: standardInputPipe
 			)
 		}
 
@@ -165,9 +183,8 @@ actor GitProcessRunner {
 			group.addTask {
 				try await self.waitForTermination(
 					of: process,
-					standardInputHandle: standardInputHandle,
-					standardOutputHandle: standardOutputHandle,
-					standardErrorHandle: standardErrorHandle
+					standardInput: standardInput,
+					standardInputPipe: standardInputPipe
 				)
 			}
 			group.addTask {
@@ -184,41 +201,36 @@ actor GitProcessRunner {
 
 	private func waitForTermination(
 		of process: Process,
-		standardInputHandle: FileHandle?,
-		standardOutputHandle: FileHandle,
-		standardErrorHandle: FileHandle
+		standardInput: String?,
+		standardInputPipe: Pipe?
 	) async throws -> Int32 {
-		try await withTaskCancellationHandler {
+		let lifecycle = GitProcessLifecycle(
+			process: process,
+			gracePeriod: configuration.terminationGracePeriod
+		)
+		try Task.checkCancellation()
+		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
-				process.terminationHandler = { process in
-					continuation.resume(returning: process.terminationStatus)
-				}
-
-				do {
-					try process.run()
-					standardInputHandle?.closeFile()
-					standardOutputHandle.closeFile()
-					standardErrorHandle.closeFile()
-				} catch {
-					standardInputHandle?.closeFile()
-					standardOutputHandle.closeFile()
-					standardErrorHandle.closeFile()
-					continuation.resume(throwing: error)
-				}
+				let didStart = lifecycle.start(
+					onTermination: { continuation.resume(returning: $0) },
+					onFailure: { error in
+						try? standardInputPipe?.fileHandleForWriting.close()
+						continuation.resume(throwing: error)
+					}
+				)
+				guard didStart, let standardInput, let standardInputPipe else { return }
+				Self.write(standardInput, to: standardInputPipe)
 			}
 		} onCancel: {
-			Self.terminate(process, gracePeriod: configuration.terminationGracePeriod)
+			lifecycle.cancel()
 		}
 	}
 
-	nonisolated private static func terminate(_ process: Process, gracePeriod: TimeInterval) {
-		guard process.isRunning else { return }
-		process.terminate()
-		let processIdentifier = process.processIdentifier
-		DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + gracePeriod) {
-			if process.isRunning {
-				kill(processIdentifier, SIGKILL)
-			}
+	nonisolated private static func write(_ standardInput: String, to pipe: Pipe) {
+		DispatchQueue.global(qos: .userInitiated).async {
+			let handle = pipe.fileHandleForWriting
+			try? handle.write(contentsOf: Data(standardInput.utf8))
+			try? handle.close()
 		}
 	}
 
@@ -230,6 +242,12 @@ actor GitProcessRunner {
 			|| lowercasedMessage.contains("no matching host key")
 		{
 			return .hostVerification(message)
+		}
+		if lowercasedMessage.contains("operation too slow")
+			|| lowercasedMessage.contains("operation timed out")
+			|| lowercasedMessage.contains("timeout after")
+		{
+			return .timeout
 		}
 		if lowercasedMessage.contains("authentication failed")
 			|| lowercasedMessage.contains("permission denied")

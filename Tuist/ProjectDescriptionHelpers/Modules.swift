@@ -11,12 +11,11 @@ public enum Module: String, ModuleAppType {
 
 public extension Module {
   enum Feature: String, CaseIterable, ModuleFeatureType {
-    case Repository
     case RepositoryChanges
-    case RepositoryDiff
     case RepositoryHistory
     case RepositoryOperations
-    case RepositoryUI
+    case RepositoryStashes
+    case RepositoryTree
     public var name: String { rawValue }
   }
 }
@@ -38,6 +37,8 @@ public extension Module {
 public extension Module {
   enum Core: String, CaseIterable, ModuleCoreType {
     case GitCredential
+    case RepositoryDiff
+    case RepositoryUI
     public var name: String { rawValue }
   }
 }
@@ -47,12 +48,11 @@ extension ModuleAppType where Self == Module {
 }
 
 extension ModuleFeatureType where Self == Module.Feature {
-  public static var repository: Module.Feature { Module.Feature.Repository }
   public static var repositoryChanges: Module.Feature { Module.Feature.RepositoryChanges }
-  public static var repositoryDiff: Module.Feature { Module.Feature.RepositoryDiff }
   public static var repositoryHistory: Module.Feature { Module.Feature.RepositoryHistory }
   public static var repositoryOperations: Module.Feature { Module.Feature.RepositoryOperations }
-  public static var repositoryUI: Module.Feature { Module.Feature.RepositoryUI }
+  public static var repositoryStashes: Module.Feature { Module.Feature.RepositoryStashes }
+  public static var repositoryTree: Module.Feature { Module.Feature.RepositoryTree }
 }
 
 extension ModuleDomainType where Self == Module.Domain {
@@ -65,4 +65,6 @@ extension ModuleDataType where Self == Module.Data {
 
 extension ModuleCoreType where Self == Module.Core {
   public static var gitCredential: Module.Core { Module.Core.GitCredential }
+  public static var repositoryDiff: Module.Core { Module.Core.RepositoryDiff }
+  public static var repositoryUI: Module.Core { Module.Core.RepositoryUI }
 }

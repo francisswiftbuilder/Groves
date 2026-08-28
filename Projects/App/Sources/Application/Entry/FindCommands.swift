@@ -1,5 +1,4 @@
 import AppKit
-import FeatureRepositoryInterface
 import SwiftUI
 
 struct FindCommands: Commands {

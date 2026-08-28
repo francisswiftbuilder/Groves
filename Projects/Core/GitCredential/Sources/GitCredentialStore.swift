@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-public final class GitCredentialStore: @unchecked Sendable {
+public final class GitCredentialStore: GitCredentialPersisting, @unchecked Sendable {
 	private let service: String
 	private let pendingService: String
 	private let encoder = JSONEncoder()
@@ -13,7 +13,7 @@ public final class GitCredentialStore: @unchecked Sendable {
 	}
 
 	public func descriptors() throws -> [GitCredentialDescriptor] {
-		try items(service: service, returnsData: false)
+		try items(service: service)
 			.compactMap { try descriptor(from: $0) }
 			.sorted {
 				if $0.kind != $1.kind { return $0.kind.rawValue < $1.kind.rawValue }
@@ -25,16 +25,15 @@ public final class GitCredentialStore: @unchecked Sendable {
 	}
 
 	public func secret(for descriptor: GitCredentialDescriptor) throws -> String? {
-		var query = baseQuery(service: service)
-		query[kSecAttrAccount as String] = descriptor.id
-		query[kSecReturnData as String] = true
-		query[kSecMatchLimit as String] = kSecMatchLimitOne
-		var result: CFTypeRef?
-		let status = SecItemCopyMatching(query as CFDictionary, &result)
-		if status == errSecItemNotFound { return nil }
-		guard status == errSecSuccess else { throw GitCredentialStoreError.keychain(status) }
-		guard let data = result as? Data else { return nil }
-		return String(data: data, encoding: .utf8)
+		if let secret = try secret(account: descriptor.id, service: service) {
+			return secret
+		}
+		guard descriptor.id != descriptor.legacyIdentifier,
+			let legacySecret = try secret(account: descriptor.legacyIdentifier, service: service)
+		else { return nil }
+		try save(secret: legacySecret, for: descriptor)
+		try delete(account: descriptor.legacyIdentifier, service: service)
+		return legacySecret
 	}
 
 	public func save(secret: String, for descriptor: GitCredentialDescriptor) throws {
@@ -47,19 +46,14 @@ public final class GitCredentialStore: @unchecked Sendable {
 	}
 
 	public func delete(_ descriptor: GitCredentialDescriptor) throws {
-		var query = baseQuery(service: service)
-		query[kSecAttrAccount as String] = descriptor.id
-		let status = SecItemDelete(query as CFDictionary)
-		guard status == errSecSuccess || status == errSecItemNotFound else {
-			throw GitCredentialStoreError.keychain(status)
-		}
+		try delete(account: descriptor.id, service: service)
+		guard descriptor.id != descriptor.legacyIdentifier else { return }
+		try delete(account: descriptor.legacyIdentifier, service: service)
 	}
 
 	public func deleteAll() throws {
-		let status = SecItemDelete(baseQuery(service: service) as CFDictionary)
-		guard status == errSecSuccess || status == errSecItemNotFound else {
-			throw GitCredentialStoreError.keychain(status)
-		}
+		try deleteAll(service: service)
+		try deleteAll(service: pendingService)
 	}
 
 	public func savePending(
@@ -76,23 +70,23 @@ public final class GitCredentialStore: @unchecked Sendable {
 	}
 
 	public func commitPending(operationID: String) throws {
-		for item in try items(service: pendingService, returnsData: false) {
+		for item in try items(service: pendingService) {
 			guard let account = item[kSecAttrAccount as String] as? String,
 				account.hasPrefix(operationID + "|"),
-				let secret = try pendingSecret(account: account),
+				let secret = try secret(account: account, service: pendingService),
 				let descriptor = try descriptor(from: item)
 			else { continue }
 			try save(secret: secret, for: descriptor)
-			try deletePending(account: account)
+			try delete(account: account, service: pendingService)
 		}
 	}
 
 	public func discardPending(operationID: String) throws {
-		for item in try items(service: pendingService, returnsData: false) {
+		for item in try items(service: pendingService) {
 			guard let account = item[kSecAttrAccount as String] as? String,
 				account.hasPrefix(operationID + "|")
 			else { continue }
-			try deletePending(account: account)
+			try delete(account: account, service: pendingService)
 		}
 	}
 
@@ -122,12 +116,9 @@ public final class GitCredentialStore: @unchecked Sendable {
 		}
 	}
 
-	private func items(service: String, returnsData: Bool) throws -> [[String: Any]] {
+	private func items(service: String) throws -> [[String: Any]] {
 		var query = baseQuery(service: service)
 		query[kSecReturnAttributes as String] = true
-		if returnsData {
-			query[kSecReturnData as String] = true
-		}
 		query[kSecMatchLimit as String] = kSecMatchLimitAll
 		var result: CFTypeRef?
 		let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -153,17 +144,8 @@ public final class GitCredentialStore: @unchecked Sendable {
 		}
 	}
 
-	private func deletePending(account: String) throws {
-		var query = baseQuery(service: pendingService)
-		query[kSecAttrAccount as String] = account
-		let status = SecItemDelete(query as CFDictionary)
-		guard status == errSecSuccess || status == errSecItemNotFound else {
-			throw GitCredentialStoreError.keychain(status)
-		}
-	}
-
-	private func pendingSecret(account: String) throws -> String? {
-		var query = baseQuery(service: pendingService)
+	private func secret(account: String, service: String) throws -> String? {
+		var query = baseQuery(service: service)
 		query[kSecAttrAccount as String] = account
 		query[kSecReturnData as String] = true
 		query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -173,6 +155,22 @@ public final class GitCredentialStore: @unchecked Sendable {
 		guard status == errSecSuccess else { throw GitCredentialStoreError.keychain(status) }
 		guard let data = result as? Data else { return nil }
 		return String(data: data, encoding: .utf8)
+	}
+
+	private func delete(account: String, service: String) throws {
+		var query = baseQuery(service: service)
+		query[kSecAttrAccount as String] = account
+		let status = SecItemDelete(query as CFDictionary)
+		guard status == errSecSuccess || status == errSecItemNotFound else {
+			throw GitCredentialStoreError.keychain(status)
+		}
+	}
+
+	private func deleteAll(service: String) throws {
+		let status = SecItemDelete(baseQuery(service: service) as CFDictionary)
+		guard status == errSecSuccess || status == errSecItemNotFound else {
+			throw GitCredentialStoreError.keychain(status)
+		}
 	}
 
 	private func baseQuery(service: String) -> [String: Any] {
