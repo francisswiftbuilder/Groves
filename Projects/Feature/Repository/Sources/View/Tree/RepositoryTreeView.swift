@@ -1,6 +1,6 @@
 import AppKit
+import CoreRepositoryUI
 import DomainGitInterface
-import FeatureRepositoryUI
 import Foundation
 import SwiftUI
 

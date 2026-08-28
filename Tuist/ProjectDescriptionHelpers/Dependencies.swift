@@ -21,6 +21,12 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		]
 	}
 
+	public static var coreRepositoryUIDependencies: [TargetDependency] {
+		[
+			.domain(interface: .git)
+		]
+	}
+
 	public static var featureRepositoryDependencies: [TargetDependency] {
 		[
 			.feature(interface: .repository),
@@ -28,7 +34,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 			.feature(implements: .repositoryDiff),
 			.feature(implements: .repositoryHistory),
 			.feature(implements: .repositoryOperations),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
 	}
@@ -37,7 +43,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		[
 			.feature(interface: .repository),
 			.feature(implements: .repositoryDiff),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
 	}
@@ -45,7 +51,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 	public static var featureRepositoryDiffDependencies: [TargetDependency] {
 		[
 			.feature(interface: .repository),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
 	}
@@ -54,21 +60,15 @@ extension Array: TargetDependencies where Element == TargetDependency {
 		[
 			.feature(interface: .repository),
 			.feature(implements: .repositoryDiff),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
 		]
 	}
 
 	public static var featureRepositoryOperationsDependencies: [TargetDependency] {
 		[
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(interface: .git),
-		]
-	}
-
-	public static var featureRepositoryUIDependencies: [TargetDependency] {
-		[
-			.domain(interface: .git)
 		]
 	}
 
@@ -85,7 +85,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 			.feature(implements: .repositoryDiff),
 			.feature(implements: .repositoryHistory),
 			.feature(implements: .repositoryOperations),
-			.feature(implements: .repositoryUI),
+			.core(implements: .repositoryUI),
 			.domain(implements: .git),
 		]
 	}

@@ -16,7 +16,6 @@ public extension Module {
     case RepositoryDiff
     case RepositoryHistory
     case RepositoryOperations
-    case RepositoryUI
     public var name: String { rawValue }
   }
 }
@@ -38,6 +37,7 @@ public extension Module {
 public extension Module {
   enum Core: String, CaseIterable, ModuleCoreType {
     case GitCredential
+    case RepositoryUI
     public var name: String { rawValue }
   }
 }
@@ -52,7 +52,6 @@ extension ModuleFeatureType where Self == Module.Feature {
   public static var repositoryDiff: Module.Feature { Module.Feature.RepositoryDiff }
   public static var repositoryHistory: Module.Feature { Module.Feature.RepositoryHistory }
   public static var repositoryOperations: Module.Feature { Module.Feature.RepositoryOperations }
-  public static var repositoryUI: Module.Feature { Module.Feature.RepositoryUI }
 }
 
 extension ModuleDomainType where Self == Module.Domain {
@@ -65,4 +64,5 @@ extension ModuleDataType where Self == Module.Data {
 
 extension ModuleCoreType where Self == Module.Core {
   public static var gitCredential: Module.Core { Module.Core.GitCredential }
+  public static var repositoryUI: Module.Core { Module.Core.RepositoryUI }
 }

@@ -3,7 +3,7 @@ import ProjectDescription
 import ProjectDescriptionHelpers
 
 let project = Project(
-	name: "FeatureRepositoryUI",
+	name: "CoreRepositoryUI",
 	options: .options(
 		automaticSchemesOptions: .disabled,
 		textSettings: .textSettings(
@@ -17,13 +17,13 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.featureRepositoryUI
+		.coreRepositoryUI
 	],
 	schemes: [
 		.scheme(
-			name: "FeatureRepositoryUI",
+			name: "CoreRepositoryUI",
 			shared: true,
-			buildAction: .buildAction(targets: [.featureRepositoryUI])
+			buildAction: .buildAction(targets: [.coreRepositoryUI])
 		)
 	]
 )

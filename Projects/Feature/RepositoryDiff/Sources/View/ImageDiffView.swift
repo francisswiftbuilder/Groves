@@ -1,6 +1,6 @@
 import AppKit
+import CoreRepositoryUI
 import DomainGitInterface
-import FeatureRepositoryUI
 import SwiftUI
 
 public struct ImageDiffView: View {

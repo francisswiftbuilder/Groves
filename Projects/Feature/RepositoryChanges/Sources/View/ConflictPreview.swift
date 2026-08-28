@@ -1,7 +1,7 @@
+import CoreRepositoryUI
 import DomainGitInterface
 import FeatureRepositoryDiff
 import FeatureRepositoryInterface
-import FeatureRepositoryUI
 import SwiftUI
 
 struct ConflictPreview: View {

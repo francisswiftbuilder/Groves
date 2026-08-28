@@ -1,6 +1,6 @@
+import CoreRepositoryUI
 import DomainGitInterface
 import FeatureRepositoryDiff
-import FeatureRepositoryUI
 import SwiftUI
 
 struct CommitInspectorView: View {
