@@ -69,7 +69,10 @@ struct GitRepositoryStub: GitRepository {
 		for commit: GitCommit,
 		options: GitDiffOptions,
 		at repositoryURL: URL
-	) async throws -> String { "" }
+	) async throws -> String {
+		await diffGate?.enter(GitDiffGateLabel.commitDiff(hash: commit.hash))
+		return ""
+	}
 	func requestStashDiff(
 		for stash: GitStash,
 		options: GitDiffOptions,
