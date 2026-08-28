@@ -1,20 +1,26 @@
 import ConfigurationPlugin
 import ProjectDescription
 
-private var appTargetSettings: SettingsDictionary {
-	var settings: SettingsDictionary = [
-		"PRODUCT_NAME": "Trees"
-	]
+private var developmentSigningSettings: SettingsDictionary {
 	let codeSignIdentity = Environment.codeSignIdentity.getString(default: "")
 	let developmentTeam = Environment.developmentTeam.getString(default: "")
 
 	guard codeSignIdentity.isEmpty == false, developmentTeam.isEmpty == false else {
-		return settings
+		return [:]
 	}
 
-	settings["CODE_SIGN_IDENTITY"] = .string(codeSignIdentity)
-	settings["CODE_SIGN_STYLE"] = "Manual"
-	settings["DEVELOPMENT_TEAM"] = .string(developmentTeam)
+	return [
+		"CODE_SIGN_IDENTITY": .string(codeSignIdentity),
+		"CODE_SIGN_STYLE": "Manual",
+		"DEVELOPMENT_TEAM": .string(developmentTeam),
+	]
+}
+
+private var appTargetSettings: SettingsDictionary {
+	var settings: SettingsDictionary = [
+		"PRODUCT_NAME": "Trees"
+	]
+	settings.merge(developmentSigningSettings) { _, signing in signing }
 	return settings
 }
 
@@ -28,6 +34,10 @@ public let baseSettings: SettingsDictionary = [
 	"SWIFT_VERSION": "6.0",
 	"SWIFT_STRICT_CONCURRENCY": "complete",
 ]
+
+public var askPassSettings: Settings {
+	.settings(base: baseSettings.merging(developmentSigningSettings) { _, signing in signing })
+}
 
 extension Settings: TargetSettings {
 	public static var appSettings: Settings? {
