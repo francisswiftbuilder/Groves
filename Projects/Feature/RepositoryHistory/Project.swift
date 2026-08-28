@@ -17,13 +17,19 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.featureRepositoryHistory
+		.featureRepositoryHistory,
+		.featureRepositoryHistoryTests,
 	],
 	schemes: [
 		.scheme(
 			name: "FeatureRepositoryHistory",
 			shared: true,
-			buildAction: .buildAction(targets: [.featureRepositoryHistory])
+			buildAction: .buildAction(targets: [.featureRepositoryHistory]),
+			testAction: .targets(
+				[.testableTarget(target: .featureRepositoryHistoryTests)],
+				configuration: .debug,
+				options: .options(coverage: true)
+			)
 		)
 	]
 )

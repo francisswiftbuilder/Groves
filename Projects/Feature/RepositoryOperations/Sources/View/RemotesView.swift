@@ -1,5 +1,5 @@
+import CoreRepositoryUI
 import DomainGitInterface
-import FeatureRepositoryUI
 import SwiftUI
 
 public struct RemotesView: View {

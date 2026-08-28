@@ -1,5 +1,4 @@
 import AppKit
-import FeatureRepositoryInterface
 
 @MainActor
 final class WorkspaceExternalEditorOpener: RepositoryExternalEditorOpening {

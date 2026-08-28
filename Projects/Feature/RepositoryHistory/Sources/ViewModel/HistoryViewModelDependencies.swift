@@ -1,5 +1,5 @@
+import CoreRepositoryDiff
 import DomainGitInterface
-import FeatureRepositoryInterface
 import Foundation
 
 public struct HistoryViewModelDependencies {

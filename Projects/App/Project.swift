@@ -30,10 +30,32 @@ let project = Project(
 			dependencies: [
 				.core(implements: .gitCredential)
 			],
-			settings: .settings(base: baseSettings)
+			settings: askPassSettings
+		),
+		.target(
+			name: TreesProduct.appTestsTargetName,
+			destinations: environment.destinations,
+			product: .unitTests,
+			productName: TreesProduct.appTestsTargetName,
+			bundleId: environment.organizationName + ".AppTests",
+			deploymentTargets: environment.deploymentTargets,
+			infoPlist: .default,
+			sources: TreesProduct.appTestsSources,
+			dependencies: .appTestsDependencies,
+			settings: appTestsSettings
 		),
 	],
 	schemes: [
-		.appScheme
+		.appScheme,
+		.scheme(
+			name: TreesProduct.appTestsTargetName,
+			shared: true,
+			buildAction: .buildAction(targets: [.target(TreesProduct.appTestsTargetName)]),
+			testAction: .targets(
+				[.testableTarget(target: .target(TreesProduct.appTestsTargetName))],
+				configuration: .debug,
+				options: .options(coverage: true)
+			)
+		),
 	]
 )
