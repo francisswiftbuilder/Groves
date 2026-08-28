@@ -31,30 +31,8 @@ actor GitProcessRunner {
 		let trustScope = isNetworkOperation ? try? GitSSHTrustScope() : nil
 		defer { trustScope?.remove() }
 
-		let fileManager = FileManager.default
-		let temporaryDirectory = fileManager.temporaryDirectory
-			.appendingPathComponent("Trees-\(UUID().uuidString)", isDirectory: true)
-		let standardOutputURL = temporaryDirectory.appendingPathComponent("stdout")
-		let standardErrorURL = temporaryDirectory.appendingPathComponent("stderr")
-		let standardInputURL = temporaryDirectory.appendingPathComponent("stdin")
-
-		try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-		fileManager.createFile(atPath: standardOutputURL.path, contents: nil)
-		fileManager.createFile(atPath: standardErrorURL.path, contents: nil)
-
-		defer {
-			try? fileManager.removeItem(at: temporaryDirectory)
-		}
-
-		let standardOutputHandle = try FileHandle(forWritingTo: standardOutputURL)
-		let standardErrorHandle = try FileHandle(forWritingTo: standardErrorURL)
-		let standardInputHandle: FileHandle?
-		if let standardInput {
-			try Data(standardInput.utf8).write(to: standardInputURL)
-			standardInputHandle = try FileHandle(forReadingFrom: standardInputURL)
-		} else {
-			standardInputHandle = nil
-		}
+		let standardOutputPipe = Pipe()
+		let standardErrorPipe = Pipe()
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/bin/sh")
 		process.arguments =
@@ -74,21 +52,29 @@ actor GitProcessRunner {
 			operationID: operationID,
 			trustScope: trustScope
 		)
-		process.standardOutput = standardOutputHandle
-		process.standardError = standardErrorHandle
-		process.standardInput = standardInputHandle
+		process.standardOutput = standardOutputPipe
+		process.standardError = standardErrorPipe
+		let standardInputPipe = standardInput.map { _ in Pipe() }
+		process.standardInput = standardInputPipe ?? FileHandle.nullDevice
+
+		let standardOutputCollector = GitProcessOutputCollector(
+			pipe: standardOutputPipe,
+			label: "stdout"
+		)
+		let standardErrorCollector = GitProcessOutputCollector(
+			pipe: standardErrorPipe,
+			label: "stderr"
+		)
 
 		let terminationStatus = try await requestTerminationStatus(
 			for: process,
-			standardInputHandle: standardInputHandle,
-			standardOutputHandle: standardOutputHandle,
-			standardErrorHandle: standardErrorHandle,
+			standardInput: standardInput,
+			standardInputPipe: standardInputPipe,
 			timeout: isNetworkOperation ? configuration.networkPolicy.operationTimeout : nil
 		)
-		let standardOutputData = try Data(contentsOf: standardOutputURL)
-		let standardErrorData = try Data(contentsOf: standardErrorURL)
+		let standardOutputData = await standardOutputCollector.data()
+		let standardError = String(decoding: await standardErrorCollector.data(), as: UTF8.self)
 		let standardOutput = String(decoding: standardOutputData, as: UTF8.self)
-		let standardError = String(decoding: standardErrorData, as: UTF8.self)
 
 		guard acceptedTerminationStatuses.contains(terminationStatus) else {
 			if Task.isCancelled || standardError.contains("TREES_ASKPASS_CANCELLED") {
@@ -161,17 +147,15 @@ actor GitProcessRunner {
 
 	private func requestTerminationStatus(
 		for process: Process,
-		standardInputHandle: FileHandle?,
-		standardOutputHandle: FileHandle,
-		standardErrorHandle: FileHandle,
+		standardInput: String?,
+		standardInputPipe: Pipe?,
 		timeout: TimeInterval?
 	) async throws -> Int32 {
 		guard let timeout else {
 			return try await waitForTermination(
 				of: process,
-				standardInputHandle: standardInputHandle,
-				standardOutputHandle: standardOutputHandle,
-				standardErrorHandle: standardErrorHandle
+				standardInput: standardInput,
+				standardInputPipe: standardInputPipe
 			)
 		}
 
@@ -179,9 +163,8 @@ actor GitProcessRunner {
 			group.addTask {
 				try await self.waitForTermination(
 					of: process,
-					standardInputHandle: standardInputHandle,
-					standardOutputHandle: standardOutputHandle,
-					standardErrorHandle: standardErrorHandle
+					standardInput: standardInput,
+					standardInputPipe: standardInputPipe
 				)
 			}
 			group.addTask {
@@ -198,9 +181,8 @@ actor GitProcessRunner {
 
 	private func waitForTermination(
 		of process: Process,
-		standardInputHandle: FileHandle?,
-		standardOutputHandle: FileHandle,
-		standardErrorHandle: FileHandle
+		standardInput: String?,
+		standardInputPipe: Pipe?
 	) async throws -> Int32 {
 		let lifecycle = GitProcessLifecycle(
 			process: process,
@@ -209,16 +191,26 @@ actor GitProcessRunner {
 		try Task.checkCancellation()
 		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
-				lifecycle.start(
+				let didStart = lifecycle.start(
 					onTermination: { continuation.resume(returning: $0) },
-					onFailure: { continuation.resume(throwing: $0) }
+					onFailure: { error in
+						try? standardInputPipe?.fileHandleForWriting.close()
+						continuation.resume(throwing: error)
+					}
 				)
-				standardInputHandle?.closeFile()
-				standardOutputHandle.closeFile()
-				standardErrorHandle.closeFile()
+				guard didStart, let standardInput, let standardInputPipe else { return }
+				Self.write(standardInput, to: standardInputPipe)
 			}
 		} onCancel: {
 			lifecycle.cancel()
+		}
+	}
+
+	nonisolated private static func write(_ standardInput: String, to pipe: Pipe) {
+		DispatchQueue.global(qos: .userInitiated).async {
+			let handle = pipe.fileHandleForWriting
+			try? handle.write(contentsOf: Data(standardInput.utf8))
+			try? handle.close()
 		}
 	}
 
