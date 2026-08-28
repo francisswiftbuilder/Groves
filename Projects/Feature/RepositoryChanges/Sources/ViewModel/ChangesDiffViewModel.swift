@@ -20,7 +20,8 @@ public final class ChangesDiffViewModel: ObservableObject {
 	private let actions: ChangesDiffViewModelActions
 	private var selection: ChangesDiffSelection?
 	private var displayedSelection: WorkspaceChangeSelection?
-	private var requestedSelection: WorkspaceChangeSelection?
+	private var activeLoadRequestID: Int?
+	private var loadRequestSequence = 0
 	private var loadTask: Task<Void, Never>?
 	private var mutationTask: Task<Void, Never>?
 
@@ -174,17 +175,29 @@ public final class ChangesDiffViewModel: ObservableObject {
 	}
 
 	private func requestDiff(for selection: ChangesDiffSelection, at repositoryURL: URL) {
-		let identifier = selection.identifier
-		requestedSelection = identifier
+		loadRequestSequence += 1
+		let requestID = loadRequestSequence
+		activeLoadRequestID = requestID
 		isLoading = true
 		loadTask = Task {
-			defer { finishLoad(for: identifier) }
+			defer { finishLoad(for: requestID) }
 			do {
 				switch selection {
 				case .workingTree(_, let change, let source):
-					try await loadDiff(for: change, source: source, selection: selection, at: repositoryURL)
+					try await loadDiff(
+						for: change,
+						source: source,
+						selection: selection,
+						requestID: requestID,
+						at: repositoryURL
+					)
 				case .amend(_, let change):
-					try await loadDiff(for: change, selection: selection, at: repositoryURL)
+					try await loadDiff(
+						for: change,
+						selection: selection,
+						requestID: requestID,
+						at: repositoryURL
+					)
 				}
 			} catch is CancellationError {
 				return
@@ -198,6 +211,7 @@ public final class ChangesDiffViewModel: ObservableObject {
 		for change: WorkingTreeChange,
 		source: GitDiffSource,
 		selection: ChangesDiffSelection,
+		requestID: Int,
 		at repositoryURL: URL
 	) async throws {
 		if DiffImageFileSupport.isSupported(path: change.path) {
@@ -206,7 +220,7 @@ public final class ChangesDiffViewModel: ObservableObject {
 				source: source,
 				at: repositoryURL
 			)
-			updateDisplayedImageDiff(imageDiff, for: selection)
+			updateDisplayedImageDiff(imageDiff, for: selection, requestID: requestID)
 		} else {
 			let diff = try await dependencies.changesUseCase.loadDiff(
 				for: change,
@@ -214,13 +228,14 @@ public final class ChangesDiffViewModel: ObservableObject {
 				options: preferences.options,
 				at: repositoryURL
 			)
-			updateDisplayedDiff(diff, for: selection)
+			updateDisplayedDiff(diff, for: selection, requestID: requestID)
 		}
 	}
 
 	private func loadDiff(
 		for change: GitAmendChange,
 		selection: ChangesDiffSelection,
+		requestID: Int,
 		at repositoryURL: URL
 	) async throws {
 		if DiffImageFileSupport.isSupported(path: change.path) {
@@ -228,14 +243,14 @@ public final class ChangesDiffViewModel: ObservableObject {
 				for: change,
 				at: repositoryURL
 			)
-			updateDisplayedImageDiff(imageDiff, for: selection)
+			updateDisplayedImageDiff(imageDiff, for: selection, requestID: requestID)
 		} else {
 			let diff = try await dependencies.changesUseCase.loadAmendDiff(
 				for: change,
 				options: preferences.options,
 				at: repositoryURL
 			)
-			updateDisplayedDiff(diff, for: selection)
+			updateDisplayedDiff(diff, for: selection, requestID: requestID)
 		}
 	}
 
@@ -264,9 +279,10 @@ public final class ChangesDiffViewModel: ObservableObject {
 
 	private func updateDisplayedDiff(
 		_ requestedDiff: String,
-		for selection: ChangesDiffSelection
+		for selection: ChangesDiffSelection,
+		requestID: Int
 	) {
-		guard self.selection == selection else { return }
+		guard activeLoadRequestID == requestID, self.selection == selection else { return }
 		diff = requestedDiff
 		imageDiff = nil
 		displayedSelection = selection.identifier
@@ -274,22 +290,23 @@ public final class ChangesDiffViewModel: ObservableObject {
 
 	private func updateDisplayedImageDiff(
 		_ requestedImageDiff: GitImageDiff,
-		for selection: ChangesDiffSelection
+		for selection: ChangesDiffSelection,
+		requestID: Int
 	) {
-		guard self.selection == selection else { return }
+		guard activeLoadRequestID == requestID, self.selection == selection else { return }
 		diff = ""
 		imageDiff = requestedImageDiff
 		displayedSelection = selection.identifier
 	}
 
-	private func finishLoad(for selection: WorkspaceChangeSelection) {
-		guard requestedSelection == selection else { return }
-		requestedSelection = nil
+	private func finishLoad(for requestID: Int) {
+		guard activeLoadRequestID == requestID else { return }
+		activeLoadRequestID = nil
 		isLoading = false
 	}
 
 	private func clearLoad() {
-		requestedSelection = nil
+		activeLoadRequestID = nil
 		isLoading = false
 	}
 
