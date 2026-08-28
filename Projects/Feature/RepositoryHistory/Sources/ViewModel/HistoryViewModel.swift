@@ -52,8 +52,8 @@ public final class HistoryViewModel: ObservableObject {
 		actions.didReceiveError
 	}
 
-	private var didSelectSection: @MainActor (WorkspaceSection) -> Void {
-		actions.didSelectSection
+	private var didRequestPresentation: @MainActor () -> Void {
+		actions.didRequestPresentation
 	}
 
 	private var didFocusBranch: @MainActor (GitBranch) -> Void {
@@ -262,7 +262,7 @@ public final class HistoryViewModel: ObservableObject {
 		selectedCommitID = item.id
 		didChangeSelectedCommit()
 		historyFocusRequest = HistoryFocusRequest(commitID: item.id, isAnimated: false)
-		didSelectSection(.history)
+		didRequestPresentation()
 	}
 
 	private func clearDisplayedCommitDiff() {

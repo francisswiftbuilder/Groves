@@ -181,8 +181,8 @@ final class RepositoryWorkspaceAssembly {
 				didReceiveError: { message in
 					output.workspaceViewModel?.alertMessage = message
 				},
-				didSelectSection: { section in
-					output.workspaceViewModel?.didSelectSection(section)
+				didRequestPresentation: {
+					output.workspaceViewModel?.didSelectSection(.history)
 				},
 				didFocusBranch: { [weak referencesViewModel] branch in
 					referencesViewModel?.selectedBranchID = branch.id
