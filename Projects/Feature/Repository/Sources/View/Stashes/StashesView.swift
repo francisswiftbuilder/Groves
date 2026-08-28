@@ -1,8 +1,8 @@
+import CoreRepositoryUI
 import DomainGitInterface
 import FeatureRepositoryChanges
 import FeatureRepositoryDiff
 import FeatureRepositoryInterface
-import FeatureRepositoryUI
 import SwiftUI
 
 struct StashesView: View {

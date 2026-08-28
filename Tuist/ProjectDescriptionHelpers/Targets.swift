@@ -13,13 +13,13 @@ public let allTargets: [Target] = [
   .featureRepositoryDiff,
   .featureRepositoryHistory,
   .featureRepositoryOperations,
-  .featureRepositoryUI,
   .domainGit,
   .domainGitInterface,
   .dataGit,
   .dataGitTests,
   .coreGitCredential,
-  .coreGitCredentialTests
+  .coreGitCredentialTests,
+  .coreRepositoryUI
 ]
 
 public extension Destinations {
@@ -31,13 +31,13 @@ public extension Destinations {
   static var featureRepositoryDiffDestinations: Destinations { environment.destinations }
   static var featureRepositoryHistoryDestinations: Destinations { environment.destinations }
   static var featureRepositoryOperationsDestinations: Destinations { environment.destinations }
-  static var featureRepositoryUIDestinations: Destinations { environment.destinations }
   static var domainGitDestinations: Destinations { environment.destinations }
   static var domainGitInterfaceDestinations: Destinations { environment.destinations }
   static var dataGitDestinations: Destinations { environment.destinations }
   static var dataGitTestsDestinations: Destinations { environment.destinations }
   static var coreGitCredentialDestinations: Destinations { environment.destinations }
   static var coreGitCredentialTestsDestinations: Destinations { environment.destinations }
+  static var coreRepositoryUIDestinations: Destinations { environment.destinations }
 }
 
 public extension DeploymentTargets {
@@ -49,13 +49,13 @@ public extension DeploymentTargets {
   static var featureRepositoryDiffDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryHistoryDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var featureRepositoryOperationsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
-  static var featureRepositoryUIDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var domainGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var domainGitInterfaceDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var dataGitDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var dataGitTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var coreGitCredentialDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
   static var coreGitCredentialTestsDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
+  static var coreRepositoryUIDeploymentTargets: DeploymentTargets { environment.deploymentTargets }
 }
 
 public protocol TargetDependencies {
@@ -67,13 +67,13 @@ public protocol TargetDependencies {
   static var featureRepositoryDiffDependencies: [TargetDependency] { get }
   static var featureRepositoryHistoryDependencies: [TargetDependency] { get }
   static var featureRepositoryOperationsDependencies: [TargetDependency] { get }
-  static var featureRepositoryUIDependencies: [TargetDependency] { get }
   static var domainGitDependencies: [TargetDependency] { get }
   static var domainGitInterfaceDependencies: [TargetDependency] { get }
   static var dataGitDependencies: [TargetDependency] { get }
   static var dataGitTestsDependencies: [TargetDependency] { get }
   static var coreGitCredentialDependencies: [TargetDependency] { get }
   static var coreGitCredentialTestsDependencies: [TargetDependency] { get }
+  static var coreRepositoryUIDependencies: [TargetDependency] { get }
 }
 
 public extension TargetDependencies {
@@ -85,13 +85,13 @@ public extension TargetDependencies {
   static var featureRepositoryDiffDependencies: [TargetDependency] { [] }
   static var featureRepositoryHistoryDependencies: [TargetDependency] { [] }
   static var featureRepositoryOperationsDependencies: [TargetDependency] { [] }
-  static var featureRepositoryUIDependencies: [TargetDependency] { [] }
   static var domainGitDependencies: [TargetDependency] { [] }
   static var domainGitInterfaceDependencies: [TargetDependency] { [] }
   static var dataGitDependencies: [TargetDependency] { [] }
   static var dataGitTestsDependencies: [TargetDependency] { [] }
   static var coreGitCredentialDependencies: [TargetDependency] { [] }
   static var coreGitCredentialTestsDependencies: [TargetDependency] { [] }
+  static var coreRepositoryUIDependencies: [TargetDependency] { [] }
 }
 
 public protocol InfoPlists {
@@ -103,13 +103,13 @@ public protocol InfoPlists {
   static var featureRepositoryDiffInfoPlist: InfoPlist { get }
   static var featureRepositoryHistoryInfoPlist: InfoPlist { get }
   static var featureRepositoryOperationsInfoPlist: InfoPlist { get }
-  static var featureRepositoryUIInfoPlist: InfoPlist { get }
   static var domainGitInfoPlist: InfoPlist { get }
   static var domainGitInterfaceInfoPlist: InfoPlist { get }
   static var dataGitInfoPlist: InfoPlist { get }
   static var dataGitTestsInfoPlist: InfoPlist { get }
   static var coreGitCredentialInfoPlist: InfoPlist { get }
   static var coreGitCredentialTestsInfoPlist: InfoPlist { get }
+  static var coreRepositoryUIInfoPlist: InfoPlist { get }
 }
 
 public extension InfoPlists {
@@ -121,13 +121,13 @@ public extension InfoPlists {
   static var featureRepositoryDiffInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryHistoryInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var featureRepositoryOperationsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
-  static var featureRepositoryUIInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var domainGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var domainGitInterfaceInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var dataGitInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var dataGitTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var coreGitCredentialInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
   static var coreGitCredentialTestsInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
+  static var coreRepositoryUIInfoPlist: InfoPlist { .extendingDefault(with: [:]) }
 }
 
 public protocol BundlePrefixes {
@@ -139,13 +139,13 @@ public protocol BundlePrefixes {
   static var featureRepositoryDiffBundlePrefix: String { get }
   static var featureRepositoryHistoryBundlePrefix: String { get }
   static var featureRepositoryOperationsBundlePrefix: String { get }
-  static var featureRepositoryUIBundlePrefix: String { get }
   static var domainGitBundlePrefix: String { get }
   static var domainGitInterfaceBundlePrefix: String { get }
   static var dataGitBundlePrefix: String { get }
   static var dataGitTestsBundlePrefix: String { get }
   static var coreGitCredentialBundlePrefix: String { get }
   static var coreGitCredentialTestsBundlePrefix: String { get }
+  static var coreRepositoryUIBundlePrefix: String { get }
 }
 
 public extension BundlePrefixes {
@@ -157,13 +157,13 @@ public extension BundlePrefixes {
   static var featureRepositoryDiffBundlePrefix: String { environment.organizationName }
   static var featureRepositoryHistoryBundlePrefix: String { environment.organizationName }
   static var featureRepositoryOperationsBundlePrefix: String { environment.organizationName }
-  static var featureRepositoryUIBundlePrefix: String { environment.organizationName }
   static var domainGitBundlePrefix: String { environment.organizationName }
   static var domainGitInterfaceBundlePrefix: String { environment.organizationName }
   static var dataGitBundlePrefix: String { environment.organizationName }
   static var dataGitTestsBundlePrefix: String { environment.organizationName }
   static var coreGitCredentialBundlePrefix: String { environment.organizationName }
   static var coreGitCredentialTestsBundlePrefix: String { environment.organizationName }
+  static var coreRepositoryUIBundlePrefix: String { environment.organizationName }
 }
 
 public protocol TargetSettings {
@@ -175,13 +175,13 @@ public protocol TargetSettings {
   static var featureRepositoryDiffSettings: Settings? { get }
   static var featureRepositoryHistorySettings: Settings? { get }
   static var featureRepositoryOperationsSettings: Settings? { get }
-  static var featureRepositoryUISettings: Settings? { get }
   static var domainGitSettings: Settings? { get }
   static var domainGitInterfaceSettings: Settings? { get }
   static var dataGitSettings: Settings? { get }
   static var dataGitTestsSettings: Settings? { get }
   static var coreGitCredentialSettings: Settings? { get }
   static var coreGitCredentialTestsSettings: Settings? { get }
+  static var coreRepositoryUISettings: Settings? { get }
 }
 
 public extension TargetSettings {
@@ -193,13 +193,13 @@ public extension TargetSettings {
   static var featureRepositoryDiffSettings: Settings? { nil }
   static var featureRepositoryHistorySettings: Settings? { nil }
   static var featureRepositoryOperationsSettings: Settings? { nil }
-  static var featureRepositoryUISettings: Settings? { nil }
   static var domainGitSettings: Settings? { nil }
   static var domainGitInterfaceSettings: Settings? { nil }
   static var dataGitSettings: Settings? { nil }
   static var dataGitTestsSettings: Settings? { nil }
   static var coreGitCredentialSettings: Settings? { nil }
   static var coreGitCredentialTestsSettings: Settings? { nil }
+  static var coreRepositoryUISettings: Settings? { nil }
 }
 
 public protocol TargetScripts {
@@ -211,13 +211,13 @@ public protocol TargetScripts {
   static var featureRepositoryDiffTargetScripts: [TargetScript] { get }
   static var featureRepositoryHistoryTargetScripts: [TargetScript] { get }
   static var featureRepositoryOperationsTargetScripts: [TargetScript] { get }
-  static var featureRepositoryUITargetScripts: [TargetScript] { get }
   static var domainGitTargetScripts: [TargetScript] { get }
   static var domainGitInterfaceTargetScripts: [TargetScript] { get }
   static var dataGitTargetScripts: [TargetScript] { get }
   static var dataGitTestsTargetScripts: [TargetScript] { get }
   static var coreGitCredentialTargetScripts: [TargetScript] { get }
   static var coreGitCredentialTestsTargetScripts: [TargetScript] { get }
+  static var coreRepositoryUITargetScripts: [TargetScript] { get }
 }
 
 public extension TargetScripts {
@@ -229,13 +229,13 @@ public extension TargetScripts {
   static var featureRepositoryDiffTargetScripts: [TargetScript] { [] }
   static var featureRepositoryHistoryTargetScripts: [TargetScript] { [] }
   static var featureRepositoryOperationsTargetScripts: [TargetScript] { [] }
-  static var featureRepositoryUITargetScripts: [TargetScript] { [] }
   static var domainGitTargetScripts: [TargetScript] { [] }
   static var domainGitInterfaceTargetScripts: [TargetScript] { [] }
   static var dataGitTargetScripts: [TargetScript] { [] }
   static var dataGitTestsTargetScripts: [TargetScript] { [] }
   static var coreGitCredentialTargetScripts: [TargetScript] { [] }
   static var coreGitCredentialTestsTargetScripts: [TargetScript] { [] }
+  static var coreRepositoryUITargetScripts: [TargetScript] { [] }
 }
 
 public protocol CoreDataModels {
@@ -247,13 +247,13 @@ public protocol CoreDataModels {
   static var featureRepositoryDiffCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { get }
   static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { get }
-  static var featureRepositoryUICoreDataModels: [CoreDataModel] { get }
   static var domainGitCoreDataModels: [CoreDataModel] { get }
   static var domainGitInterfaceCoreDataModels: [CoreDataModel] { get }
   static var dataGitCoreDataModels: [CoreDataModel] { get }
   static var dataGitTestsCoreDataModels: [CoreDataModel] { get }
   static var coreGitCredentialCoreDataModels: [CoreDataModel] { get }
   static var coreGitCredentialTestsCoreDataModels: [CoreDataModel] { get }
+  static var coreRepositoryUICoreDataModels: [CoreDataModel] { get }
 }
 
 public extension CoreDataModels {
@@ -265,11 +265,11 @@ public extension CoreDataModels {
   static var featureRepositoryDiffCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryHistoryCoreDataModels: [CoreDataModel] { [] }
   static var featureRepositoryOperationsCoreDataModels: [CoreDataModel] { [] }
-  static var featureRepositoryUICoreDataModels: [CoreDataModel] { [] }
   static var domainGitCoreDataModels: [CoreDataModel] { [] }
   static var domainGitInterfaceCoreDataModels: [CoreDataModel] { [] }
   static var dataGitCoreDataModels: [CoreDataModel] { [] }
   static var dataGitTestsCoreDataModels: [CoreDataModel] { [] }
   static var coreGitCredentialCoreDataModels: [CoreDataModel] { [] }
   static var coreGitCredentialTestsCoreDataModels: [CoreDataModel] { [] }
+  static var coreRepositoryUICoreDataModels: [CoreDataModel] { [] }
 }

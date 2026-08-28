@@ -1,9 +1,9 @@
+import CoreRepositoryUI
 import DomainGitInterface
 import FeatureRepositoryChanges
 import FeatureRepositoryHistory
 import FeatureRepositoryInterface
 import FeatureRepositoryOperations
-import FeatureRepositoryUI
 import SwiftUI
 
 struct WorkspaceDetail: View {

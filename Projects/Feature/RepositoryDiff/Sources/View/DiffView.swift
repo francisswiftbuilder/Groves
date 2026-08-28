@@ -1,6 +1,6 @@
+import CoreRepositoryUI
 import DomainGitInterface
 import FeatureRepositoryInterface
-import FeatureRepositoryUI
 import SwiftUI
 
 public struct DiffView: View {

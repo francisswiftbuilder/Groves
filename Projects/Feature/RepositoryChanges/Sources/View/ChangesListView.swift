@@ -1,5 +1,5 @@
+import CoreRepositoryUI
 import DomainGitInterface
-import FeatureRepositoryUI
 import SwiftUI
 
 struct ChangesListView: View {
