@@ -6,8 +6,6 @@ import SwiftUI
 public struct StashesView: View {
 	@ObservedObject private var stashesViewModel: StashesViewModel
 	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
-	@State private var selectedFileID: CommitDiffFile.ID?
-	@State private var parsedFiles: [CommitDiffFile] = []
 	let onDiffOptionsChanged: () -> Void
 
 	public init(
@@ -42,7 +40,7 @@ public struct StashesView: View {
 					}
 					.listStyle(.inset)
 				} center: {
-					List(files, selection: selectedFileBinding) { file in
+					List(stashesViewModel.files, selection: fileSelection) { file in
 						CommitChangedFileRow(file: file)
 							.tag(file.id)
 							.listRowSeparator(.hidden)
@@ -52,11 +50,11 @@ public struct StashesView: View {
 					CommitDiffView(
 						options: $diffPreferences.options,
 						presentationMode: $diffPreferences.presentationMode,
-						file: selectedFile,
+						file: stashesViewModel.selectedFile,
 						imageDiff: stashesViewModel.imageDiff,
 						beforeImageTitle: "Base",
 						afterImageTitle: "Stash",
-						changedFileCount: files.count,
+						changedFileCount: stashesViewModel.files.count,
 						isLoading: stashesViewModel.isLoadingImageDiff,
 						onOptionsChanged: onDiffOptionsChanged
 					)
@@ -87,18 +85,6 @@ public struct StashesView: View {
 				Text("\(stash.reference) · \(stash.subject) will be permanently removed.")
 			}
 		}
-		.task(id: stashesViewModel.diff) {
-			let diff = stashesViewModel.diff
-			let files = await Task.detached(priority: .userInitiated) {
-				CommitDiffFileParser.parse(diff)
-			}.value
-			guard !Task.isCancelled else { return }
-			parsedFiles = files
-			if !files.contains(where: { $0.id == selectedFileID }) {
-				selectedFileID = files.first?.id
-			}
-			stashesViewModel.didSelectStashFile(selectedFile)
-		}
 	}
 
 	private var pendingDropPresentation: Binding<Bool> {
@@ -115,30 +101,14 @@ public struct StashesView: View {
 	private var stashSelection: Binding<String?> {
 		Binding(
 			get: { stashesViewModel.selectedStashID },
-			set: { stashID in
-				selectedFileID = nil
-				stashesViewModel.didSelectStash(stashID)
-			}
+			set: { stashID in stashesViewModel.didSelectStash(stashID) }
 		)
 	}
 
-	private var files: [CommitDiffFile] {
-		parsedFiles
-	}
-
-	private var selectedFile: CommitDiffFile? {
-		files.first { $0.id == selectedFileID } ?? files.first
-	}
-
-	private var selectedFileBinding: Binding<CommitDiffFile.ID?> {
+	private var fileSelection: Binding<CommitDiffFile.ID?> {
 		Binding(
-			get: { selectedFileID },
-			set: { fileID in
-				selectedFileID = fileID
-				stashesViewModel.didSelectStashFile(
-					files.first { $0.id == fileID } ?? files.first
-				)
-			}
+			get: { stashesViewModel.selectedFileID },
+			set: { fileID in stashesViewModel.didSelectFile(fileID) }
 		)
 	}
 }

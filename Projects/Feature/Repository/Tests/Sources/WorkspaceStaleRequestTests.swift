@@ -84,9 +84,8 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
 		try await waitUntil { workspace.stashesViewModel.stashes == [stash] }
-
-		workspace.stashesViewModel.didSelectStash(stash.id)
 		try await waitUntilTotalCallCount(1, in: gate)
+
 		workspace.diffPreferences.options = newerOptions
 		workspace.viewModel.didChangeDiffOptions()
 		try await waitUntilTotalCallCount(2, in: gate)

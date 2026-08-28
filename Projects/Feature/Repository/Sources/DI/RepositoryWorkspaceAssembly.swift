@@ -327,7 +327,7 @@ final class RepositoryWorkspaceAssembly {
 						}
 						historyViewModel?.didOpenTag(tag)
 					case .stash(_, let id):
-						stashesViewModel?.selectedStashID = id
+						stashesViewModel?.didSelectStash(id)
 					}
 				}
 			),
