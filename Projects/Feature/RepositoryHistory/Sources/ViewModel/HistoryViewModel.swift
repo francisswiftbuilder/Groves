@@ -16,11 +16,15 @@ public final class HistoryViewModel: ObservableObject {
 	@Published var historyFocusRequest: HistoryFocusRequest?
 	@Published var isLoadingCommitDiff = false
 	@Published var isLoadingCommitImageDiff = false
-	var displayedCommitDiffID: String?
-	var requestedCommitDiffID: String?
-	var commitDiffTask: Task<Void, Never>?
-	var commitImageDiffTask: Task<Void, Never>?
-	var searchTask: Task<Void, Never>?
+	private var displayedCommitDiffID: String?
+	private var requestedCommitDiffID: String?
+	private var activeCommitDiffRequestID: Int?
+	private var commitDiffRequestSequence = 0
+	private var activeCommitImageDiffRequestID: Int?
+	private var commitImageDiffRequestSequence = 0
+	private var commitDiffTask: Task<Void, Never>?
+	private var commitImageDiffTask: Task<Void, Never>?
+	private var searchTask: Task<Void, Never>?
 	private let dependencies: HistoryViewModelDependencies
 	private let actions: HistoryViewModelActions
 
@@ -111,8 +115,7 @@ public final class HistoryViewModel: ObservableObject {
 	}
 
 	public func didChangeDiffOptions() {
-		displayedCommitDiffID = nil
-		didChangeSelectedCommit()
+		didChangeSelectedCommit(forceReload: true)
 	}
 
 	public func didOpenBranch(_ branch: GitBranch) {
@@ -150,16 +153,17 @@ public final class HistoryViewModel: ObservableObject {
 		focus(item)
 	}
 
-	func didChangeSelectedCommit() {
+	func didChangeSelectedCommit(forceReload: Bool = false) {
 		guard let repositoryURL = repositoryURL(), let commit = selectedCommit else {
 			commitDiffTask?.cancel()
-			requestedCommitDiffID = nil
-			isLoadingCommitDiff = false
 			selectedCommitFileID = nil
 			clearDisplayedCommitDiff()
 			return
 		}
-		guard displayedCommitDiffID != commit.id, requestedCommitDiffID != commit.id else {
+		guard
+			forceReload
+				|| (displayedCommitDiffID != commit.id && requestedCommitDiffID != commit.id)
+		else {
 			return
 		}
 
@@ -168,11 +172,15 @@ public final class HistoryViewModel: ObservableObject {
 			clearDisplayedCommitDiff()
 		}
 		requestedCommitDiffID = commit.id
+		commitDiffRequestSequence += 1
+		let requestID = commitDiffRequestSequence
+		activeCommitDiffRequestID = requestID
 		isLoadingCommitDiff = true
 
 		commitDiffTask = Task {
 			defer {
-				if requestedCommitDiffID == commit.id {
+				if activeCommitDiffRequestID == requestID {
+					activeCommitDiffRequestID = nil
 					requestedCommitDiffID = nil
 					isLoadingCommitDiff = false
 				}
@@ -186,7 +194,9 @@ public final class HistoryViewModel: ObservableObject {
 				let requestedFiles = await Task.detached(priority: .userInitiated) {
 					CommitDiffFileParser.parse(requestedDiff)
 				}.value
-				guard selectedCommitID == commit.id else { return }
+				guard activeCommitDiffRequestID == requestID, selectedCommitID == commit.id else {
+					return
+				}
 				selectedCommitFiles = requestedFiles
 				preserveSelectedCommitFile()
 				displayedCommitDiffID = commit.id
@@ -261,10 +271,12 @@ public final class HistoryViewModel: ObservableObject {
 		}
 		selectedCommitFileID = nil
 		commitImageDiffTask?.cancel()
+		activeCommitImageDiffRequestID = nil
 		commitImageDiff = nil
 		isLoadingCommitImageDiff = false
 		displayedCommitDiffID = nil
 		requestedCommitDiffID = nil
+		activeCommitDiffRequestID = nil
 		isLoadingCommitDiff = false
 	}
 
@@ -281,6 +293,7 @@ public final class HistoryViewModel: ObservableObject {
 
 	private func didChangeSelectedCommitImageDiff() {
 		commitImageDiffTask?.cancel()
+		activeCommitImageDiffRequestID = nil
 		commitImageDiff = nil
 		isLoadingCommitImageDiff = false
 		guard
@@ -290,9 +303,17 @@ public final class HistoryViewModel: ObservableObject {
 			DiffImageFileSupport.isSupported(path: file.path)
 		else { return }
 
+		commitImageDiffRequestSequence += 1
+		let requestID = commitImageDiffRequestSequence
+		activeCommitImageDiffRequestID = requestID
 		isLoadingCommitImageDiff = true
 		commitImageDiffTask = Task {
-			defer { isLoadingCommitImageDiff = false }
+			defer {
+				if activeCommitImageDiffRequestID == requestID {
+					activeCommitImageDiffRequestID = nil
+					isLoadingCommitImageDiff = false
+				}
+			}
 			do {
 				let requestedImageDiff = try await changesUseCase.loadCommitImageDiff(
 					for: commit,
@@ -300,9 +321,7 @@ public final class HistoryViewModel: ObservableObject {
 					previousPath: file.previousPath,
 					at: repositoryURL
 				)
-				guard selectedCommitID == commit.id, selectedCommitFile?.id == file.id else {
-					return
-				}
+				guard activeCommitImageDiffRequestID == requestID else { return }
 				commitImageDiff = requestedImageDiff
 			} catch is CancellationError {
 				return
