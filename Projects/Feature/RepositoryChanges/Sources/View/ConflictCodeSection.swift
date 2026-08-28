@@ -1,4 +1,4 @@
-import FeatureRepositoryDiff
+import CoreRepositoryDiff
 import SwiftUI
 
 struct ConflictCodeSection: View {

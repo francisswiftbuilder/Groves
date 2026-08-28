@@ -2,8 +2,8 @@ import DomainGitInterface
 import Foundation
 import XCTest
 
+@testable import CoreRepositoryDiff
 @testable import FeatureRepository
-@testable import FeatureRepositoryDiff
 @testable import FeatureRepositoryHistory
 
 final class CommitGraphLayoutBuilderTests: XCTestCase {
