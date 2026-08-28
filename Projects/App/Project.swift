@@ -32,8 +32,32 @@ let project = Project(
 			],
 			settings: askPassSettings
 		),
+		.target(
+			name: TreesProduct.appTestsTargetName,
+			destinations: environment.destinations,
+			product: .unitTests,
+			productName: TreesProduct.appTestsTargetName,
+			bundleId: environment.organizationName + ".AppTests",
+			deploymentTargets: environment.deploymentTargets,
+			infoPlist: .default,
+			sources: TreesProduct.appTestsSources,
+			dependencies: [
+				.target(name: Module.App.name)
+			],
+			settings: appTestsSettings
+		),
 	],
 	schemes: [
-		.appScheme
+		.appScheme,
+		.scheme(
+			name: TreesProduct.appTestsTargetName,
+			shared: true,
+			buildAction: .buildAction(targets: [.target(TreesProduct.appTestsTargetName)]),
+			testAction: .targets(
+				[.testableTarget(target: .target(TreesProduct.appTestsTargetName))],
+				configuration: .debug,
+				options: .options(coverage: true)
+			)
+		),
 	]
 )
