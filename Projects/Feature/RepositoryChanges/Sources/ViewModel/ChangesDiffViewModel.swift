@@ -1,7 +1,6 @@
 import Combine
 import CoreRepositoryDiff
 import DomainGitInterface
-import FeatureRepositoryInterface
 import Foundation
 
 @MainActor

@@ -1,5 +1,5 @@
+import CoreRepositoryDiff
 import CoreRepositoryUI
-import FeatureRepositoryInterface
 import SwiftUI
 
 public struct ChangesView: View {
