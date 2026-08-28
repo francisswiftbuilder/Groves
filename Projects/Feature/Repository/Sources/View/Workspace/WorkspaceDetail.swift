@@ -103,7 +103,6 @@ struct WorkspaceDetail: View {
 					)
 				case .stashes:
 					StashesView(
-						changesViewModel: changesViewModel,
 						stashesViewModel: stashesViewModel,
 						diffPreferences: diffPreferences,
 						onDiffOptionsChanged: viewModel.didChangeDiffOptions

@@ -62,6 +62,9 @@ final class RepositoryWorkspaceAssembly {
 						replacing: originalChange,
 						source: source
 					)
+					output.stashesViewModel?.didChangeWorkingTreeState(
+						hasChanges: output.changesViewModel?.changes.isEmpty == false
+					)
 				},
 				didReceiveError: { message in
 					output.workspaceViewModel?.alertMessage = message
@@ -197,10 +200,7 @@ final class RepositoryWorkspaceAssembly {
 			dependencies: .init(
 				useCase: dependencies.stashesUseCase,
 				preferences: diffPreferences,
-				repositoryURL: { output.workspaceViewModel?.repositoryURL },
-				hasChanges: { [weak changesViewModel] in
-					changesViewModel?.changes.isEmpty == false
-				}
+				repositoryURL: { output.workspaceViewModel?.repositoryURL }
 			),
 			actions: .init(
 				didProduceSnapshot: { snapshot in
@@ -211,6 +211,7 @@ final class RepositoryWorkspaceAssembly {
 				}
 			)
 		)
+		output.stashesViewModel = stashesViewModel
 		let viewModel = WorkspaceViewModel(
 			dependencies: .init(
 				contentUseCase: dependencies.contentUseCase,

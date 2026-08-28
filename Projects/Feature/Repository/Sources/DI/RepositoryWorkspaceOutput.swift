@@ -6,4 +6,5 @@ final class RepositoryWorkspaceOutput {
 	weak var changesViewModel: ChangesViewModel?
 	weak var changesDiffViewModel: ChangesDiffViewModel?
 	weak var conflictViewModel: ConflictViewModel?
+	weak var stashesViewModel: StashesViewModel?
 }

@@ -1,19 +1,15 @@
 import DomainGitInterface
-import FeatureRepositoryChanges
 import SwiftUI
 
 struct StashActionBar: View {
 	@ObservedObject var viewModel: StashesViewModel
-	@ObservedObject private var changesViewModel: ChangesViewModel
 	let onDelete: () -> Void
 
 	init(
 		viewModel: StashesViewModel,
-		changesViewModel: ChangesViewModel,
 		onDelete: @escaping () -> Void
 	) {
 		self.viewModel = viewModel
-		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
 		self.onDelete = onDelete
 	}
 
@@ -36,7 +32,7 @@ struct StashActionBar: View {
 				viewModel.didRequestCreateStash()
 			}
 			.buttonStyle(.borderedProminent)
-			.disabled(changesViewModel.changes.isEmpty || viewModel.isLoading)
+			.disabled(viewModel.hasChanges == false || viewModel.isLoading)
 
 			Button("Apply") {
 				viewModel.didRequestApplyStash()

@@ -13,6 +13,7 @@ final class StashesViewModel: ObservableObject {
 	@Published private(set) var imageDiff: GitImageDiff?
 	@Published private(set) var isLoadingImageDiff = false
 	@Published private(set) var isLoading = false
+	@Published private(set) var hasChanges = false
 	@Published var pendingDrop: GitStash?
 
 	private let dependencies: StashesViewModelDependencies
@@ -43,10 +44,6 @@ final class StashesViewModel: ObservableObject {
 		dependencies.repositoryURL
 	}
 
-	private var hasChanges: @MainActor () -> Bool {
-		dependencies.hasChanges
-	}
-
 	private var didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void {
 		actions.didProduceSnapshot
 	}
@@ -66,6 +63,7 @@ final class StashesViewModel: ObservableObject {
 	}
 
 	func apply(_ snapshot: RepositorySnapshot) {
+		hasChanges = snapshot.changes.isEmpty == false
 		if stashes != snapshot.stashes {
 			stashes = snapshot.stashes
 		}
@@ -86,10 +84,15 @@ final class StashesViewModel: ObservableObject {
 		imageDiff = nil
 		isLoadingImageDiff = false
 		isLoading = false
+		hasChanges = false
+	}
+
+	func didChangeWorkingTreeState(hasChanges: Bool) {
+		self.hasChanges = hasChanges
 	}
 
 	func didRequestCreateStash() {
-		guard let repositoryURL = repositoryURL(), hasChanges() else { return }
+		guard let repositoryURL = repositoryURL(), hasChanges else { return }
 		let message = newStashMessage.trimmingCharacters(in: .whitespacesAndNewlines)
 		requestMutation {
 			let snapshot = try await self.useCase.createStash(
