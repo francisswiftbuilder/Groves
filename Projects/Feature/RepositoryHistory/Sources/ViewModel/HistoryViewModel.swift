@@ -196,9 +196,14 @@ public final class HistoryViewModel: ObservableObject {
 					options: preferences.options,
 					at: repositoryURL
 				)
-				let requestedFiles = await Task.detached(priority: .userInitiated) {
-					CommitDiffFileParser.parse(requestedDiff)
-				}.value
+				let parseWorker = Task.detached(priority: .userInitiated) {
+					try CommitDiffFileParser.parseCancellable(requestedDiff)
+				}
+				let requestedFiles = try await withTaskCancellationHandler {
+					try await parseWorker.value
+				} onCancel: {
+					parseWorker.cancel()
+				}
 				guard activeCommitDiffRequestID == requestID, selectedCommitID == commit.id else {
 					return
 				}
@@ -230,11 +235,21 @@ public final class HistoryViewModel: ObservableObject {
 		snapshotRevision += 1
 		let revision = snapshotRevision
 		let requestedCommits = commits
-		layoutTask = Task {
-			let items = await Task.detached(priority: .userInitiated) {
-				CommitGraphLayoutBuilder.build(commits: requestedCommits)
-			}.value
-			guard Task.isCancelled == false, snapshotRevision == revision else { return }
+		layoutTask = Task { [weak self] in
+			let worker = Task.detached(priority: .userInitiated) {
+				try CommitGraphLayoutBuilder.buildCancellable(commits: requestedCommits)
+			}
+			let items = try? await withTaskCancellationHandler {
+				try await worker.value
+			} onCancel: {
+				worker.cancel()
+			}
+			guard
+				let self,
+				let items,
+				Task.isCancelled == false,
+				self.snapshotRevision == revision
+			else { return }
 			commitGraphItems = items
 			requestFilter()
 			preserveSelection()
@@ -250,19 +265,26 @@ public final class HistoryViewModel: ObservableObject {
 			displayedCommitGraphItems = commitGraphItems
 			return
 		}
-		searchTask = Task {
+		searchTask = Task { [weak self] in
 			do {
 				try await Task.sleep(for: .milliseconds(150))
 			} catch {
 				return
 			}
-			let items = await Task.detached(priority: .userInitiated) {
-				let filteredCommits = requestedCommits.filter { Self.commit($0, matches: query) }
-				return CommitGraphLayoutBuilder.build(commits: filteredCommits)
-			}.value
-			guard Task.isCancelled == false,
-				snapshotRevision == revision,
-				searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query
+			let worker = Task.detached(priority: .userInitiated) {
+				try Self.filterAndLayout(commits: requestedCommits, query: query)
+			}
+			let items = try? await withTaskCancellationHandler {
+				try await worker.value
+			} onCancel: {
+				worker.cancel()
+			}
+			guard
+				let self,
+				let items,
+				Task.isCancelled == false,
+				self.snapshotRevision == revision,
+				self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query
 			else { return }
 			displayedCommitGraphItems = items
 			if !items.contains(where: { $0.id == selectedCommitID }) {
@@ -369,5 +391,20 @@ public final class HistoryViewModel: ObservableObject {
 		].contains { value in
 			value.localizedCaseInsensitiveContains(query)
 		}
+	}
+
+	nonisolated private static func filterAndLayout(
+		commits: [GitCommit],
+		query: String
+	) throws -> [CommitGraphItem] {
+		var filteredCommits: [GitCommit] = []
+		filteredCommits.reserveCapacity(commits.count)
+		for commit in commits {
+			try Task.checkCancellation()
+			if self.commit(commit, matches: query) {
+				filteredCommits.append(commit)
+			}
+		}
+		return try CommitGraphLayoutBuilder.buildCancellable(commits: filteredCommits)
 	}
 }

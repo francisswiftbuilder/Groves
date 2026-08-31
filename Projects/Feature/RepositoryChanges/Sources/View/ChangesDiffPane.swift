@@ -4,6 +4,7 @@ import Foundation
 import SwiftUI
 
 struct ChangesDiffPane: View {
+	private let searchViewModel: RepositorySearchViewModel
 	@ObservedObject private var viewModel: ChangesViewModel
 	@ObservedObject private var diffViewModel: ChangesDiffViewModel
 	@ObservedObject private var conflictViewModel: ConflictViewModel
@@ -12,6 +13,7 @@ struct ChangesDiffPane: View {
 	let onOptionsChanged: () -> Void
 
 	init(
+		searchViewModel: RepositorySearchViewModel,
 		viewModel: ChangesViewModel,
 		diffViewModel: ChangesDiffViewModel,
 		conflictViewModel: ConflictViewModel,
@@ -19,6 +21,7 @@ struct ChangesDiffPane: View {
 		repositoryURL: URL?,
 		onOptionsChanged: @escaping () -> Void
 	) {
+		self.searchViewModel = searchViewModel
 		_viewModel = ObservedObject(wrappedValue: viewModel)
 		_diffViewModel = ObservedObject(wrappedValue: diffViewModel)
 		_conflictViewModel = ObservedObject(wrappedValue: conflictViewModel)
@@ -39,6 +42,7 @@ struct ChangesDiffPane: View {
 				)
 			} else {
 				DiffView(
+					searchModel: searchViewModel,
 					options: $preferences.options,
 					presentationMode: $preferences.presentationMode,
 					diff: diffViewModel.diff,

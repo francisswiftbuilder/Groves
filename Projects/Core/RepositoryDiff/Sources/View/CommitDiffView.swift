@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct CommitDiffView: View {
 	@StateObject private var viewerModel = DiffViewerViewModel()
+	private let searchModel: RepositorySearchViewModel
 	@Binding var options: GitDiffOptions
 	@Binding var presentationMode: DiffPresentationMode
 	let file: CommitDiffFile?
@@ -15,6 +16,7 @@ public struct CommitDiffView: View {
 	let onOptionsChanged: () -> Void
 
 	public init(
+		searchModel: RepositorySearchViewModel,
 		options: Binding<GitDiffOptions>,
 		presentationMode: Binding<DiffPresentationMode>,
 		file: CommitDiffFile?,
@@ -25,6 +27,7 @@ public struct CommitDiffView: View {
 		isLoading: Bool,
 		onOptionsChanged: @escaping () -> Void
 	) {
+		self.searchModel = searchModel
 		_options = options
 		_presentationMode = presentationMode
 		self.file = file
@@ -118,7 +121,7 @@ public struct CommitDiffView: View {
 
 	@ViewBuilder
 	private var diffContent: some View {
-		if isLoading || viewerModel.isParsing {
+		if isLoading || viewerModel.isParsing && viewerModel.document.lines.isEmpty {
 			LoadingStateView(
 				title: "Loading Commit Diff",
 				message: "Reading the files changed by this commit."
@@ -144,6 +147,7 @@ public struct CommitDiffView: View {
 				)
 			} else {
 				DiffViewer(
+					searchModel: searchModel,
 					document: viewerModel.document,
 					sideBySideRows: viewerModel.sideBySideRows,
 					presentationMode: presentationMode,

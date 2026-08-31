@@ -6,13 +6,31 @@ public enum DiffParser {
 		parse(diff).filter(\.isSourceLine)
 	}
 
+	public static func parseSourceLinesCancellable(_ diff: String) throws -> [DiffLine] {
+		try parse(diff, checksCancellation: true).filter(\.isSourceLine)
+	}
+
 	static func parse(_ diff: String) -> [DiffLine] {
+		(try? parse(diff, checksCancellation: false)) ?? []
+	}
+
+	static func parseCancellable(_ diff: String) throws -> [DiffLine] {
+		try parse(diff, checksCancellation: true)
+	}
+
+	private static func parse(
+		_ diff: String,
+		checksCancellation: Bool
+	) throws -> [DiffLine] {
 		let sourceLines = diff.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 		var oldLineNumber: Int?
 		var newLineNumber: Int?
 		var lines: [DiffLine] = []
 
 		for (number, text) in sourceLines.enumerated() {
+			if checksCancellation, number.isMultiple(of: 256) {
+				try Task.checkCancellation()
+			}
 			if let hunkStart = parseHunkStart(text) {
 				oldLineNumber = hunkStart.old
 				newLineNumber = hunkStart.new
@@ -96,14 +114,20 @@ public enum DiffParser {
 			lines.append(metadataLine(number: number, text: text))
 		}
 
-		return pairChangedLines(lines)
+		return try pairChangedLines(lines, checksCancellation: checksCancellation)
 	}
 
-	private static func pairChangedLines(_ sourceLines: [DiffLine]) -> [DiffLine] {
+	private static func pairChangedLines(
+		_ sourceLines: [DiffLine],
+		checksCancellation: Bool
+	) throws -> [DiffLine] {
 		var lines = sourceLines
 		var index = 0
 
 		while index < lines.count {
+			if checksCancellation, index.isMultiple(of: 256) {
+				try Task.checkCancellation()
+			}
 			guard isChangedLine(lines[index]) else {
 				index += 1
 				continue
@@ -120,6 +144,9 @@ public enum DiffParser {
 			let pairedCount = min(deletionIndices.count, additionIndices.count)
 
 			for pairIndex in 0..<pairedCount {
+				if checksCancellation, pairIndex.isMultiple(of: 64) {
+					try Task.checkCancellation()
+				}
 				let deletionIndex = deletionIndices[pairIndex]
 				let additionIndex = additionIndices[pairIndex]
 				let selection = GitDiffLineSelection(

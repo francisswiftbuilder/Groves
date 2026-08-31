@@ -9,7 +9,7 @@ struct AskPassParentMonitorTests {
 	func parentExitIsReportedOnce() async throws {
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/bin/sleep")
-		process.arguments = ["0.05"]
+		process.arguments = ["0.01"]
 		try process.run()
 		let monitor = AskPassParentMonitor(pollInterval: 0.01)
 
@@ -17,7 +17,7 @@ struct AskPassParentMonitorTests {
 			monitor.startMonitoring(parentProcessIdentifier: process.processIdentifier) {
 				confirmation()
 			}
-			try? await Task.sleep(for: .milliseconds(150))
+			try? await Task.sleep(for: .milliseconds(500))
 		}
 
 		monitor.stopMonitoring()

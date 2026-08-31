@@ -78,11 +78,22 @@ public final class RepositorySearchViewModel: ObservableObject, RepositoryFindAc
 			return
 		}
 
-		searchTask = Task {
-			let matches = await Task.detached(priority: .userInitiated) {
-				Self.findMatches(query: query, sources: sources)
-			}.value
-			guard !Task.isCancelled, self.query == query, self.sources == sources else { return }
+		searchTask = Task { [weak self] in
+			let worker = Task.detached(priority: .userInitiated) {
+				try Self.findMatches(query: query, sources: sources)
+			}
+			let matches = try? await withTaskCancellationHandler {
+				try await worker.value
+			} onCancel: {
+				worker.cancel()
+			}
+			guard
+				let self,
+				let matches,
+				!Task.isCancelled,
+				self.query == query,
+				self.sources == sources
+			else { return }
 			self.matches = matches
 			if let previousMatch, let index = matches.firstIndex(of: previousMatch) {
 				self.currentIndex = index
@@ -95,9 +106,10 @@ public final class RepositorySearchViewModel: ObservableObject, RepositoryFindAc
 	nonisolated private static func findMatches(
 		query: String,
 		sources: [RepositorySearchSource]
-	) -> [RepositorySearchMatch] {
+	) throws -> [RepositorySearchMatch] {
 		var result: [RepositorySearchMatch] = []
 		for source in sources {
+			try Task.checkCancellation()
 			var searchRange = source.text.startIndex..<source.text.endIndex
 			while let range = source.text.range(
 				of: query,
@@ -116,6 +128,9 @@ public final class RepositorySearchViewModel: ObservableObject, RepositoryFindAc
 						length: length
 					)
 				)
+				if result.count.isMultiple(of: 256) {
+					try Task.checkCancellation()
+				}
 				guard range.upperBound < source.text.endIndex else { break }
 				searchRange = range.upperBound..<source.text.endIndex
 			}

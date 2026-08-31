@@ -75,7 +75,9 @@ public final class RepositoryOperationViewModel: ObservableObject {
 
 	public func apply(_ snapshot: RepositorySnapshot) {
 		currentBranch = snapshot.branches.first(where: \.isCurrent)
-		operationState = snapshot.operationState
+		if operationState != snapshot.operationState {
+			operationState = snapshot.operationState
+		}
 		changes = snapshot.changes
 	}
 

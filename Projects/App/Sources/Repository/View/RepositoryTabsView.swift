@@ -26,6 +26,9 @@ struct RepositoryTabsView: View {
 					stashesViewModel: repositoryTab.workspace.stashesViewModel,
 					treeViewModel: repositoryTab.workspace.treeViewModel,
 					diffPreferences: repositoryTab.workspace.diffPreferences,
+					changesDiffSearchViewModel: repositoryTab.workspace.changesDiffSearchViewModel,
+					historyDiffSearchViewModel: repositoryTab.workspace.historyDiffSearchViewModel,
+					stashesDiffSearchViewModel: repositoryTab.workspace.stashesDiffSearchViewModel,
 					commitActions: repositoryTab.workspace.commitActions,
 					focusedActions: repositoryTab.workspace.focusedActions,
 					repositoryID: repositoryTab.id

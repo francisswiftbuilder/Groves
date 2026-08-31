@@ -57,7 +57,9 @@ public final class ConflictViewModel: ObservableObject {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		operationState = snapshot.operationState
+		if operationState != snapshot.operationState {
+			operationState = snapshot.operationState
+		}
 		guard let selectedConflict else { return }
 		guard
 			let refreshedConflict = snapshot.operationState.conflicts.first(where: {
@@ -99,7 +101,7 @@ public final class ConflictViewModel: ObservableObject {
 		let requestID = contentRequestSequence
 		activeContentRequestID = requestID
 		contentTask = Task {
-			isLoadingContent = true
+			isLoadingContent = content == nil
 			defer {
 				if activeContentRequestID == requestID {
 					activeContentRequestID = nil

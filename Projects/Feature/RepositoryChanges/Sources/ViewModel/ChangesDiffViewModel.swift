@@ -76,10 +76,15 @@ public final class ChangesDiffViewModel: ObservableObject {
 			clearDisplayedDiff()
 			return
 		}
-		if displayedSelection != selection.identifier {
+		let shouldShowLoading = displayedSelection != selection.identifier
+		if shouldShowLoading {
 			clearDisplayedDiff()
 		}
-		requestDiff(for: selection, at: repositoryURL)
+		requestDiff(
+			for: selection,
+			at: repositoryURL,
+			showsLoadingState: shouldShowLoading
+		)
 	}
 
 	public func didChangeDiffOptions() {
@@ -173,11 +178,15 @@ public final class ChangesDiffViewModel: ObservableObject {
 		pendingConfirmation = nil
 	}
 
-	private func requestDiff(for selection: ChangesDiffSelection, at repositoryURL: URL) {
+	private func requestDiff(
+		for selection: ChangesDiffSelection,
+		at repositoryURL: URL,
+		showsLoadingState: Bool
+	) {
 		loadRequestSequence += 1
 		let requestID = loadRequestSequence
 		activeLoadRequestID = requestID
-		isLoading = true
+		isLoading = showsLoadingState
 		loadTask = Task {
 			defer { finishLoad(for: requestID) }
 			do {

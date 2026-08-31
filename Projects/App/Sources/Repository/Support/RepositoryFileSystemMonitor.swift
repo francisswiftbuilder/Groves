@@ -3,33 +3,55 @@ import Foundation
 
 final class RepositoryFileSystemMonitor: @unchecked Sendable {
 	private let continuation: AsyncStream<Void>.Continuation
-	private let queue = DispatchQueue(
-		label: "dev.trees.repository-file-system-monitor",
-		qos: .utility
-	)
-	private let lock = NSLock()
+	private let queue: DispatchQueue
 	private var stream: FSEventStreamRef?
 	private var contextInfo: UnsafeMutableRawPointer?
+	private var isStopped = false
 
-	private init(continuation: AsyncStream<Void>.Continuation) {
+	private init(
+		continuation: AsyncStream<Void>.Continuation,
+		queue: DispatchQueue
+	) {
 		self.continuation = continuation
+		self.queue = queue
 	}
 
-	deinit {
-		stop()
-	}
-
-	static func events(at repositoryURL: URL) -> AsyncStream<Void> {
+	static func events(
+		at repositoryURL: URL,
+		queue: DispatchQueue = DispatchQueue(
+			label: "dev.trees.repository-file-system-monitor",
+			qos: .utility
+		)
+	) -> AsyncStream<Void> {
 		AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-			let monitor = RepositoryFileSystemMonitor(continuation: continuation)
+			let eventID = FSEventsGetCurrentEventId()
+			let monitor = RepositoryFileSystemMonitor(
+				continuation: continuation,
+				queue: queue
+			)
 			continuation.onTermination = { @Sendable _ in
 				monitor.stop()
 			}
-			monitor.start(at: repositoryURL)
+			monitor.start(at: repositoryURL, sinceWhen: eventID)
 		}
 	}
 
-	private func start(at repositoryURL: URL) {
+	private func start(
+		at repositoryURL: URL,
+		sinceWhen eventID: FSEventStreamEventId
+	) {
+		queue.async { [self] in
+			startOnQueue(at: repositoryURL, sinceWhen: eventID)
+		}
+	}
+
+	private func startOnQueue(
+		at repositoryURL: URL,
+		sinceWhen eventID: FSEventStreamEventId
+	) {
+		dispatchPrecondition(condition: .onQueue(queue))
+		guard !isStopped else { return }
+
 		let contextInfo = Unmanaged.passRetained(self).toOpaque()
 		var context = FSEventStreamContext(
 			version: 0,
@@ -48,41 +70,49 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 				repositoryFileSystemEventCallback,
 				&context,
 				[repositoryURL.path] as CFArray,
-				FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+				eventID,
 				0.35,
 				flags
 			)
 		else {
 			Unmanaged<RepositoryFileSystemMonitor>.fromOpaque(contextInfo).release()
+			isStopped = true
 			continuation.finish()
 			return
 		}
 
-		lock.withLock {
-			self.stream = stream
-			self.contextInfo = contextInfo
-		}
+		self.stream = stream
+		self.contextInfo = contextInfo
 		FSEventStreamSetDispatchQueue(stream, queue)
 
 		guard FSEventStreamStart(stream) else {
-			stop()
+			stopOnQueue()
 			return
 		}
 	}
 
 	private func stop() {
-		let resources = lock.withLock { () -> (FSEventStreamRef, UnsafeMutableRawPointer)? in
-			guard let stream, let contextInfo else { return nil }
-			self.stream = nil
-			self.contextInfo = nil
-			return (stream, contextInfo)
+		queue.async { [self] in
+			stopOnQueue()
+		}
+	}
+
+	private func stopOnQueue() {
+		dispatchPrecondition(condition: .onQueue(queue))
+		guard !isStopped else { return }
+		isStopped = true
+
+		guard let stream, let contextInfo else {
+			continuation.finish()
+			return
 		}
 
-		guard let resources else { return }
-		FSEventStreamStop(resources.0)
-		FSEventStreamInvalidate(resources.0)
-		FSEventStreamRelease(resources.0)
-		Unmanaged<RepositoryFileSystemMonitor>.fromOpaque(resources.1).release()
+		self.stream = nil
+		self.contextInfo = nil
+		FSEventStreamStop(stream)
+		FSEventStreamInvalidate(stream)
+		FSEventStreamRelease(stream)
+		Unmanaged<RepositoryFileSystemMonitor>.fromOpaque(contextInfo).release()
 		continuation.finish()
 	}
 

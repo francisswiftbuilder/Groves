@@ -36,9 +36,14 @@ public final class RemotesViewModel: ObservableObject {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		remotes = snapshot.remotes
+		if remotes != snapshot.remotes {
+			remotes = snapshot.remotes
+		}
 		if remotes.contains(where: { $0.id == selectedRemoteID }) == false {
-			selectedRemoteID = remotes.first?.id
+			let selection = remotes.first?.id
+			if selectedRemoteID != selection {
+				selectedRemoteID = selection
+			}
 		}
 	}
 

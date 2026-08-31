@@ -42,7 +42,10 @@ public final class RepositoryTreeViewModel: ObservableObject {
 			fileTree = snapshot.fileTree
 		}
 		guard selectedTreeNodeID != nil else { return }
-		didSelectTreeNode(node(id: selectedTreeNodeID, in: fileTree))
+		didSelectTreeNode(
+			node(id: selectedTreeNodeID, in: fileTree),
+			preservesCurrentPreview: true
+		)
 	}
 
 	public func reset() {
@@ -65,17 +68,34 @@ public final class RepositoryTreeViewModel: ObservableObject {
 	func didSelectTreeNode(id: String?) async {
 		await Task.yield()
 		guard !Task.isCancelled, selectedTreeNodeID != id else { return }
-		didSelectTreeNode(node(id: id, in: fileTree))
+		didSelectTreeNode(
+			node(id: id, in: fileTree),
+			preservesCurrentPreview: false
+		)
 	}
 
-	private func didSelectTreeNode(_ node: RepositoryTreeNode?) {
-		selectedTreeNodeID = node?.id
+	private func didSelectTreeNode(
+		_ node: RepositoryTreeNode?,
+		preservesCurrentPreview: Bool
+	) {
+		if selectedTreeNodeID != node?.id {
+			selectedTreeNodeID = node?.id
+		}
 		filePreviewTask?.cancel()
-		filePreview = .none
+		if !preservesCurrentPreview {
+			filePreview = .none
+		}
 
-		guard let node, !node.isDirectory, let repositoryURL else { return }
+		guard let node, !node.isDirectory, let repositoryURL else {
+			if node == nil || node?.isDirectory == true {
+				filePreview = .none
+			}
+			return
+		}
 
-		filePreview = .loading
+		if !preservesCurrentPreview || filePreview == .none {
+			filePreview = .loading
+		}
 		filePreviewTask = Task {
 			do {
 				let data = try await contentUseCase.loadFileContents(
@@ -88,7 +108,9 @@ public final class RepositoryTreeViewModel: ObservableObject {
 				return
 			} catch {
 				guard selectedTreeNodeID == node.id else { return }
-				filePreview = .failure(error.localizedDescription)
+				if !preservesCurrentPreview || filePreview == .loading {
+					filePreview = .failure(error.localizedDescription)
+				}
 			}
 		}
 	}

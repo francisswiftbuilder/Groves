@@ -20,6 +20,9 @@ final class RepositoryWorkspace {
 	let stashesViewModel: StashesViewModel
 	let treeViewModel: RepositoryTreeViewModel
 	let diffPreferences: WorkspaceDiffPreferences
+	let changesDiffSearchViewModel: RepositorySearchViewModel
+	let historyDiffSearchViewModel: RepositorySearchViewModel
+	let stashesDiffSearchViewModel: RepositorySearchViewModel
 	let commitActions: RepositoryCommitActions
 	let focusedActions: () -> RepositoryFocusedActions
 
@@ -37,6 +40,9 @@ final class RepositoryWorkspace {
 		stashesViewModel: StashesViewModel,
 		treeViewModel: RepositoryTreeViewModel,
 		diffPreferences: WorkspaceDiffPreferences,
+		changesDiffSearchViewModel: RepositorySearchViewModel,
+		historyDiffSearchViewModel: RepositorySearchViewModel,
+		stashesDiffSearchViewModel: RepositorySearchViewModel,
 		commitActions: RepositoryCommitActions,
 		focusedActions: @escaping () -> RepositoryFocusedActions
 	) {
@@ -53,6 +59,9 @@ final class RepositoryWorkspace {
 		self.stashesViewModel = stashesViewModel
 		self.treeViewModel = treeViewModel
 		self.diffPreferences = diffPreferences
+		self.changesDiffSearchViewModel = changesDiffSearchViewModel
+		self.historyDiffSearchViewModel = historyDiffSearchViewModel
+		self.stashesDiffSearchViewModel = stashesDiffSearchViewModel
 		self.commitActions = commitActions
 		self.focusedActions = focusedActions
 	}

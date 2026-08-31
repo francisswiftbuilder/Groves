@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct DiffViewer: View {
-	@StateObject private var searchModel = RepositorySearchViewModel()
+	@ObservedObject var searchModel: RepositorySearchViewModel
 	let document: DiffDocument
 	let sideBySideRows: [DiffSideBySideRow]
 	let presentationMode: DiffPresentationMode
@@ -67,6 +67,7 @@ struct DiffViewer: View {
 		 context
 		"""
 	DiffViewer(
+		searchModel: RepositorySearchViewModel(),
 		document: DiffDocument(lines: DiffParser.parse(diff)),
 		sideBySideRows: DiffSideBySideBuilder.build(
 			from: DiffDocument(lines: DiffParser.parse(diff))

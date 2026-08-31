@@ -71,6 +71,51 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 		XCTAssertEqual(requestedConflict, first)
 	}
 
+	func testReleasingSyncViewModelCancelsRunningNetworkTask() async {
+		let started = expectation(description: "Network task started")
+		let cancelled = expectation(description: "Network task cancelled")
+		let referencesUseCase = OperationsReferencesUseCaseStub { _ in
+			started.fulfill()
+			return try await withTaskCancellationHandler {
+				try await Task.sleep(for: .seconds(60))
+				return RepositorySnapshot(
+					changes: [],
+					amendChanges: [],
+					commits: [],
+					branches: [],
+					remotes: [],
+					operationState: .normal,
+					tags: [],
+					stashes: [],
+					fileTree: []
+				)
+			} onCancel: {
+				cancelled.fulfill()
+			}
+		}
+		var viewModel: RepositorySyncViewModel? = RepositorySyncViewModel(
+			dependencies: RepositorySyncViewModelDependencies(
+				contentUseCase: OperationsContentUseCaseStub(),
+				referencesUseCase: referencesUseCase,
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+			),
+			actions: RepositorySyncViewModelActions(
+				didProduceSnapshot: { _ in },
+				didReceiveError: { _ in }
+			)
+		)
+		weak let weakViewModel = viewModel
+
+		viewModel?.didRequestFetchAll()
+		await fulfillment(of: [started], timeout: 2)
+		XCTAssertEqual(viewModel?.isLoading, true)
+
+		viewModel = nil
+
+		XCTAssertNil(weakViewModel)
+		await fulfillment(of: [cancelled], timeout: 2)
+	}
+
 	private func makeViewModel(
 		didRequestViewConflicts: @escaping @MainActor (GitConflict) -> Void = { _ in }
 	) -> RepositoryOperationViewModel {

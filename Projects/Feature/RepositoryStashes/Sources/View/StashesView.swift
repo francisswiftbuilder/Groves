@@ -4,15 +4,18 @@ import DomainGitInterface
 import SwiftUI
 
 public struct StashesView: View {
+	private let diffSearchViewModel: RepositorySearchViewModel
 	@ObservedObject private var stashesViewModel: StashesViewModel
 	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
 	let onDiffOptionsChanged: () -> Void
 
 	public init(
+		diffSearchViewModel: RepositorySearchViewModel,
 		stashesViewModel: StashesViewModel,
 		diffPreferences: WorkspaceDiffPreferences,
 		onDiffOptionsChanged: @escaping () -> Void
 	) {
+		self.diffSearchViewModel = diffSearchViewModel
 		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
 		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
 		self.onDiffOptionsChanged = onDiffOptionsChanged
@@ -55,6 +58,7 @@ public struct StashesView: View {
 					}
 				} trailing: {
 					CommitDiffView(
+						searchModel: diffSearchViewModel,
 						options: $diffPreferences.options,
 						presentationMode: $diffPreferences.presentationMode,
 						file: stashesViewModel.selectedFile,

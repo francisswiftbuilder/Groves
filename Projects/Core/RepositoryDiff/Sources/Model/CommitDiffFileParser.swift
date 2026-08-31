@@ -2,28 +2,53 @@ import Foundation
 
 public enum CommitDiffFileParser {
 	public static func parse(_ diff: String) -> [CommitDiffFile] {
-		let sections =
-			diff
-			.components(separatedBy: "\ndiff --git ")
-			.enumerated()
-			.map { index, section in
-				index == 0 ? section : "diff --git \(section)"
-			}
-			.filter { $0.hasPrefix("diff --git ") }
+		(try? parse(diff, checksCancellation: false)) ?? []
+	}
 
-		return sections.enumerated().compactMap { index, section in
-			guard let path = path(in: section) else { return nil }
+	public static func parseCancellable(_ diff: String) throws -> [CommitDiffFile] {
+		try parse(diff, checksCancellation: true)
+	}
+
+	private static func parse(
+		_ diff: String,
+		checksCancellation: Bool
+	) throws -> [CommitDiffFile] {
+		var sections: [String] = []
+		for (index, section) in diff.components(separatedBy: "\ndiff --git ").enumerated() {
+			if checksCancellation {
+				try Task.checkCancellation()
+			}
+			let normalizedSection = index == 0 ? section : "diff --git \(section)"
+			if normalizedSection.hasPrefix("diff --git ") {
+				sections.append(normalizedSection)
+			}
+		}
+
+		var files: [CommitDiffFile] = []
+		for (index, section) in sections.enumerated() {
+			if checksCancellation {
+				try Task.checkCancellation()
+			}
+			guard let path = path(in: section) else { continue }
 			let previousPath = previousPath(in: section, currentPath: path)
-			let lines = DiffParser.parseSourceLines(section)
-			return CommitDiffFile(
-				id: "\(index)-\(path)",
-				path: path,
-				previousPath: previousPath,
-				diff: section,
-				additions: lines.count { $0.kind == .addition },
-				deletions: lines.count { $0.kind == .deletion }
+			let lines =
+				if checksCancellation {
+					try DiffParser.parseSourceLinesCancellable(section)
+				} else {
+					DiffParser.parseSourceLines(section)
+				}
+			files.append(
+				CommitDiffFile(
+					id: "\(index)-\(path)",
+					path: path,
+					previousPath: previousPath,
+					diff: section,
+					additions: lines.count { $0.kind == .addition },
+					deletions: lines.count { $0.kind == .deletion }
+				)
 			)
 		}
+		return files
 	}
 
 	private static func previousPath(in section: String, currentPath: String) -> String? {

@@ -15,8 +15,6 @@ final class DiffViewerViewModel: ObservableObject {
 		let requestID = requestSequence
 		activeRequestID = requestID
 		isParsing = true
-		document = .empty
-		sideBySideRows = []
 		defer {
 			if activeRequestID == requestID {
 				activeRequestID = nil
@@ -24,12 +22,10 @@ final class DiffViewerViewModel: ObservableObject {
 			}
 		}
 		let parseTask = Task.detached(priority: .userInitiated) {
-			try Task.checkCancellation()
 			let document = DiffDocument(
-				lines: DiffParser.parse(diff).filter { $0.kind != .metadata }
+				lines: try DiffParser.parseCancellable(diff).filter { $0.kind != .metadata }
 			)
-			try Task.checkCancellation()
-			return (document, DiffSideBySideBuilder.build(from: document))
+			return (document, try DiffSideBySideBuilder.buildCancellable(from: document))
 		}
 		let result = try? await withTaskCancellationHandler {
 			try await parseTask.value
