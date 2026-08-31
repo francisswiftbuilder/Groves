@@ -3,13 +3,22 @@ import Foundation
 
 struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 	let fetchAllOperation: @Sendable (URL) async throws -> RepositorySnapshot
+	let pushActionOperation:
+		@Sendable (GitBranch?, [GitRemote], RepositoryOperationState) -> RepositoryPushAction
 
 	init(
 		fetchAllOperation: @escaping @Sendable (URL) async throws -> RepositorySnapshot = { _ in
 			fatalError()
-		}
+		},
+		pushActionOperation:
+			@escaping @Sendable (
+				GitBranch?,
+				[GitRemote],
+				RepositoryOperationState
+			) -> RepositoryPushAction = { _, _, _ in .unavailable }
 	) {
 		self.fetchAllOperation = fetchAllOperation
+		self.pushActionOperation = pushActionOperation
 	}
 
 	func pushAction(
@@ -17,7 +26,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		remotes: [GitRemote],
 		operationState: RepositoryOperationState
 	) -> RepositoryPushAction {
-		fatalError()
+		pushActionOperation(currentBranch, remotes, operationState)
 	}
 
 	func switchBranch(named name: String, at repositoryURL: URL) async throws

@@ -23,6 +23,53 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { !workspace.viewModel.isLoading }
 	}
 
+	func testRepositoryMonitorDoesNotRetainWorkspaceViewModel() async throws {
+		let repositoryURL = FileManager.default.temporaryDirectory.appending(
+			path: "TreesMonitorLifetime-\(UUID().uuidString)",
+			directoryHint: .isDirectory
+		)
+		try FileManager.default.createDirectory(
+			at: repositoryURL,
+			withIntermediateDirectories: true
+		)
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+
+		var workspace: RepositoryWorkspace? = makeRepositoryWorkspace()
+		workspace?.viewModel.didChooseRepository(repositoryURL)
+		try await waitUntil { workspace?.viewModel.repositoryURL == repositoryURL }
+		workspace?.viewModel.setRepositoryMonitoringActive(true)
+		weak var weakViewModel = workspace?.viewModel
+
+		workspace = nil
+
+		try await waitUntil { weakViewModel == nil }
+	}
+
+	func testResumingRepositoryMonitoringRefreshesMissedChanges() async throws {
+		let contentGate = GitDiffGate()
+		let workspace = makeRepositoryWorkspace(
+			repository: GitRepositoryStub(contentGate: contentGate)
+		)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/TreesMonitorResume")
+		workspace.viewModel.didChooseRepository(repositoryURL)
+		try await waitUntilCallCount(
+			1,
+			of: GitDiffGateLabel.workingTreeChanges,
+			in: contentGate
+		)
+		try await waitUntil { !workspace.viewModel.isLoading }
+
+		workspace.viewModel.setRepositoryMonitoringActive(true)
+		workspace.viewModel.setRepositoryMonitoringActive(false)
+		workspace.viewModel.setRepositoryMonitoringActive(true)
+
+		try await waitUntilCallCount(
+			2,
+			of: GitDiffGateLabel.workingTreeChanges,
+			in: contentGate
+		)
+	}
+
 	func testStagedAndUnstagedSelectionsUseIndependentDiffSources() async throws {
 		let change = WorkingTreeChange(
 			path: "GalleryView.swift",
@@ -789,6 +836,23 @@ final class WorkspaceViewModelTests: XCTestCase {
 		while await recorder.recordedEvents().filter({ $0 == event }).count < count {
 			guard clock.now < deadline else {
 				XCTFail("Timed out waiting for repository event count")
+				return
+			}
+			try await Task.sleep(for: .milliseconds(10))
+		}
+	}
+
+	private func waitUntilCallCount(
+		_ count: Int,
+		of label: String,
+		in gate: GitDiffGate,
+		timeout: Duration = .seconds(2)
+	) async throws {
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: timeout)
+		while await gate.callCount(of: label) < count {
+			guard clock.now < deadline else {
+				XCTFail("Timed out waiting for call count")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
