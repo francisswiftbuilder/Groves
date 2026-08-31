@@ -90,9 +90,64 @@ final class ChangesViewModelTests: XCTestCase {
 		XCTAssertNil(selectedDiff)
 	}
 
+	func testApplyingConflictOnlySnapshotChangePublishesConflictState() {
+		let change = WorkingTreeChange(
+			path: "Sources/App.swift",
+			previousPath: nil,
+			indexState: .modified,
+			workingTreeState: .modified
+		)
+		let conflict = GitConflict(
+			path: "Sources/Conflict.swift",
+			kind: .bothModified,
+			hasBase: true,
+			hasOurs: true,
+			hasTheirs: true
+		)
+		let viewModel = makeViewModel()
+		viewModel.apply(makeSnapshot(changes: [change]))
+
+		viewModel.apply(
+			makeSnapshot(
+				changes: [change],
+				operationState: RepositoryOperationState(
+					head: .attached,
+					conflicts: [conflict]
+				)
+			)
+		)
+
+		XCTAssertEqual(viewModel.conflicts, [conflict])
+	}
+
+	func testApplyingIdenticalSnapshotDoesNotReloadSelectedDiff() {
+		let change = WorkingTreeChange(
+			path: "Sources/App.swift",
+			previousPath: nil,
+			indexState: .modified,
+			workingTreeState: .modified
+		)
+		var reloadRequests: [Bool] = []
+		let viewModel = makeViewModel(
+			didSelectDiffWithReload: { _, forceReload in
+				reloadRequests.append(forceReload)
+			}
+		)
+		let snapshot = makeSnapshot(changes: [change])
+		viewModel.apply(snapshot)
+		reloadRequests.removeAll()
+
+		viewModel.apply(snapshot, revalidatesSelectedDiff: false)
+
+		XCTAssertTrue(reloadRequests.isEmpty)
+	}
+
 	private func makeViewModel(
 		didSelectConflict: @escaping @MainActor (GitConflict?) -> Void = { _ in },
-		didSelectDiff: @escaping @MainActor (ChangesDiffSelection?) -> Void = { _ in }
+		didSelectDiff: @escaping @MainActor (ChangesDiffSelection?) -> Void = { _ in },
+		didSelectDiffWithReload: @escaping @MainActor (ChangesDiffSelection?, Bool) -> Void = {
+			_, _ in
+		}
 	) -> ChangesViewModel {
 		ChangesViewModel(
 			dependencies: ChangesViewModelDependencies(
@@ -104,7 +159,10 @@ final class ChangesViewModelTests: XCTestCase {
 				didProduceSnapshot: { _ in },
 				didReceiveError: { _ in },
 				didSelectConflict: didSelectConflict,
-				didSelectDiff: { selection, _ in didSelectDiff(selection) }
+				didSelectDiff: { selection, forceReload in
+					didSelectDiff(selection)
+					didSelectDiffWithReload(selection, forceReload)
+				}
 			)
 		)
 	}

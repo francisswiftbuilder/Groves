@@ -7,7 +7,7 @@ public final class RepositorySyncViewModel: ObservableObject {
 	@Published var pendingPullDivergence: RepositoryPullDivergence?
 	@Published var pendingConfirmation: RepositorySyncConfirmation?
 	@Published public private(set) var isLoading = false
-	@Published public private(set) var remotes: [GitRemote] = []
+	@Published private var state = RepositorySyncState.empty
 
 	private let dependencies: RepositorySyncViewModelDependencies
 	private let actions: RepositorySyncViewModelActions
@@ -29,12 +29,12 @@ public final class RepositorySyncViewModel: ObservableObject {
 		networkTask?.cancel()
 	}
 
+	public var remotes: [GitRemote] {
+		state.remotes
+	}
+
 	var pushAction: RepositoryPushAction {
-		dependencies.referencesUseCase.pushAction(
-			currentBranch: currentBranch,
-			remotes: remotes,
-			operationState: operationState
-		)
+		state.pushAction
 	}
 
 	public var forcePushConfirmationTitle: String {
@@ -43,10 +43,18 @@ public final class RepositorySyncViewModel: ObservableObject {
 
 	public func apply(_ snapshot: RepositorySnapshot) {
 		currentBranch = snapshot.branches.first(where: \.isCurrent)
-		if remotes != snapshot.remotes {
-			remotes = snapshot.remotes
-		}
 		operationState = snapshot.operationState
+		let nextState = RepositorySyncState(
+			remotes: snapshot.remotes,
+			pushAction: dependencies.referencesUseCase.pushAction(
+				currentBranch: currentBranch,
+				remotes: snapshot.remotes,
+				operationState: operationState
+			)
+		)
+		if state != nextState {
+			state = nextState
+		}
 	}
 
 	public func reset() {
@@ -57,8 +65,8 @@ public final class RepositorySyncViewModel: ObservableObject {
 		pendingConfirmation = nil
 		isLoading = false
 		currentBranch = nil
-		remotes = []
 		operationState = .normal
+		state = .empty
 	}
 
 	public func didRequestPull() {

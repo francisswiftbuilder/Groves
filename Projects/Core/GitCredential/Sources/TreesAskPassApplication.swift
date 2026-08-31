@@ -53,7 +53,13 @@ public final class TreesAskPassApplication {
 			writeStandardError(Data("TREES_ASKPASS_CANCELLED\n".utf8))
 			return EXIT_FAILURE
 		} catch {
-			writeStandardError(Data("Trees authentication helper failed.\n".utf8))
+			let diagnostic: String
+			if let error = error as? GitCredentialStoreError {
+				diagnostic = error.diagnosticDescription
+			} else {
+				diagnostic = "error-type=\(String(reflecting: type(of: error)))"
+			}
+			writeStandardError(Data("Trees authentication helper failed (\(diagnostic)).\n".utf8))
 			return EXIT_FAILURE
 		}
 	}

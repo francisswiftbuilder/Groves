@@ -7,14 +7,12 @@ public final class ChangesViewModel: ObservableObject {
 	@Published var selectedChangeIDs: Set<WorkspaceChangeSelection> = []
 	@Published var filterText = ""
 	@Published private(set) var isAmendingCommit = false
-	@Published public private(set) var changes: [WorkingTreeChange] = []
-	@Published private(set) var amendChanges: [GitAmendChange] = []
+	@Published private var snapshotState = ChangesSnapshotState.empty
 	@Published public private(set) var isLoading = false
 	@Published var pendingConfirmation: ChangesConfirmation?
 
 	private let dependencies: ChangesViewModelDependencies
 	private let actions: ChangesViewModelActions
-	private var operationState: RepositoryOperationState = .normal
 	private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
@@ -57,6 +55,18 @@ public final class ChangesViewModel: ObservableObject {
 
 	deinit {
 		mutationTask?.cancel()
+	}
+
+	public var changes: [WorkingTreeChange] {
+		snapshotState.changes
+	}
+
+	var amendChanges: [GitAmendChange] {
+		snapshotState.amendChanges
+	}
+
+	public var conflicts: [GitConflict] {
+		snapshotState.conflicts
 	}
 
 	var selectedStagedChanges: [WorkingTreeChange] {
@@ -140,10 +150,6 @@ public final class ChangesViewModel: ObservableObject {
 		return selectedAmendChanges.first
 	}
 
-	var conflicts: [GitConflict] {
-		operationState.conflicts
-	}
-
 	var filteredConflicts: [GitConflict] {
 		conflicts.filter { matchesFilter(path: $0.path) }
 	}
@@ -167,28 +173,30 @@ public final class ChangesViewModel: ObservableObject {
 		amendChanges.filter { matchesFilter(path: $0.path) }
 	}
 
-	public func apply(_ snapshot: RepositorySnapshot) {
-		if changes != snapshot.changes {
-			changes = snapshot.changes
+	public func apply(
+		_ snapshot: RepositorySnapshot,
+		revalidatesSelectedDiff: Bool = true
+	) {
+		let nextState = ChangesSnapshotState(
+			changes: snapshot.changes,
+			amendChanges: snapshot.amendChanges,
+			conflicts: snapshot.operationState.conflicts
+		)
+		let didChangeState = snapshotState != nextState
+		guard didChangeState || revalidatesSelectedDiff else { return }
+		if didChangeState {
+			snapshotState = nextState
 		}
-		if amendChanges != snapshot.amendChanges {
-			amendChanges = snapshot.amendChanges
-		}
-		if operationState != snapshot.operationState {
-			operationState = snapshot.operationState
-		}
-		preserveSelection(forceReload: true)
+		preserveSelection(forceReload: didChangeState || revalidatesSelectedDiff)
 	}
 
 	public func reset() {
 		cancelTasks()
-		operationState = .normal
 		filterText = ""
 		pendingConfirmation = nil
 		didSelectConflict(nil)
 		selectedChangeIDs = []
-		changes = []
-		amendChanges = []
+		snapshotState = .empty
 		isAmendingCommit = false
 		didSelectDiff(nil, false)
 	}
@@ -389,7 +397,11 @@ public final class ChangesViewModel: ObservableObject {
 					: .unstaged(fallbackChange.id)
 			]
 		}
-		changes = refreshedChanges
+		snapshotState = ChangesSnapshotState(
+			changes: refreshedChanges,
+			amendChanges: amendChanges,
+			conflicts: conflicts
+		)
 		selectedChangeIDs = refreshedSelection
 		didChangeSelectedChanges(forceReload: true)
 	}

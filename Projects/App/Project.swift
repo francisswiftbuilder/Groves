@@ -27,6 +27,7 @@ let project = Project(
 			deploymentTargets: environment.deploymentTargets,
 			infoPlist: .default,
 			sources: TreesProduct.askPassSources,
+			entitlements: Permissions.appEntitlements,
 			dependencies: [
 				.core(implements: .gitCredential)
 			],

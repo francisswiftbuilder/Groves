@@ -4,19 +4,16 @@ import SwiftUI
 
 struct ChangesListView: View {
 	@ObservedObject private var viewModel: ChangesViewModel
-	@ObservedObject private var commitViewModel: CommitViewModel
-	@ObservedObject private var conflictViewModel: ConflictViewModel
+	private let conflictViewModel: ConflictViewModel
 	let repositoryURL: URL?
 
 	init(
 		viewModel: ChangesViewModel,
-		commitViewModel: CommitViewModel,
 		conflictViewModel: ConflictViewModel,
 		repositoryURL: URL?
 	) {
 		_viewModel = ObservedObject(wrappedValue: viewModel)
-		_commitViewModel = ObservedObject(wrappedValue: commitViewModel)
-		_conflictViewModel = ObservedObject(wrappedValue: conflictViewModel)
+		self.conflictViewModel = conflictViewModel
 		self.repositoryURL = repositoryURL
 	}
 
@@ -26,6 +23,32 @@ struct ChangesListView: View {
 			Divider()
 			changeList
 		}
+		.confirmationDialog(
+			viewModel.pendingConfirmation?.title ?? "Confirm Changes",
+			isPresented: pendingConfirmationPresentation
+		) {
+			if let confirmation = viewModel.pendingConfirmation {
+				Button(confirmation.actionTitle, role: .destructive) {
+					viewModel.didConfirmPendingConfirmation()
+				}
+			}
+			Button("Cancel", role: .cancel) {
+				viewModel.didDismissPendingConfirmation()
+			}
+		} message: {
+			Text(viewModel.pendingConfirmation?.message ?? "")
+		}
+	}
+
+	private var pendingConfirmationPresentation: Binding<Bool> {
+		Binding(
+			get: { viewModel.pendingConfirmation != nil },
+			set: { isPresented in
+				if !isPresented {
+					viewModel.didDismissPendingConfirmation()
+				}
+			}
+		)
 	}
 
 	private var titleHeader: some View {
@@ -45,7 +68,7 @@ struct ChangesListView: View {
 	}
 
 	private var navigationSubtitle: String {
-		guard commitViewModel.isAmendingCommit else {
+		guard viewModel.isAmendingCommit else {
 			return "\(viewModel.changes.count) working tree items"
 		}
 		return
@@ -55,7 +78,7 @@ struct ChangesListView: View {
 	private var changeList: some View {
 		Group {
 			if viewModel.displayedWorkingTreeChanges.isEmpty,
-				!commitViewModel.isAmendingCommit || viewModel.amendChanges.isEmpty
+				!viewModel.isAmendingCommit || viewModel.amendChanges.isEmpty
 			{
 				EmptyStateView(
 					title: "Working Tree Clean",
@@ -108,7 +131,7 @@ struct ChangesListView: View {
 
 	@ViewBuilder
 	private var amendSection: some View {
-		if commitViewModel.isAmendingCommit, !viewModel.amendChanges.isEmpty {
+		if viewModel.isAmendingCommit, !viewModel.amendChanges.isEmpty {
 			Section {
 				ForEach(viewModel.filteredAmendChanges) { change in
 					AmendChangeRow(change: change) {
@@ -179,7 +202,7 @@ struct ChangesListView: View {
 			}
 			.disabled(viewModel.isLoading)
 		}
-		if source == .staged, !commitViewModel.isAmendingCommit {
+		if source == .staged, !viewModel.isAmendingCommit {
 			Button("Unstage Changes", systemImage: "minus.circle") {
 				viewModel.didRequestUnstage(changes)
 			}

@@ -8,12 +8,11 @@ public final class CommitViewModel: ObservableObject {
 	@Published var body = ""
 	@Published private(set) var isAmendingCommit = false
 	@Published public private(set) var isLoading = false
+	@Published private var availability = CommitAvailability.empty
 
 	private let dependencies: CommitViewModelDependencies
 	private let actions: CommitViewModelActions
-	private var changes: [WorkingTreeChange] = []
 	private var commits: [GitCommit] = []
-	private var operationState: RepositoryOperationState = .normal
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
@@ -28,25 +27,39 @@ public final class CommitViewModel: ObservableObject {
 		mutationTask?.cancel()
 	}
 
+	var hasStagedChanges: Bool {
+		availability.hasStagedChanges
+	}
+
+	var hasCommits: Bool {
+		availability.hasCommits
+	}
+
+	var isDetached: Bool {
+		availability.isDetached
+	}
+
 	var canCommit: Bool {
 		!subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-			&& (isAmendingCommit || changes.contains(where: \.isStaged))
-			&& !operationState.isDetached
+			&& (isAmendingCommit || hasStagedChanges)
+			&& !isDetached
 			&& !isLoading
 	}
 
 	var canAmendCommit: Bool {
-		!commits.isEmpty && !operationState.isDetached && !isLoading
-	}
-
-	var hasStagedChanges: Bool {
-		changes.contains(where: \.isStaged)
+		hasCommits && !isDetached && !isLoading
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		changes = snapshot.changes
+		let nextAvailability = CommitAvailability(
+			hasStagedChanges: snapshot.changes.contains(where: \.isStaged),
+			hasCommits: !snapshot.commits.isEmpty,
+			isDetached: snapshot.operationState.isDetached
+		)
+		if availability != nextAvailability {
+			availability = nextAvailability
+		}
 		commits = snapshot.commits
-		operationState = snapshot.operationState
 		if commits.isEmpty, isAmendingCommit {
 			setAmendingCommit(false)
 		}
@@ -57,9 +70,8 @@ public final class CommitViewModel: ObservableObject {
 		mutationTask = nil
 		subject = ""
 		body = ""
-		changes = []
 		commits = []
-		operationState = .normal
+		availability = .empty
 		setAmendingCommit(false)
 	}
 
@@ -90,7 +102,7 @@ public final class CommitViewModel: ObservableObject {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
 			hasStagedChanges,
-			!operationState.isDetached,
+			!isDetached,
 			!isLoading
 		else { return }
 		requestMutation {
