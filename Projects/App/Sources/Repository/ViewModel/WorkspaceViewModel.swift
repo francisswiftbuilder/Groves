@@ -19,6 +19,8 @@ final class WorkspaceViewModel: ObservableObject {
 	private var conflictFocusTask: Task<Void, Never>?
 	private var contentLoadID: UUID?
 	private var hasLoadedContent = false
+	private var refreshesWhenMonitoringResumes = false
+	private var automaticRefreshRevalidatesSelectedContent = false
 
 	init(
 		dependencies: WorkspaceViewModelDependencies,
@@ -128,7 +130,14 @@ final class WorkspaceViewModel: ObservableObject {
 	}
 
 	func setRepositoryMonitoringActive(_ isActive: Bool) {
-		guard isActive, let repositoryURL else {
+		guard isActive else {
+			if repositoryMonitorTask != nil {
+				refreshesWhenMonitoringResumes = true
+			}
+			stopRepositoryMonitoring()
+			return
+		}
+		guard let repositoryURL else {
 			stopRepositoryMonitoring()
 			return
 		}
@@ -138,33 +147,73 @@ final class WorkspaceViewModel: ObservableObject {
 		stopRepositoryMonitoring()
 		monitoredRepositoryURL = repositoryURL
 		repositoryMonitorTask = Task { [weak self] in
-			await self?.monitorRepositoryChanges(at: repositoryURL)
+			let events = RepositoryFileSystemMonitor.events(at: repositoryURL)
+			for await paths in events {
+				guard !Task.isCancelled else { return }
+				self?.scheduleAutomaticRefresh(
+					at: repositoryURL,
+					delay: .milliseconds(450),
+					revalidatesSelectedContent: self?.containsWorkingTreeEvent(
+						paths,
+						repositoryURL: repositoryURL
+					) == true
+				)
+			}
+		}
+		if refreshesWhenMonitoringResumes {
+			refreshesWhenMonitoringResumes = false
+			scheduleAutomaticRefresh(
+				at: repositoryURL,
+				delay: .zero,
+				revalidatesSelectedContent: true
+			)
 		}
 	}
 
-	private func monitorRepositoryChanges(at repositoryURL: URL) async {
-		let events = RepositoryFileSystemMonitor.events(at: repositoryURL)
-		defer {
-			automaticRefreshTask?.cancel()
-			automaticRefreshTask = nil
+	private func scheduleAutomaticRefresh(
+		at repositoryURL: URL,
+		delay: Duration,
+		revalidatesSelectedContent: Bool
+	) {
+		automaticRefreshRevalidatesSelectedContent =
+			automaticRefreshRevalidatesSelectedContent || revalidatesSelectedContent
+		automaticRefreshTask?.cancel()
+		automaticRefreshTask = Task { @MainActor [weak self] in
+			do {
+				if delay > .zero {
+					try await Task.sleep(for: delay)
+				}
+				guard
+					let self,
+					!self.isLoading,
+					self.dependencies.canAutomaticallyRefresh()
+				else { return }
+				let revalidatesSelectedContent =
+					self.automaticRefreshRevalidatesSelectedContent
+				self.automaticRefreshRevalidatesSelectedContent = false
+				try await self.requestAllContent(
+					at: repositoryURL,
+					revalidatesSelectedContent: revalidatesSelectedContent
+				)
+			} catch is CancellationError {
+				return
+			} catch {}
 		}
+	}
 
-		for await _ in events {
-			guard !Task.isCancelled else { return }
-			automaticRefreshTask?.cancel()
-			automaticRefreshTask = Task { @MainActor [weak self] in
-				do {
-					try await Task.sleep(for: .milliseconds(450))
-					guard
-						let self,
-						!self.isLoading,
-						self.dependencies.canAutomaticallyRefresh()
-					else { return }
-					try await self.requestAllContent(at: repositoryURL)
-				} catch is CancellationError {
-					return
-				} catch {}
-			}
+	private func containsWorkingTreeEvent(
+		_ paths: [String],
+		repositoryURL: URL
+	) -> Bool {
+		let gitDirectoryPath =
+			repositoryURL
+			.appending(path: ".git", directoryHint: .isDirectory)
+			.standardizedFileURL.path
+
+		return paths.contains { path in
+			let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+			return standardizedPath != gitDirectoryPath
+				&& !standardizedPath.hasPrefix(gitDirectoryPath + "/")
 		}
 	}
 
@@ -174,6 +223,7 @@ final class WorkspaceViewModel: ObservableObject {
 		monitoredRepositoryURL = nil
 		automaticRefreshTask?.cancel()
 		automaticRefreshTask = nil
+		automaticRefreshRevalidatesSelectedContent = false
 	}
 
 	func didChangeDiffOptions() {
@@ -198,15 +248,26 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	private func requestAllContent(at repositoryURL: URL) async throws {
+	private func requestAllContent(
+		at repositoryURL: URL,
+		revalidatesSelectedContent: Bool = true
+	) async throws {
 		let snapshot = try await contentUseCase.loadSnapshot(at: repositoryURL)
-		try apply(snapshot, at: repositoryURL)
+		try apply(
+			snapshot,
+			at: repositoryURL,
+			revalidatesSelectedContent: revalidatesSelectedContent
+		)
 	}
 
-	private func apply(_ snapshot: RepositorySnapshot, at repositoryURL: URL?) throws {
+	private func apply(
+		_ snapshot: RepositorySnapshot,
+		at repositoryURL: URL?,
+		revalidatesSelectedContent: Bool = true
+	) throws {
 		try Task.checkCancellation()
 		guard self.repositoryURL == repositoryURL else { throw CancellationError() }
-		actions.distributeSnapshot(snapshot, repositoryURL)
+		actions.distributeSnapshot(snapshot, repositoryURL, revalidatesSelectedContent)
 		hasLoadedContent = true
 	}
 

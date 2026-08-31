@@ -280,9 +280,16 @@ final class RepositoryWorkspaceAssembly {
 						weak stashesViewModel, weak treeViewModel
 					]
 					snapshot,
-					repositoryURL in
-					conflictViewModel?.apply(snapshot)
-					changesViewModel?.apply(snapshot)
+					repositoryURL,
+					revalidatesSelectedContent in
+					conflictViewModel?.apply(
+						snapshot,
+						revalidatesSelectedContent: revalidatesSelectedContent
+					)
+					changesViewModel?.apply(
+						snapshot,
+						revalidatesSelectedDiff: revalidatesSelectedContent
+					)
 					commitViewModel?.apply(snapshot)
 					historyViewModel?.apply(snapshot)
 					operationViewModel?.apply(snapshot)

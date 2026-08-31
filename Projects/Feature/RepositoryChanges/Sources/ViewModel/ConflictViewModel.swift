@@ -8,10 +8,10 @@ public final class ConflictViewModel: ObservableObject {
 	@Published private(set) var isLoadingContent = false
 	@Published public private(set) var isLoading = false
 	@Published var pendingConfirmation: ConflictConfirmation?
+	@Published private(set) var operationState: RepositoryOperationState = .normal
 
 	private let dependencies: ConflictViewModelDependencies
 	private let actions: ConflictViewModelActions
-	private var operationState: RepositoryOperationState = .normal
 	private var selectedConflict: GitConflict?
 	private var activeContentRequestID: Int?
 	private var contentRequestSequence = 0
@@ -58,7 +58,10 @@ public final class ConflictViewModel: ObservableObject {
 		"Resolve Entire File Using \(incomingLabel)"
 	}
 
-	public func apply(_ snapshot: RepositorySnapshot) {
+	public func apply(
+		_ snapshot: RepositorySnapshot,
+		revalidatesSelectedContent: Bool = true
+	) {
 		if operationState != snapshot.operationState {
 			operationState = snapshot.operationState
 		}
@@ -71,7 +74,10 @@ public final class ConflictViewModel: ObservableObject {
 			didSelectConflict(nil)
 			return
 		}
-		didSelectConflict(refreshedConflict, forceReload: true)
+		didSelectConflict(
+			refreshedConflict,
+			forceReload: revalidatesSelectedContent || refreshedConflict != selectedConflict
+		)
 	}
 
 	public func reset() {

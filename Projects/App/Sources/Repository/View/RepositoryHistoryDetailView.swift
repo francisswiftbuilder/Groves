@@ -6,6 +6,7 @@ import SwiftUI
 struct RepositoryHistoryDetailView: View {
 	let diffSearchViewModel: RepositorySearchViewModel
 	let historyViewModel: HistoryViewModel
+	@ObservedObject private var checkoutAvailability: HistoryCheckoutAvailability
 	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
 	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
 	@ObservedObject private var syncViewModel: RepositorySyncViewModel
@@ -29,6 +30,9 @@ struct RepositoryHistoryDetailView: View {
 	) {
 		self.diffSearchViewModel = diffSearchViewModel
 		self.historyViewModel = historyViewModel
+		_checkoutAvailability = ObservedObject(
+			wrappedValue: historyViewModel.checkoutAvailability
+		)
 		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
 		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
 		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
@@ -48,7 +52,8 @@ struct RepositoryHistoryDetailView: View {
 			currentBranchStatus: referencesViewModel.currentBranchStatus,
 			operationState: operationViewModel.operationState,
 			isOperationLoading: operationViewModel.isLoading || syncViewModel.isLoading,
-			canCheckoutCommit: referencesViewModel.canCheckoutCommit,
+			canCheckoutCommit: referencesViewModel.canCheckoutCommit
+				&& !checkoutAvailability.hasWorkingTreeChanges,
 			remoteNames: Set(remotesViewModel.remotes.map(\.name)),
 			commitActions: commitActions,
 			onDiffOptionsChanged: onDiffOptionsChanged

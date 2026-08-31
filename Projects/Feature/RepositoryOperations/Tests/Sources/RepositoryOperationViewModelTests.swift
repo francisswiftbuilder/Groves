@@ -116,6 +116,36 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 		await fulfillment(of: [cancelled], timeout: 2)
 	}
 
+	func testSyncPushActionUpdatesWhenOnlyBranchStateChanges() {
+		let useCase = OperationsReferencesUseCaseStub(
+			pushActionOperation: { branch, _, operationState in
+				guard !operationState.isDetached, let branch else { return .unavailable }
+				return .setUpstream(remoteName: "origin", branchName: branch.name)
+			}
+		)
+		let viewModel = RepositorySyncViewModel(
+			dependencies: RepositorySyncViewModelDependencies(
+				contentUseCase: OperationsContentUseCaseStub(),
+				referencesUseCase: useCase,
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+			),
+			actions: RepositorySyncViewModelActions(
+				didProduceSnapshot: { _ in },
+				didReceiveError: { _ in }
+			)
+		)
+		let branch = makeBranch(name: "feature/push", isCurrent: true)
+
+		viewModel.apply(makeSnapshot(branches: [branch]))
+		XCTAssertEqual(
+			viewModel.pushAction,
+			.setUpstream(remoteName: "origin", branchName: branch.name)
+		)
+
+		viewModel.apply(makeSnapshot(branches: [branch], operationState: .detachedHead))
+		XCTAssertEqual(viewModel.pushAction, .unavailable)
+	}
+
 	private func makeViewModel(
 		didRequestViewConflicts: @escaping @MainActor (GitConflict) -> Void = { _ in }
 	) -> RepositoryOperationViewModel {

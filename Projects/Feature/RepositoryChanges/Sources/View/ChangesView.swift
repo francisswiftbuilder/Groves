@@ -4,7 +4,7 @@ import SwiftUI
 
 public struct ChangesView: View {
 	private let diffSearchViewModel: RepositorySearchViewModel
-	@ObservedObject private var viewModel: ChangesViewModel
+	private let viewModel: ChangesViewModel
 	private let diffViewModel: ChangesDiffViewModel
 	private let commitViewModel: CommitViewModel
 	private let conflictViewModel: ConflictViewModel
@@ -27,7 +27,7 @@ public struct ChangesView: View {
 		onDiffOptionsChanged: @escaping () -> Void
 	) {
 		self.diffSearchViewModel = diffSearchViewModel
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 		self.diffViewModel = diffViewModel
 		self.commitViewModel = commitViewModel
 		self.conflictViewModel = conflictViewModel
@@ -39,19 +39,18 @@ public struct ChangesView: View {
 	}
 
 	public var body: some View {
-		ConflictPresentationHost(viewModel: conflictViewModel) {
-			EqualWidthHSplitView(
-				proportions: [0.27, 0.50, 0.23],
-				minimumWidths: [200, 300, 210]
-			) {
-				ChangesListView(
-					viewModel: viewModel,
-					commitViewModel: commitViewModel,
-					conflictViewModel: conflictViewModel,
-					repositoryURL: repositoryURL
-				)
-				.frame(maxWidth: .infinity)
-			} center: {
+		EqualWidthHSplitView(
+			proportions: [0.27, 0.50, 0.23],
+			minimumWidths: [200, 300, 210]
+		) {
+			ChangesListView(
+				viewModel: viewModel,
+				conflictViewModel: conflictViewModel,
+				repositoryURL: repositoryURL
+			)
+			.frame(maxWidth: .infinity)
+		} center: {
+			ConflictPresentationHost(viewModel: conflictViewModel) {
 				ChangesDiffPane(
 					searchViewModel: diffSearchViewModel,
 					viewModel: viewModel,
@@ -62,41 +61,15 @@ public struct ChangesView: View {
 					onOptionsChanged: onDiffOptionsChanged
 				)
 				.frame(maxWidth: .infinity)
-			} trailing: {
-				ChangesInspectorPane(viewModel: viewModel, diffViewModel: diffViewModel)
-					.frame(maxWidth: .infinity)
 			}
+		} trailing: {
+			ChangesInspectorPane(viewModel: viewModel, diffViewModel: diffViewModel)
+				.frame(maxWidth: .infinity)
 		}
 		.navigationTitle(repositoryName)
 		.navigationSubtitle(currentBranchStatus)
 		.safeAreaInset(edge: .bottom) {
 			CommitBar(viewModel: commitViewModel)
 		}
-		.confirmationDialog(
-			viewModel.pendingConfirmation?.title ?? "Confirm Changes",
-			isPresented: pendingConfirmationPresentation
-		) {
-			if let confirmation = viewModel.pendingConfirmation {
-				Button(confirmation.actionTitle, role: .destructive) {
-					viewModel.didConfirmPendingConfirmation()
-				}
-			}
-			Button("Cancel", role: .cancel) {
-				viewModel.didDismissPendingConfirmation()
-			}
-		} message: {
-			Text(viewModel.pendingConfirmation?.message ?? "")
-		}
-	}
-
-	private var pendingConfirmationPresentation: Binding<Bool> {
-		Binding(
-			get: { viewModel.pendingConfirmation != nil },
-			set: { isPresented in
-				if !isPresented {
-					viewModel.didDismissPendingConfirmation()
-				}
-			}
-		)
 	}
 }
