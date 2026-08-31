@@ -6,6 +6,22 @@ import XCTest
 @testable import Trees
 
 struct GitRepositoryStub: GitRepository {
+	actor ResponseSequence<Value: Sendable> {
+		private let values: [Value]
+		private var index = 0
+
+		init(_ values: [Value]) {
+			self.values = values
+		}
+
+		func next(or fallback: Value) -> Value {
+			guard !values.isEmpty else { return fallback }
+			let value = values[min(index, values.count - 1)]
+			index += 1
+			return value
+		}
+	}
+
 	let recorder: GitRepositoryRecorder?
 	let changes: [WorkingTreeChange]
 	let commits: [GitCommit]
@@ -18,6 +34,8 @@ struct GitRepositoryStub: GitRepository {
 	let clonedRepositoryURL: URL?
 	let stashes: [GitStash]
 	let stashDiffs: [String: String]
+	let diffResponses: ResponseSequence<String>?
+	let conflictContentResponses: ResponseSequence<GitConflictContent>?
 	let diffGate: GitDiffGate?
 	let mutationGate: GitDiffGate?
 	let contentGate: GitDiffGate?
@@ -35,6 +53,8 @@ struct GitRepositoryStub: GitRepository {
 		clonedRepositoryURL: URL? = nil,
 		stashes: [GitStash] = [],
 		stashDiffs: [String: String] = [:],
+		diffResponses: ResponseSequence<String>? = nil,
+		conflictContentResponses: ResponseSequence<GitConflictContent>? = nil,
 		diffGate: GitDiffGate? = nil,
 		mutationGate: GitDiffGate? = nil,
 		contentGate: GitDiffGate? = nil
@@ -51,6 +71,8 @@ struct GitRepositoryStub: GitRepository {
 		self.clonedRepositoryURL = clonedRepositoryURL
 		self.stashes = stashes
 		self.stashDiffs = stashDiffs
+		self.diffResponses = diffResponses
+		self.conflictContentResponses = conflictContentResponses
 		self.diffGate = diffGate
 		self.mutationGate = mutationGate
 		self.contentGate = contentGate
@@ -103,8 +125,10 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws -> String {
 		await recorder?.record(.loadDiff(source))
+		let fallback = source == .staged ? stagedDiff : unstagedDiff
+		let response = await diffResponses?.next(or: fallback) ?? fallback
 		await diffGate?.enter(GitDiffGateLabel.workingTree(options: options))
-		return source == .staged ? stagedDiff : unstagedDiff
+		return response
 	}
 	func requestAmendDiff(
 		for change: GitAmendChange,
@@ -211,14 +235,16 @@ struct GitRepositoryStub: GitRepository {
 		for conflict: GitConflict,
 		at repositoryURL: URL
 	) async throws -> GitConflictContent {
-		await diffGate?.enter(GitDiffGateLabel.conflictContent(path: conflict.path))
-		return GitConflictContent(
+		let fallback = GitConflictContent(
 			base: nil,
 			current: nil,
 			incoming: nil,
 			workingTree: nil,
 			hunks: []
 		)
+		let response = await conflictContentResponses?.next(or: fallback) ?? fallback
+		await diffGate?.enter(GitDiffGateLabel.conflictContent(path: conflict.path))
+		return response
 	}
 	func requestResolveConflictHunk(
 		_ hunk: GitConflictHunk,

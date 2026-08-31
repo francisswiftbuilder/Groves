@@ -45,6 +45,7 @@ struct ChangesDiffPane: View {
 					searchModel: searchViewModel,
 					options: $preferences.options,
 					presentationMode: $preferences.presentationMode,
+					sourceID: viewModel.selectedDiffSourceID,
 					diff: diffViewModel.diff,
 					imageDiff: diffViewModel.imageDiff,
 					changedFileCount: viewModel.changes.count,

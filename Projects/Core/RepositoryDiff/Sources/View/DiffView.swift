@@ -7,6 +7,7 @@ public struct DiffView: View {
 	private let searchModel: RepositorySearchViewModel
 	@Binding var options: GitDiffOptions
 	@Binding var presentationMode: DiffPresentationMode
+	let sourceID: String?
 	let diff: String
 	let imageDiff: GitImageDiff?
 	let changedFileCount: Int
@@ -27,6 +28,7 @@ public struct DiffView: View {
 		searchModel: RepositorySearchViewModel,
 		options: Binding<GitDiffOptions>,
 		presentationMode: Binding<DiffPresentationMode>,
+		sourceID: String?,
 		diff: String,
 		imageDiff: GitImageDiff?,
 		changedFileCount: Int,
@@ -46,6 +48,7 @@ public struct DiffView: View {
 		self.searchModel = searchModel
 		_options = options
 		_presentationMode = presentationMode
+		self.sourceID = sourceID
 		self.diff = diff
 		self.imageDiff = imageDiff
 		self.changedFileCount = changedFileCount
@@ -109,7 +112,7 @@ public struct DiffView: View {
 					.foregroundStyle(.secondary)
 				Spacer(minLength: 16)
 				if !isImageFile {
-					DiffStatisticsView(document: viewerModel.document)
+					DiffStatisticsView(document: displayedDocument)
 				}
 			}
 			.font(.caption)
@@ -121,18 +124,18 @@ public struct DiffView: View {
 
 	@ViewBuilder
 	private var diffHeader: some View {
-		if let fileName {
+		if let displayedFileName {
 			HStack(spacing: 10) {
-				if let fileState {
+				if displaysCurrentInput, let fileState {
 					GitStatusBadge(state: fileState)
 				}
 
 				VStack(alignment: .leading, spacing: 2) {
-					Text(fileName)
+					Text(displayedFileName)
 						.font(.subheadline.weight(.semibold))
 						.lineLimit(1)
-					if let filePath {
-						Text(filePath)
+					if let displayedFilePath {
+						Text(displayedFilePath)
 							.font(.caption)
 							.foregroundStyle(.secondary)
 							.lineLimit(1)
@@ -141,8 +144,8 @@ public struct DiffView: View {
 
 				Spacer(minLength: 12)
 
-				if !diff.isEmpty, imageDiff == nil {
-					DiffStatisticsView(document: viewerModel.document)
+				if !displayedDocument.lines.isEmpty, imageDiff == nil {
+					DiffStatisticsView(document: displayedDocument)
 				}
 
 				if !isImageFile {
@@ -153,7 +156,7 @@ public struct DiffView: View {
 					)
 				}
 
-				if let fileActionTitle {
+				if displaysCurrentInput, let fileActionTitle {
 					Button(fileActionTitle, action: onApplyFileAction)
 						.buttonStyle(.bordered)
 						.controlSize(.small)
@@ -185,7 +188,7 @@ public struct DiffView: View {
 				.controlSize(.regular)
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 				.accessibilityLabel("Applying diff change")
-		} else if isLoadingDiff {
+		} else if isLoadingDiff && !displaysCurrentSource {
 			LoadingStateView(
 				title: "Loading Diff",
 				message: "Reading the selected file changes."
@@ -208,38 +211,75 @@ public struct DiffView: View {
 				message: "Select a tracked text change to inspect its diff.",
 				systemImage: "doc.text.magnifyingglass"
 			)
-		} else if !viewerModel.hasParsed(viewerInput) && viewerModel.document.lines.isEmpty {
+		} else if viewerModel.presentation == nil {
 			LoadingStateView(
 				title: "Loading Diff",
 				message: "Reading the selected file changes."
 			)
-		} else if viewerModel.document.lines.isEmpty {
+		} else if displayedDocument.lines.isEmpty {
 			EmptyStateView(
 				title: "No Text Diff",
 				message: "This file has no text changes to display.",
 				systemImage: "doc"
 			)
-		} else {
+		} else if let presentation = viewerModel.presentation {
 			DiffViewer(
 				searchModel: searchModel,
-				document: viewerModel.document,
-				sideBySideRows: viewerModel.sideBySideRows,
+				document: presentation.document,
+				sideBySideRows: presentation.sideBySideRows,
 				presentationMode: presentationMode,
-				filePath: filePath,
-				lineAction: lineAction,
-				hunkActions: hunkActions,
+				filePath: presentation.input.filePath,
+				lineAction: allowsPartialActions ? lineAction : nil,
+				hunkActions: allowsPartialActions ? hunkActions : [],
 				isApplyingAction: isApplyingAction,
-				onApplyLine: onApplyLine,
-				onApplyHunk: onApplyHunk
+				onApplyLine: { selection, action in
+					guard allowsPartialActions else { return }
+					onApplyLine(selection, action)
+				},
+				onApplyHunk: { selection, action in
+					guard allowsPartialActions else { return }
+					onApplyHunk(selection, action)
+				}
 			)
 		}
 	}
 
 	private var viewerInput: DiffViewerViewModel.Input {
-		DiffViewerViewModel.Input(sourceID: filePath, diff: diff)
+		DiffViewerViewModel.Input(sourceID: sourceID, filePath: filePath, diff: diff)
+	}
+
+	private var displaysCurrentInput: Bool {
+		viewerModel.canInteract(with: viewerInput)
+	}
+
+	private var displaysCurrentSource: Bool {
+		viewerModel.presentation?.input.sourceID == sourceID
+	}
+
+	private var allowsPartialActions: Bool {
+		displaysCurrentInput && !isLoadingDiff
+	}
+
+	private var displayedDocument: DiffDocument {
+		viewerModel.presentation?.document ?? .empty
+	}
+
+	private var displayedFilePath: String? {
+		if currentFileIsImage || (isLoadingDiff && !displaysCurrentSource) {
+			return filePath
+		}
+		return viewerModel.presentation?.input.filePath ?? filePath
+	}
+
+	private var displayedFileName: String? {
+		displayedFilePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? fileName
+	}
+
+	private var currentFileIsImage: Bool {
+		filePath.map(DiffImageFileSupport.isSupported) == true
 	}
 
 	private var isImageFile: Bool {
-		filePath.map(DiffImageFileSupport.isSupported) == true
+		displayedFilePath.map(DiffImageFileSupport.isSupported) == true
 	}
 }

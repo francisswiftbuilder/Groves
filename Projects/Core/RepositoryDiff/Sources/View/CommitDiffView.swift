@@ -46,8 +46,8 @@ public struct CommitDiffView: View {
 			diffContent
 		}
 		.safeAreaInset(edge: .bottom) {
-			if let file {
-				diffFooter(file: file)
+			if file != nil {
+				diffFooter
 			}
 		}
 		.task(id: viewerInput) {
@@ -55,7 +55,7 @@ public struct CommitDiffView: View {
 		}
 	}
 
-	private func diffFooter(file: CommitDiffFile) -> some View {
+	private var diffFooter: some View {
 		VStack(spacing: 0) {
 			Divider()
 			HStack(spacing: 12) {
@@ -63,7 +63,7 @@ public struct CommitDiffView: View {
 					.foregroundStyle(.secondary)
 				Spacer(minLength: 16)
 				if !isImageFile {
-					CommitDiffStatistics(file: file)
+					DiffStatisticsView(document: displayedDocument)
 				}
 			}
 			.font(.caption)
@@ -75,10 +75,10 @@ public struct CommitDiffView: View {
 
 	@ViewBuilder
 	private var diffHeader: some View {
-		if let file {
+		if file != nil {
 			VStack(alignment: .leading, spacing: 12) {
 				HStack(spacing: 8) {
-					Text(file.path.replacingOccurrences(of: "/", with: " / "))
+					Text(displayedFilePath.replacingOccurrences(of: "/", with: " / "))
 						.font(.subheadline)
 						.foregroundStyle(.secondary)
 						.lineLimit(1)
@@ -97,7 +97,7 @@ public struct CommitDiffView: View {
 						.font(.subheadline.weight(.medium))
 					Spacer()
 					if !isImageFile {
-						CommitDiffStatistics(file: file)
+						DiffStatisticsView(document: displayedDocument)
 					}
 				}
 			}
@@ -139,24 +139,24 @@ public struct CommitDiffView: View {
 					message: "Neither revision contains a supported image.",
 					systemImage: "photo.badge.exclamationmark"
 				)
-			} else if !viewerModel.hasParsed(viewerInput) && viewerModel.document.lines.isEmpty {
+			} else if viewerModel.presentation == nil {
 				LoadingStateView(
 					title: "Loading Commit Diff",
 					message: "Reading the files changed by this commit."
 				)
-			} else if viewerModel.document.lines.isEmpty {
+			} else if viewerModel.presentation?.document.lines.isEmpty == true {
 				EmptyStateView(
 					title: "No Text Diff",
 					message: "This commit changed a file without a text diff.",
 					systemImage: "doc"
 				)
-			} else {
+			} else if let presentation = viewerModel.presentation {
 				DiffViewer(
 					searchModel: searchModel,
-					document: viewerModel.document,
-					sideBySideRows: viewerModel.sideBySideRows,
+					document: presentation.document,
+					sideBySideRows: presentation.sideBySideRows,
 					presentationMode: presentationMode,
-					filePath: file?.path,
+					filePath: presentation.input.filePath,
 					lineAction: nil,
 					hunkActions: [],
 					isApplyingAction: false,
@@ -174,10 +174,25 @@ public struct CommitDiffView: View {
 	}
 
 	private var viewerInput: DiffViewerViewModel.Input {
-		DiffViewerViewModel.Input(sourceID: file?.id, diff: file?.diff ?? "")
+		DiffViewerViewModel.Input(sourceID: file?.id, filePath: file?.path, diff: file?.diff ?? "")
+	}
+
+	private var displayedDocument: DiffDocument {
+		viewerModel.presentation?.document ?? .empty
+	}
+
+	private var displayedFilePath: String {
+		if currentFileIsImage || isLoading {
+			return file?.path ?? ""
+		}
+		return viewerModel.presentation?.input.filePath ?? file?.path ?? ""
+	}
+
+	private var currentFileIsImage: Bool {
+		file.map { DiffImageFileSupport.isSupported(path: $0.path) } == true
 	}
 
 	private var isImageFile: Bool {
-		file.map { DiffImageFileSupport.isSupported(path: $0.path) } == true
+		DiffImageFileSupport.isSupported(path: displayedFilePath)
 	}
 }
