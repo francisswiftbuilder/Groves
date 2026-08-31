@@ -61,20 +61,63 @@ final class DiffPresentationContractTests: XCTestCase {
 		)
 	}
 
+	func testParsingRecordsTheExactCompletedInput() async {
+		let model = DiffViewerViewModel()
+		let input = DiffViewerViewModel.Input(
+			sourceID: "Sources/App.swift",
+			diff: Self.diff(lineCount: 20)
+		)
+
+		XCTAssertFalse(model.hasParsed(input))
+		XCTAssertNil(model.parsedInput)
+
+		await model.update(input: input)
+
+		XCTAssertTrue(model.hasParsed(input))
+		XCTAssertEqual(model.parsedInput, input)
+		XCTAssertFalse(model.document.lines.isEmpty)
+	}
+
+	func testMetadataOnlyInputBecomesEmptyOnlyAfterParseCompletes() async {
+		let model = DiffViewerViewModel()
+		let input = DiffViewerViewModel.Input(
+			sourceID: "Binary.dat",
+			diff: "diff --git a/Binary.dat b/Binary.dat\nindex 111..222 100644"
+		)
+
+		XCTAssertFalse(model.hasParsed(input))
+
+		await model.update(input: input)
+
+		XCTAssertTrue(model.hasParsed(input))
+		XCTAssertTrue(model.document.lines.isEmpty)
+	}
+
 	func testParsingAReplacementKeepsTheLastDocumentVisible() async throws {
 		let model = DiffViewerViewModel()
-		let initialDiff = Self.diff(lineCount: 20)
-		await model.update(diff: initialDiff)
+		let initialInput = DiffViewerViewModel.Input(
+			sourceID: "Sources/App.swift",
+			diff: Self.diff(lineCount: 20)
+		)
+		let replacementInput = DiffViewerViewModel.Input(
+			sourceID: "Sources/App.swift",
+			diff: Self.diff(lineCount: 100_000)
+		)
+		await model.update(input: initialInput)
 		let initialDocument = model.document
 		let replacementTask = Task {
-			await model.update(diff: Self.diff(lineCount: 100_000))
+			await model.update(input: replacementInput)
 		}
 
 		try await waitUntil { model.isParsing }
 
 		XCTAssertEqual(model.document, initialDocument)
+		XCTAssertEqual(model.parsedInput, initialInput)
+		XCTAssertFalse(model.hasParsed(replacementInput))
 		await replacementTask.value
 		XCTAssertNotEqual(model.document, initialDocument)
+		XCTAssertEqual(model.parsedInput, replacementInput)
+		XCTAssertTrue(model.hasParsed(replacementInput))
 	}
 
 	func testAutomaticSnapshotRefreshKeepsTheSelectedDiffVisible() async throws {
@@ -113,11 +156,12 @@ final class DiffPresentationContractTests: XCTestCase {
 				fileTree: []
 			)
 		)
-		try await waitUntil { await gate.callCount(of: label) == 2 }
+		try await Task.sleep(for: .milliseconds(150))
 
+		let callCount = await gate.callCount(of: label)
+		XCTAssertEqual(callCount, 1)
 		XCTAssertFalse(workspace.changesDiffViewModel.isLoading)
 		XCTAssertEqual(workspace.changesDiffViewModel.diff, diff)
-		await gate.resumeCall(1)
 	}
 
 	func testSearchStateSurvivesAnIdenticalSourceUpdate() async throws {

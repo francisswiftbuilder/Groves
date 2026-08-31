@@ -25,4 +25,18 @@ enum GitDiffGateLabel {
 	static func conflictContent(path: String) -> String {
 		"conflictContent-\(path)"
 	}
+
+	static let workingTreeChanges = "workingTreeChanges"
+
+	static func stage(path: String) -> String {
+		"stage-\(path)"
+	}
+
+	static func applyDiffLine(path: String) -> String {
+		"applyDiffLine-\(path)"
+	}
+
+	static func resolveConflictHunk(path: String) -> String {
+		"resolveConflictHunk-\(path)"
+	}
 }

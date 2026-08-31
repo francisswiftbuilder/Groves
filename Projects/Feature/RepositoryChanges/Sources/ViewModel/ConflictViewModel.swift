@@ -15,6 +15,8 @@ public final class ConflictViewModel: ObservableObject {
 	private var selectedConflict: GitConflict?
 	private var activeContentRequestID: Int?
 	private var contentRequestSequence = 0
+	private var activeMutationRequestID: Int?
+	private var mutationRequestSequence = 0
 	private var contentTask: Task<Void, Never>?
 	private var mutationTask: Task<Void, Never>?
 
@@ -69,7 +71,7 @@ public final class ConflictViewModel: ObservableObject {
 			didSelectConflict(nil)
 			return
 		}
-		didSelectConflict(refreshedConflict, forceReload: true)
+		didSelectConflict(refreshedConflict)
 	}
 
 	public func reset() {
@@ -79,6 +81,7 @@ public final class ConflictViewModel: ObservableObject {
 		mutationTask = nil
 		selectedConflict = nil
 		activeContentRequestID = nil
+		activeMutationRequestID = nil
 		content = nil
 		isLoadingContent = false
 		isLoading = false
@@ -114,7 +117,9 @@ public final class ConflictViewModel: ObservableObject {
 					at: repositoryURL
 				)
 				guard activeContentRequestID == requestID else { return }
-				content = loadedContent
+				if content != loadedContent {
+					content = loadedContent
+				}
 			} catch is CancellationError {
 				return
 			} catch {
@@ -141,51 +146,72 @@ public final class ConflictViewModel: ObservableObject {
 		using resolution: GitConflictHunkResolution
 	) {
 		guard let repositoryURL = dependencies.repositoryURL(), !isLoading else { return }
-		requestMutation {
-			let snapshot = try await self.dependencies.operationsUseCase.resolveHunk(
-				hunk,
-				in: conflict,
-				using: resolution,
-				at: repositoryURL
-			)
-			let refreshedContent = try await self.dependencies.operationsUseCase.loadConflictContent(
-				for: conflict,
-				at: repositoryURL
-			)
-			if self.selectedConflict == conflict {
-				self.content = refreshedContent
+		mutationTask?.cancel()
+		let requestID = beginMutation()
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
+			do {
+				guard let self else { return }
+				let snapshot = try await dependencies.operationsUseCase.resolveHunk(
+					hunk,
+					in: conflict,
+					using: resolution,
+					at: repositoryURL
+				)
+				let refreshedContent = try await dependencies.operationsUseCase.loadConflictContent(
+					for: conflict,
+					at: repositoryURL
+				)
+				guard activeMutationRequestID == requestID else { return }
+				if selectedConflict == conflict, content != refreshedContent {
+					content = refreshedContent
+				}
+				actions.didProduceSnapshot(snapshot)
+			} catch is CancellationError {
+				return
+			} catch {
+				guard let self, activeMutationRequestID == requestID else { return }
+				actions.didReceiveError(error.localizedDescription)
+				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
+					at: repositoryURL
+				) {
+					guard activeMutationRequestID == requestID else { return }
+					actions.didProduceSnapshot(snapshot)
+				}
 			}
-			return snapshot
 		}
 	}
 
 	func didMarkResolved(_ conflict: GitConflict) {
 		guard let repositoryURL = dependencies.repositoryURL(), !isLoading else { return }
 		mutationTask?.cancel()
-		mutationTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		let requestID = beginMutation()
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
+				guard let self else { return }
 				let loadedContent = try await dependencies.operationsUseCase.loadConflictContent(
 					for: conflict,
 					at: repositoryURL
 				)
-				if selectedConflict == conflict {
+				guard activeMutationRequestID == requestID else { return }
+				if selectedConflict == conflict, content != loadedContent {
 					content = loadedContent
 				}
 				if loadedContent.hasConflictMarkers {
 					pendingConfirmation = .markResolved(conflict)
 					return
 				}
-				actions.didProduceSnapshot(
-					try await dependencies.operationsUseCase.markResolved(
-						path: conflict.path,
-						at: repositoryURL
-					)
+				let snapshot = try await dependencies.operationsUseCase.markResolved(
+					path: conflict.path,
+					at: repositoryURL
 				)
+				guard activeMutationRequestID == requestID else { return }
+				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, activeMutationRequestID == requestID else { return }
 				actions.didReceiveError(error.localizedDescription)
 			}
 		}
@@ -236,21 +262,39 @@ public final class ConflictViewModel: ObservableObject {
 	) {
 		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		mutationTask?.cancel()
-		mutationTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		let requestID = beginMutation()
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
-				actions.didProduceSnapshot(try await operation())
+				let snapshot = try await operation()
+				guard let self, activeMutationRequestID == requestID else { return }
+				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, activeMutationRequestID == requestID else { return }
 				actions.didReceiveError(error.localizedDescription)
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: expectedRepositoryURL
 				) {
+					guard activeMutationRequestID == requestID else { return }
 					actions.didProduceSnapshot(snapshot)
 				}
 			}
 		}
+	}
+
+	private func beginMutation() -> Int {
+		mutationRequestSequence += 1
+		activeMutationRequestID = mutationRequestSequence
+		isLoading = true
+		return mutationRequestSequence
+	}
+
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isLoading = false
 	}
 }

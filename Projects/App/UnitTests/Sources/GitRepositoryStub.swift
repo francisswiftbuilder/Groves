@@ -19,6 +19,8 @@ struct GitRepositoryStub: GitRepository {
 	let stashes: [GitStash]
 	let stashDiffs: [String: String]
 	let diffGate: GitDiffGate?
+	let mutationGate: GitDiffGate?
+	let contentGate: GitDiffGate?
 
 	init(
 		recorder: GitRepositoryRecorder? = nil,
@@ -33,7 +35,9 @@ struct GitRepositoryStub: GitRepository {
 		clonedRepositoryURL: URL? = nil,
 		stashes: [GitStash] = [],
 		stashDiffs: [String: String] = [:],
-		diffGate: GitDiffGate? = nil
+		diffGate: GitDiffGate? = nil,
+		mutationGate: GitDiffGate? = nil,
+		contentGate: GitDiffGate? = nil
 	) {
 		self.recorder = recorder
 		self.changes = changes
@@ -48,6 +52,8 @@ struct GitRepositoryStub: GitRepository {
 		self.stashes = stashes
 		self.stashDiffs = stashDiffs
 		self.diffGate = diffGate
+		self.mutationGate = mutationGate
+		self.contentGate = contentGate
 	}
 
 	func requestRepositoryRoot(at url: URL) async throws -> URL {
@@ -60,7 +66,8 @@ struct GitRepositoryStub: GitRepository {
 			?? directoryURL.appending(path: "Repository", directoryHint: .isDirectory)
 	}
 	func requestWorkingTreeChanges(at repositoryURL: URL) async throws -> [WorkingTreeChange] {
-		changes
+		await contentGate?.enter(GitDiffGateLabel.workingTreeChanges)
+		return changes
 	}
 	func requestAmendChanges(at repositoryURL: URL) async throws -> [GitAmendChange] { [] }
 	func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] { commits }
@@ -138,6 +145,7 @@ struct GitRepositoryStub: GitRepository {
 	}
 	func requestStage(path: String, at repositoryURL: URL) async throws {
 		await recorder?.record(.stage(path: path))
+		await mutationGate?.enter(GitDiffGateLabel.stage(path: path))
 	}
 	func requestUnstage(path: String, at repositoryURL: URL) async throws {}
 	func requestApplyDiffLine(
@@ -147,6 +155,7 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws {
 		await recorder?.record(.applyDiffLine(action))
+		await mutationGate?.enter(GitDiffGateLabel.applyDiffLine(path: change.path))
 	}
 	func requestApplyDiffHunk(
 		_ selection: GitDiffHunkSelection,
@@ -216,7 +225,10 @@ struct GitRepositoryStub: GitRepository {
 		in conflict: GitConflict,
 		using resolution: GitConflictHunkResolution,
 		at repositoryURL: URL
-	) async throws {}
+	) async throws {
+		await mutationGate?.enter(GitDiffGateLabel.resolveConflictHunk(path: conflict.path))
+	}
+
 	func requestMarkConflictResolved(path: String, at repositoryURL: URL) async throws {}
 	func requestPerformOperationAction(
 		_ action: RepositoryOperationAction,

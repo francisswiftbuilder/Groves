@@ -21,6 +21,8 @@ public final class ChangesDiffViewModel: ObservableObject {
 	private var displayedSelection: WorkspaceChangeSelection?
 	private var activeLoadRequestID: Int?
 	private var loadRequestSequence = 0
+	private var activeMutationRequestID: Int?
+	private var mutationRequestSequence = 0
 	private var loadTask: Task<Void, Never>?
 	private var mutationTask: Task<Void, Never>?
 
@@ -101,6 +103,12 @@ public final class ChangesDiffViewModel: ObservableObject {
 	func cancelTasks() {
 		loadTask?.cancel()
 		mutationTask?.cancel()
+		loadTask = nil
+		mutationTask = nil
+		activeLoadRequestID = nil
+		activeMutationRequestID = nil
+		isLoading = false
+		isApplyingAction = false
 	}
 
 	func didRequestApplyDiffLine(
@@ -270,19 +278,34 @@ public final class ChangesDiffViewModel: ObservableObject {
 		mutationTask?.cancel()
 		loadTask?.cancel()
 		clearLoad()
-		mutationTask = Task {
-			isApplyingAction = true
-			defer { isApplyingAction = false }
+		let requestID = beginMutation()
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
 				let refreshedChanges = try await operation()
-				try Task.checkCancellation()
+				guard let self, self.activeMutationRequestID == requestID else { return }
 				actions.didApplyMutation(refreshedChanges, change, source)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, self.activeMutationRequestID == requestID else { return }
 				actions.didReceiveError(error.localizedDescription)
 			}
 		}
+	}
+
+	private func beginMutation() -> Int {
+		mutationRequestSequence += 1
+		activeMutationRequestID = mutationRequestSequence
+		isApplyingAction = true
+		return mutationRequestSequence
+	}
+
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isApplyingAction = false
 	}
 
 	private func updateDisplayedDiff(
@@ -291,8 +314,12 @@ public final class ChangesDiffViewModel: ObservableObject {
 		requestID: Int
 	) {
 		guard activeLoadRequestID == requestID, self.selection == selection else { return }
-		diff = requestedDiff
-		imageDiff = nil
+		if diff != requestedDiff {
+			diff = requestedDiff
+		}
+		if imageDiff != nil {
+			imageDiff = nil
+		}
 		displayedSelection = selection.identifier
 	}
 
@@ -302,8 +329,12 @@ public final class ChangesDiffViewModel: ObservableObject {
 		requestID: Int
 	) {
 		guard activeLoadRequestID == requestID, self.selection == selection else { return }
-		diff = ""
-		imageDiff = requestedImageDiff
+		if !diff.isEmpty {
+			diff = ""
+		}
+		if imageDiff != requestedImageDiff {
+			imageDiff = requestedImageDiff
+		}
 		displayedSelection = selection.identifier
 	}
 
