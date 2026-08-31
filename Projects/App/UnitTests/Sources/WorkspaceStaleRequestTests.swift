@@ -7,18 +7,19 @@ import XCTest
 
 @MainActor
 final class WorkspaceStaleRequestTests: XCTestCase {
-	func testIdenticalSnapshotDoesNotReloadSelectedWorkingTreeDiff() async throws {
+	func testIdenticalSnapshotRevalidatesSelectedWorkingTreeDiff() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
 			previousPath: nil,
 			indexState: .unchanged,
 			workingTreeState: .modified
 		)
-		let gate = GitDiffGate()
+		let gate = GitDiffGate(suspendsRequests: true)
+		let responses = GitRepositoryStub.ResponseSequence(["first read", "second read"])
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(
 				changes: [change],
-				unstagedDiff: "first read",
+				diffResponses: responses,
 				diffGate: gate
 			)
 		)
@@ -26,12 +27,17 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
 		try await waitUntilCallCount(1, of: label, in: gate)
+		await gate.resumeCall(0)
+		try await waitUntil { workspace.changesDiffViewModel.diff == "first read" }
 
 		workspace.viewModel.didProduceSnapshot(makeSnapshot(changes: [change]))
-		try await Task.sleep(for: .milliseconds(150))
+		try await waitUntilCallCount(2, of: label, in: gate)
 
-		let callCount = await gate.callCount(of: label)
-		XCTAssertEqual(callCount, 1)
+		XCTAssertEqual(workspace.changesDiffViewModel.diff, "first read")
+		XCTAssertTrue(workspace.changesDiffViewModel.isLoading)
+		await gate.resumeCall(1)
+		try await waitUntil { workspace.changesDiffViewModel.diff == "second read" }
+		XCTAssertFalse(workspace.changesDiffViewModel.isLoading)
 	}
 
 	func testChangedWorkingTreePayloadReloadsSelectedDiff() async throws {
@@ -61,23 +67,47 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		try await waitUntilCallCount(2, of: label, in: gate)
 	}
 
-	func testIdenticalSnapshotDoesNotReloadSelectedConflictContent() async throws {
+	func testIdenticalSnapshotRevalidatesSelectedConflictContent() async throws {
 		let conflict = makeConflict()
 		let operationState = makeOperationState(conflicts: [conflict])
-		let gate = GitDiffGate()
+		let firstContent = GitConflictContent(
+			base: nil,
+			current: "first current",
+			incoming: "first incoming",
+			workingTree: nil,
+			hunks: []
+		)
+		let secondContent = GitConflictContent(
+			base: nil,
+			current: "second current",
+			incoming: "second incoming",
+			workingTree: nil,
+			hunks: []
+		)
+		let gate = GitDiffGate(suspendsRequests: true)
+		let responses = GitRepositoryStub.ResponseSequence([firstContent, secondContent])
 		let workspace = makeRepositoryWorkspace(
-			repository: GitRepositoryStub(operationState: operationState, diffGate: gate)
+			repository: GitRepositoryStub(
+				operationState: operationState,
+				conflictContentResponses: responses,
+				diffGate: gate
+			)
 		)
 		let label = GitDiffGateLabel.conflictContent(path: conflict.path)
 
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
 		try await waitUntilCallCount(1, of: label, in: gate)
+		await gate.resumeCall(0)
+		try await waitUntil { workspace.conflictViewModel.content == firstContent }
 
 		workspace.viewModel.didProduceSnapshot(makeSnapshot(operationState: operationState))
-		try await Task.sleep(for: .milliseconds(150))
+		try await waitUntilCallCount(2, of: label, in: gate)
 
-		let callCount = await gate.callCount(of: label)
-		XCTAssertEqual(callCount, 1)
+		XCTAssertEqual(workspace.conflictViewModel.content, firstContent)
+		XCTAssertTrue(workspace.conflictViewModel.isLoadingContent)
+		await gate.resumeCall(1)
+		try await waitUntil { workspace.conflictViewModel.content == secondContent }
+		XCTAssertFalse(workspace.conflictViewModel.isLoadingContent)
 	}
 
 	func testChangedConflictPayloadReloadsSelectedContent() async throws {

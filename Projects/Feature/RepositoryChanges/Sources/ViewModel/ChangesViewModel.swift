@@ -107,6 +107,18 @@ public final class ChangesViewModel: ObservableObject {
 		}
 	}
 
+	var selectedDiffSourceID: String? {
+		guard selectedChangeIDs.count == 1, let selection = selectedChangeIDs.first else {
+			return nil
+		}
+		switch selection {
+		case .staged(let id): return "staged:\(id)"
+		case .unstaged(let id): return "unstaged:\(id)"
+		case .amend(let id): return "amend:\(id)"
+		case .conflict: return nil
+		}
+	}
+
 	var selectedFileState: GitFileState? {
 		guard let selectedChange else { return selectedAmendChange?.state }
 		switch selectedDiffSource {
@@ -165,7 +177,7 @@ public final class ChangesViewModel: ObservableObject {
 		if operationState != snapshot.operationState {
 			operationState = snapshot.operationState
 		}
-		preserveSelection()
+		preserveSelection(forceReload: true)
 	}
 
 	public func reset() {

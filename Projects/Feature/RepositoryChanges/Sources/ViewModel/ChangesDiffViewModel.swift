@@ -82,11 +82,7 @@ public final class ChangesDiffViewModel: ObservableObject {
 		if shouldShowLoading {
 			clearDisplayedDiff()
 		}
-		requestDiff(
-			for: selection,
-			at: repositoryURL,
-			showsLoadingState: shouldShowLoading
-		)
+		requestDiff(for: selection, at: repositoryURL)
 	}
 
 	public func didChangeDiffOptions() {
@@ -119,6 +115,7 @@ public final class ChangesDiffViewModel: ObservableObject {
 			let repositoryURL = dependencies.repositoryURL(),
 			case .workingTree(_, let change, let source) = selection,
 			selectedDiffLineAction == action,
+			!isLoading,
 			!isApplyingAction
 		else { return }
 		requestMutation(replacing: change, source: source) {
@@ -139,6 +136,7 @@ public final class ChangesDiffViewModel: ObservableObject {
 			let repositoryURL = dependencies.repositoryURL(),
 			case .workingTree(_, let change, let source) = selection,
 			selectedDiffHunkActions.contains(action),
+			!isLoading,
 			!isApplyingAction
 		else { return }
 		if action == .discard {
@@ -165,7 +163,9 @@ public final class ChangesDiffViewModel: ObservableObject {
 			let confirmation = pendingConfirmation,
 			let repositoryURL = dependencies.repositoryURL(),
 			case .workingTree(_, let selectedChange, let source) = selection,
-			selectedChange == confirmation.change
+			selectedChange == confirmation.change,
+			!isLoading,
+			!isApplyingAction
 		else {
 			pendingConfirmation = nil
 			return
@@ -188,13 +188,12 @@ public final class ChangesDiffViewModel: ObservableObject {
 
 	private func requestDiff(
 		for selection: ChangesDiffSelection,
-		at repositoryURL: URL,
-		showsLoadingState: Bool
+		at repositoryURL: URL
 	) {
 		loadRequestSequence += 1
 		let requestID = loadRequestSequence
 		activeLoadRequestID = requestID
-		isLoading = showsLoadingState
+		isLoading = true
 		loadTask = Task {
 			defer { finishLoad(for: requestID) }
 			do {
@@ -218,6 +217,7 @@ public final class ChangesDiffViewModel: ObservableObject {
 			} catch is CancellationError {
 				return
 			} catch {
+				guard activeLoadRequestID == requestID else { return }
 				actions.didReceiveError(error.localizedDescription)
 			}
 		}

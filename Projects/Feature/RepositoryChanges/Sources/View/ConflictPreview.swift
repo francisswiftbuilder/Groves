@@ -59,7 +59,7 @@ struct ConflictPreview: View {
 				}
 				.buttonStyle(.borderedProminent)
 				.controlSize(.small)
-				.disabled(viewModel.isLoading)
+				.disabled(viewModel.isLoading || viewModel.isLoadingContent)
 
 				Menu("File Actions", systemImage: "ellipsis.circle") {
 					Button(currentFileResolutionTitle, systemImage: "arrow.down.doc") {
@@ -77,6 +77,7 @@ struct ConflictPreview: View {
 				.menuStyle(.borderlessButton)
 				.fixedSize()
 				.help("File Actions")
+				.disabled(viewModel.isLoading || viewModel.isLoadingContent)
 			}
 			.padding(.horizontal, 12)
 			.frame(minHeight: 52)
@@ -91,12 +92,7 @@ struct ConflictPreview: View {
 
 	@ViewBuilder
 	private var conflictContent: some View {
-		if viewModel.isLoadingContent {
-			LoadingStateView(
-				title: "Loading Conflict",
-				message: "Reading the current, incoming, and working versions."
-			)
-		} else if let content = viewModel.content {
+		if let content = viewModel.content {
 			if DiffImageFileSupport.isSupported(path: conflict.path) {
 				ImageDiffView(
 					diff: GitImageDiff(
@@ -121,7 +117,7 @@ struct ConflictPreview: View {
 									incomingLabel: viewModel.incomingLabel,
 									filePath: conflict.path,
 									searchText: searchModel.query,
-									isLoading: viewModel.isLoading,
+									isLoading: viewModel.isLoading || viewModel.isLoadingContent,
 									onResolve: { resolution in
 										viewModel.didResolve(
 											hunk,
@@ -150,6 +146,11 @@ struct ConflictPreview: View {
 				}
 				.defaultScrollAnchor(.topLeading)
 			}
+		} else if viewModel.isLoadingContent {
+			LoadingStateView(
+				title: "Loading Conflict",
+				message: "Reading the current, incoming, and working versions."
+			)
 		} else {
 			ContentUnavailableView(
 				"Preview Unavailable",

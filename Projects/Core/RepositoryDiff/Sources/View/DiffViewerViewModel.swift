@@ -5,19 +5,34 @@ import Foundation
 final class DiffViewerViewModel: ObservableObject {
 	struct Input: Hashable {
 		let sourceID: String?
+		let filePath: String?
 		let diff: String
+
+		init(sourceID: String?, filePath: String? = nil, diff: String) {
+			self.sourceID = sourceID
+			self.filePath = filePath ?? sourceID
+			self.diff = diff
+		}
 	}
 
-	@Published private(set) var document = DiffDocument.empty
-	@Published private(set) var sideBySideRows: [DiffSideBySideRow] = []
+	struct Presentation: Equatable {
+		let input: Input
+		let document: DiffDocument
+		let sideBySideRows: [DiffSideBySideRow]
+	}
+
+	@Published private(set) var presentation: Presentation?
 	@Published private(set) var isParsing = false
-	@Published private(set) var parsedInput: Input?
 
 	private var activeRequestID: Int?
 	private var requestSequence = 0
 
 	func hasParsed(_ input: Input) -> Bool {
-		parsedInput == input
+		presentation?.input == input
+	}
+
+	func canInteract(with input: Input) -> Bool {
+		presentation?.input == input
 	}
 
 	func update(diff: String) async {
@@ -39,7 +54,11 @@ final class DiffViewerViewModel: ObservableObject {
 			let document = DiffDocument(
 				lines: try DiffParser.parseCancellable(input.diff).filter { $0.kind != .metadata }
 			)
-			return (document, try DiffSideBySideBuilder.buildCancellable(from: document))
+			return Presentation(
+				input: input,
+				document: document,
+				sideBySideRows: try DiffSideBySideBuilder.buildCancellable(from: document)
+			)
 		}
 		let result = try? await withTaskCancellationHandler {
 			try await parseTask.value
@@ -47,8 +66,6 @@ final class DiffViewerViewModel: ObservableObject {
 			parseTask.cancel()
 		}
 		guard let result, activeRequestID == requestID else { return }
-		document = result.0
-		sideBySideRows = result.1
-		parsedInput = input
+		presentation = result
 	}
 }

@@ -54,28 +54,31 @@ final class DiffPresentationContractTests: XCTestCase {
 		await model.update(diff: Self.diff(lineCount: 40))
 
 		XCTAssertFalse(model.isParsing)
-		XCTAssertFalse(model.document.lines.isEmpty)
+		XCTAssertFalse(model.presentation?.document.lines.isEmpty == true)
 		XCTAssertFalse(
-			model.sideBySideRows.isEmpty,
+			model.presentation?.sideBySideRows.isEmpty == true,
 			"Both layouts must be ready after one parse, so switching layout needs no work"
 		)
 	}
 
-	func testParsingRecordsTheExactCompletedInput() async {
+	func testParsingPublishesTheExactCompletedPresentation() async {
 		let model = DiffViewerViewModel()
 		let input = DiffViewerViewModel.Input(
-			sourceID: "Sources/App.swift",
+			sourceID: "unstaged:Sources/App.swift",
+			filePath: "Sources/App.swift",
 			diff: Self.diff(lineCount: 20)
 		)
 
 		XCTAssertFalse(model.hasParsed(input))
-		XCTAssertNil(model.parsedInput)
+		XCTAssertNil(model.presentation)
 
 		await model.update(input: input)
 
 		XCTAssertTrue(model.hasParsed(input))
-		XCTAssertEqual(model.parsedInput, input)
-		XCTAssertFalse(model.document.lines.isEmpty)
+		XCTAssertTrue(model.canInteract(with: input))
+		XCTAssertEqual(model.presentation?.input, input)
+		XCTAssertFalse(model.presentation?.document.lines.isEmpty == true)
+		XCTAssertFalse(model.presentation?.sideBySideRows.isEmpty == true)
 	}
 
 	func testMetadataOnlyInputBecomesEmptyOnlyAfterParseCompletes() async {
@@ -90,34 +93,36 @@ final class DiffPresentationContractTests: XCTestCase {
 		await model.update(input: input)
 
 		XCTAssertTrue(model.hasParsed(input))
-		XCTAssertTrue(model.document.lines.isEmpty)
+		XCTAssertTrue(model.presentation?.document.lines.isEmpty == true)
 	}
 
-	func testParsingAReplacementKeepsTheLastDocumentVisible() async throws {
+	func testParsingAReplacementKeepsTheLastPresentationReadOnly() async throws {
 		let model = DiffViewerViewModel()
 		let initialInput = DiffViewerViewModel.Input(
-			sourceID: "Sources/App.swift",
+			sourceID: "unstaged:Sources/App.swift",
+			filePath: "Sources/App.swift",
 			diff: Self.diff(lineCount: 20)
 		)
 		let replacementInput = DiffViewerViewModel.Input(
-			sourceID: "Sources/App.swift",
+			sourceID: initialInput.sourceID,
+			filePath: initialInput.filePath,
 			diff: Self.diff(lineCount: 100_000)
 		)
 		await model.update(input: initialInput)
-		let initialDocument = model.document
+		let initialPresentation = model.presentation
 		let replacementTask = Task {
 			await model.update(input: replacementInput)
 		}
 
 		try await waitUntil { model.isParsing }
 
-		XCTAssertEqual(model.document, initialDocument)
-		XCTAssertEqual(model.parsedInput, initialInput)
-		XCTAssertFalse(model.hasParsed(replacementInput))
+		XCTAssertEqual(model.presentation, initialPresentation)
+		XCTAssertTrue(model.canInteract(with: initialInput))
+		XCTAssertFalse(model.canInteract(with: replacementInput))
 		await replacementTask.value
-		XCTAssertNotEqual(model.document, initialDocument)
-		XCTAssertEqual(model.parsedInput, replacementInput)
-		XCTAssertTrue(model.hasParsed(replacementInput))
+		XCTAssertNotEqual(model.presentation, initialPresentation)
+		XCTAssertEqual(model.presentation?.input, replacementInput)
+		XCTAssertTrue(model.canInteract(with: replacementInput))
 	}
 
 	func testAutomaticSnapshotRefreshKeepsTheSelectedDiffVisible() async throws {
@@ -156,11 +161,15 @@ final class DiffPresentationContractTests: XCTestCase {
 				fileTree: []
 			)
 		)
-		try await Task.sleep(for: .milliseconds(150))
+		try await waitUntil { await gate.callCount(of: label) == 2 }
+
+		XCTAssertEqual(workspace.changesDiffViewModel.diff, diff)
+		XCTAssertTrue(workspace.changesDiffViewModel.isLoading)
+		await gate.resumeCall(1)
+		try await waitUntil { workspace.changesDiffViewModel.isLoading == false }
 
 		let callCount = await gate.callCount(of: label)
-		XCTAssertEqual(callCount, 1)
-		XCTAssertFalse(workspace.changesDiffViewModel.isLoading)
+		XCTAssertEqual(callCount, 2)
 		XCTAssertEqual(workspace.changesDiffViewModel.diff, diff)
 	}
 
@@ -267,8 +276,8 @@ final class DiffPresentationContractTests: XCTestCase {
 			try await waitUntil(timeout: .seconds(20)) { model.isParsing == false }
 		}
 
-		XCTAssertEqual(model.document.lines.count, lineCount + 1)
-		XCTAssertFalse(model.sideBySideRows.isEmpty)
+		XCTAssertEqual(model.presentation?.document.lines.count, lineCount + 1)
+		XCTAssertFalse(model.presentation?.sideBySideRows.isEmpty == true)
 		let callCount = await gate.callCount(of: label)
 		XCTAssertEqual(callCount, 1, "A single selection must issue a single diff request")
 		XCTAssertLessThan(

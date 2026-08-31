@@ -71,7 +71,7 @@ public final class ConflictViewModel: ObservableObject {
 			didSelectConflict(nil)
 			return
 		}
-		didSelectConflict(refreshedConflict)
+		didSelectConflict(refreshedConflict, forceReload: true)
 	}
 
 	public func reset() {
@@ -90,7 +90,7 @@ public final class ConflictViewModel: ObservableObject {
 	}
 
 	public func didSelectConflict(_ conflict: GitConflict?, forceReload: Bool = false) {
-		let didChangeSelection = selectedConflict != conflict
+		let didChangeSelection = selectedConflict?.id != conflict?.id
 		guard forceReload || didChangeSelection else { return }
 		contentTask?.cancel()
 		selectedConflict = conflict
@@ -104,7 +104,7 @@ public final class ConflictViewModel: ObservableObject {
 		let requestID = contentRequestSequence
 		activeContentRequestID = requestID
 		contentTask = Task {
-			isLoadingContent = content == nil
+			isLoadingContent = true
 			defer {
 				if activeContentRequestID == requestID {
 					activeContentRequestID = nil
@@ -124,7 +124,6 @@ public final class ConflictViewModel: ObservableObject {
 				return
 			} catch {
 				guard activeContentRequestID == requestID else { return }
-				content = nil
 			}
 		}
 	}
@@ -145,7 +144,11 @@ public final class ConflictViewModel: ObservableObject {
 		in conflict: GitConflict,
 		using resolution: GitConflictHunkResolution
 	) {
-		guard let repositoryURL = dependencies.repositoryURL(), !isLoading else { return }
+		guard
+			let repositoryURL = dependencies.repositoryURL(),
+			!isLoadingContent,
+			!isLoading
+		else { return }
 		mutationTask?.cancel()
 		let requestID = beginMutation()
 		mutationTask = Task { [weak self] in
@@ -183,7 +186,11 @@ public final class ConflictViewModel: ObservableObject {
 	}
 
 	func didMarkResolved(_ conflict: GitConflict) {
-		guard let repositoryURL = dependencies.repositoryURL(), !isLoading else { return }
+		guard
+			let repositoryURL = dependencies.repositoryURL(),
+			!isLoadingContent,
+			!isLoading
+		else { return }
 		mutationTask?.cancel()
 		let requestID = beginMutation()
 		mutationTask = Task { [weak self] in
@@ -246,7 +253,9 @@ public final class ConflictViewModel: ObservableObject {
 	func didConfirmPendingConfirmation() {
 		guard
 			case .markResolved(let conflict) = pendingConfirmation,
-			let repositoryURL = dependencies.repositoryURL()
+			let repositoryURL = dependencies.repositoryURL(),
+			!isLoadingContent,
+			!isLoading
 		else { return }
 		pendingConfirmation = nil
 		requestMutation {
@@ -260,7 +269,11 @@ public final class ConflictViewModel: ObservableObject {
 	private func requestMutation(
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
 	) {
-		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
+		guard
+			!isLoadingContent,
+			!isLoading,
+			let expectedRepositoryURL = dependencies.repositoryURL()
+		else { return }
 		mutationTask?.cancel()
 		let requestID = beginMutation()
 		mutationTask = Task { [weak self] in
