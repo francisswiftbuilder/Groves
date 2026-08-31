@@ -113,9 +113,26 @@ actor GitProcessRunner {
 		do {
 			try credentialStore.commitPending(operationID: operationID)
 		} catch {
-			try? credentialStore.discardPending(operationID: operationID)
-			configuration.noticeHandler?(.credentialPersistenceFailed)
+			let commitDiagnostic = credentialDiagnostic(for: error, stage: "commit")
+			let discardDiagnostic: String?
+			do {
+				try credentialStore.discardPending(operationID: operationID)
+				discardDiagnostic = nil
+			} catch {
+				discardDiagnostic = credentialDiagnostic(for: error, stage: "discard")
+			}
+			let diagnostic = [commitDiagnostic, discardDiagnostic]
+				.compactMap { $0 }
+				.joined(separator: "; ")
+			configuration.noticeHandler?(.credentialPersistenceFailed(diagnostic: diagnostic))
 		}
+	}
+
+	private func credentialDiagnostic(for error: any Error, stage: String) -> String {
+		if let error = error as? GitCredentialStoreError {
+			return "\(stage): \(error.diagnosticDescription)"
+		}
+		return "\(stage): error-type=\(String(reflecting: type(of: error)))"
 	}
 
 	private func processEnvironment(
