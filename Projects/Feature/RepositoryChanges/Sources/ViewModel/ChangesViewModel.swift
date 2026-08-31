@@ -16,6 +16,8 @@ public final class ChangesViewModel: ObservableObject {
 	private let actions: ChangesViewModelActions
 	private var operationState: RepositoryOperationState = .normal
 	private var mutationTask: Task<Void, Never>?
+	private var activeMutationRequestID: Int?
+	private var mutationRequestSequence = 0
 
 	public init(
 		dependencies: ChangesViewModelDependencies,
@@ -160,12 +162,17 @@ public final class ChangesViewModel: ObservableObject {
 		if amendChanges != snapshot.amendChanges {
 			amendChanges = snapshot.amendChanges
 		}
-		operationState = snapshot.operationState
-		preserveSelection(forceReload: true)
+		if operationState != snapshot.operationState {
+			operationState = snapshot.operationState
+		}
+		preserveSelection()
 	}
 
 	public func reset() {
 		cancelTasks()
+		operationState = .normal
+		filterText = ""
+		pendingConfirmation = nil
 		didSelectConflict(nil)
 		selectedChangeIDs = []
 		changes = []
@@ -176,6 +183,9 @@ public final class ChangesViewModel: ObservableObject {
 
 	func cancelTasks() {
 		mutationTask?.cancel()
+		mutationTask = nil
+		activeMutationRequestID = nil
+		isLoading = false
 	}
 
 	public func didSelectChanges(_ selections: Set<WorkspaceChangeSelection>) async {
@@ -311,21 +321,38 @@ public final class ChangesViewModel: ObservableObject {
 	) {
 		guard let expectedRepositoryURL = repositoryURL() else { return }
 		mutationTask?.cancel()
-		mutationTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		let requestID = beginMutation()
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
 				let snapshot = try await operation()
+				guard let self, self.activeMutationRequestID == requestID else { return }
 				didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, self.activeMutationRequestID == requestID else { return }
 				didReceiveError(error.localizedDescription)
 				if let snapshot = try? await contentUseCase.loadSnapshot(at: expectedRepositoryURL) {
+					guard activeMutationRequestID == requestID else { return }
 					didProduceSnapshot(snapshot)
 				}
 			}
 		}
+	}
+
+	private func beginMutation() -> Int {
+		mutationRequestSequence += 1
+		activeMutationRequestID = mutationRequestSequence
+		isLoading = true
+		return mutationRequestSequence
+	}
+
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isLoading = false
 	}
 
 	public func didApplyDiffMutation(

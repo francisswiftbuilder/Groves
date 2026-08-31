@@ -77,8 +77,8 @@ public struct DiffView: View {
 				diffFooter
 			}
 		}
-		.task(id: diff) {
-			await viewerModel.update(diff: diff)
+		.task(id: viewerInput) {
+			await viewerModel.update(input: viewerInput)
 		}
 	}
 
@@ -185,7 +185,7 @@ public struct DiffView: View {
 				.controlSize(.regular)
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 				.accessibilityLabel("Applying diff change")
-		} else if isLoadingDiff || viewerModel.isParsing && viewerModel.document.lines.isEmpty {
+		} else if isLoadingDiff {
 			LoadingStateView(
 				title: "Loading Diff",
 				message: "Reading the selected file changes."
@@ -208,6 +208,11 @@ public struct DiffView: View {
 				message: "Select a tracked text change to inspect its diff.",
 				systemImage: "doc.text.magnifyingglass"
 			)
+		} else if !viewerModel.hasParsed(viewerInput) && viewerModel.document.lines.isEmpty {
+			LoadingStateView(
+				title: "Loading Diff",
+				message: "Reading the selected file changes."
+			)
 		} else if viewerModel.document.lines.isEmpty {
 			EmptyStateView(
 				title: "No Text Diff",
@@ -228,6 +233,10 @@ public struct DiffView: View {
 				onApplyHunk: onApplyHunk
 			)
 		}
+	}
+
+	private var viewerInput: DiffViewerViewModel.Input {
+		DiffViewerViewModel.Input(sourceID: filePath, diff: diff)
 	}
 
 	private var isImageFile: Bool {

@@ -50,8 +50,8 @@ public struct CommitDiffView: View {
 				diffFooter(file: file)
 			}
 		}
-		.task(id: file?.diff) {
-			await viewerModel.update(diff: file?.diff ?? "")
+		.task(id: viewerInput) {
+			await viewerModel.update(input: viewerInput)
 		}
 	}
 
@@ -121,7 +121,7 @@ public struct CommitDiffView: View {
 
 	@ViewBuilder
 	private var diffContent: some View {
-		if isLoading || viewerModel.isParsing && viewerModel.document.lines.isEmpty {
+		if isLoading {
 			LoadingStateView(
 				title: "Loading Commit Diff",
 				message: "Reading the files changed by this commit."
@@ -138,6 +138,11 @@ public struct CommitDiffView: View {
 					title: "Image Preview Unavailable",
 					message: "Neither revision contains a supported image.",
 					systemImage: "photo.badge.exclamationmark"
+				)
+			} else if !viewerModel.hasParsed(viewerInput) && viewerModel.document.lines.isEmpty {
+				LoadingStateView(
+					title: "Loading Commit Diff",
+					message: "Reading the files changed by this commit."
 				)
 			} else if viewerModel.document.lines.isEmpty {
 				EmptyStateView(
@@ -166,6 +171,10 @@ public struct CommitDiffView: View {
 				systemImage: "doc.text.magnifyingglass"
 			)
 		}
+	}
+
+	private var viewerInput: DiffViewerViewModel.Input {
+		DiffViewerViewModel.Input(sourceID: file?.id, diff: file?.diff ?? "")
 	}
 
 	private var isImageFile: Bool {
