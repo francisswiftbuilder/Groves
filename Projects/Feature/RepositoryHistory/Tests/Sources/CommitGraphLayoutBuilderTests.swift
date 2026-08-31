@@ -121,6 +121,25 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 		XCTAssertEqual(items[1].incomingSegments.map(\.colorIndex), [0])
 	}
 
+	func testCancellableBuildStopsWhenTaskIsCancelled() async {
+		let commits = (0..<10_000).map {
+			makeCommit(hash: "commit-\($0)", parents: [])
+		}
+		let task = Task.detached {
+			try CommitGraphLayoutBuilder.buildCancellable(commits: commits)
+		}
+
+		task.cancel()
+
+		do {
+			_ = try await task.value
+			XCTFail("Cancelled graph layout completed")
+		} catch is CancellationError {
+		} catch {
+			XCTFail("Unexpected error: \(error)")
+		}
+	}
+
 	private func makeCommit(hash: String, parents: [String]) -> GitCommit {
 		GitCommit(
 			hash: hash,

@@ -26,4 +26,29 @@ final class CommitDiffFileParserTests: XCTestCase {
 		XCTAssertEqual(files.map(\.additions), [1, 1])
 		XCTAssertEqual(files.map(\.deletions), [1, 0])
 	}
+
+	func testCancellableParserStopsWhenTaskIsCancelled() async {
+		let section = """
+			diff --git a/File.swift b/File.swift
+			--- a/File.swift
+			+++ b/File.swift
+			@@ -1 +1 @@
+			-old
+			+new
+			"""
+		let diff = Array(repeating: section, count: 10_000).joined(separator: "\n")
+		let task = Task.detached {
+			try CommitDiffFileParser.parseCancellable(diff)
+		}
+
+		task.cancel()
+
+		do {
+			_ = try await task.value
+			XCTFail("Cancelled diff parsing completed")
+		} catch is CancellationError {
+		} catch {
+			XCTFail("Unexpected error: \(error)")
+		}
+	}
 }

@@ -11,6 +11,18 @@ import XCTest
 
 @MainActor
 final class WorkspaceViewModelTests: XCTestCase {
+	func testRefreshKeepsLoadedWorkspaceContentVisible() async throws {
+		let workspace = makeRepositoryWorkspace()
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { !workspace.viewModel.isLoading }
+
+		workspace.viewModel.didRequestRefresh()
+
+		XCTAssertTrue(workspace.viewModel.isLoading)
+		XCTAssertFalse(workspace.viewModel.isLoadingContent)
+		try await waitUntil { !workspace.viewModel.isLoading }
+	}
+
 	func testStagedAndUnstagedSelectionsUseIndependentDiffSources() async throws {
 		let change = WorkingTreeChange(
 			path: "GalleryView.swift",

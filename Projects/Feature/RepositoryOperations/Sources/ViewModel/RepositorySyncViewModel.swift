@@ -14,6 +14,8 @@ public final class RepositorySyncViewModel: ObservableObject {
 	private var currentBranch: GitBranch?
 	private var operationState: RepositoryOperationState = .normal
 	private var networkTask: Task<Void, Never>?
+	private var activeNetworkRequestID: Int?
+	private var networkRequestSequence = 0
 
 	public init(
 		dependencies: RepositorySyncViewModelDependencies,
@@ -41,13 +43,16 @@ public final class RepositorySyncViewModel: ObservableObject {
 
 	public func apply(_ snapshot: RepositorySnapshot) {
 		currentBranch = snapshot.branches.first(where: \.isCurrent)
-		remotes = snapshot.remotes
+		if remotes != snapshot.remotes {
+			remotes = snapshot.remotes
+		}
 		operationState = snapshot.operationState
 	}
 
 	public func reset() {
 		networkTask?.cancel()
 		networkTask = nil
+		activeNetworkRequestID = nil
 		pendingPullDivergence = nil
 		pendingConfirmation = nil
 		isLoading = false
@@ -63,13 +68,15 @@ public final class RepositorySyncViewModel: ObservableObject {
 			!isLoading
 		else { return }
 		networkTask?.cancel()
-		networkTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		let requestID = beginNetworkRequest()
+		let referencesUseCase = dependencies.referencesUseCase
+		networkTask = Task { [weak self] in
+			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
-				let preparation = try await dependencies.referencesUseCase.preparePull(
+				let preparation = try await referencesUseCase.preparePull(
 					at: repositoryURL
 				)
+				guard let self, self.activeNetworkRequestID == requestID else { return }
 				actions.didProduceSnapshot(preparation.snapshot)
 				if case .diverged(let divergence) = preparation.outcome {
 					pendingPullDivergence = divergence
@@ -77,6 +84,7 @@ public final class RepositorySyncViewModel: ObservableObject {
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, self.activeNetworkRequestID == requestID else { return }
 				actions.didReceiveError(error.localizedDescription)
 				await restoreSnapshot(at: repositoryURL)
 			}
@@ -89,8 +97,9 @@ public final class RepositorySyncViewModel: ObservableObject {
 			let divergence = pendingPullDivergence
 		else { return }
 		pendingPullDivergence = nil
+		let referencesUseCase = dependencies.referencesUseCase
 		requestNetworkMutation {
-			try await self.dependencies.referencesUseCase.resolvePull(
+			try await referencesUseCase.resolvePull(
 				divergence,
 				using: resolution,
 				at: repositoryURL
@@ -108,8 +117,9 @@ public final class RepositorySyncViewModel: ObservableObject {
 
 	public func didRequestFetchAll() {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestNetworkMutation {
-			try await self.dependencies.referencesUseCase.fetchAll(at: repositoryURL)
+			try await referencesUseCase.fetchAll(at: repositoryURL)
 		}
 	}
 
@@ -118,8 +128,9 @@ public final class RepositorySyncViewModel: ObservableObject {
 			let repositoryURL = dependencies.repositoryURL(),
 			remotes.contains(where: { $0.name == remoteName })
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestNetworkMutation {
-			try await self.dependencies.referencesUseCase.fetch(
+			try await referencesUseCase.fetch(
 				remote: remoteName,
 				at: repositoryURL
 			)
@@ -131,11 +142,15 @@ public final class RepositorySyncViewModel: ObservableObject {
 			let repositoryURL = dependencies.repositoryURL(),
 			pushAction != .unavailable
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
+		let currentBranch = currentBranch
+		let remotes = remotes
+		let operationState = operationState
 		requestNetworkMutation {
-			try await self.dependencies.referencesUseCase.push(
-				currentBranch: self.currentBranch,
-				remotes: self.remotes,
-				operationState: self.operationState,
+			try await referencesUseCase.push(
+				currentBranch: currentBranch,
+				remotes: remotes,
+				operationState: operationState,
 				selectedRemoteName: remoteName,
 				at: repositoryURL
 			)
@@ -152,8 +167,9 @@ public final class RepositorySyncViewModel: ObservableObject {
 			let repositoryURL = dependencies.repositoryURL(),
 			remotes.contains(where: { $0.name == remoteName })
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestNetworkMutation {
-			try await self.dependencies.referencesUseCase.pushTags(
+			try await referencesUseCase.pushTags(
 				remote: remoteName,
 				at: repositoryURL
 			)
@@ -178,11 +194,15 @@ public final class RepositorySyncViewModel: ObservableObject {
 			let repositoryURL = dependencies.repositoryURL(),
 			pushAction != .unavailable
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
+		let currentBranch = currentBranch
+		let remotes = remotes
+		let operationState = operationState
 		requestNetworkMutation {
-			try await self.dependencies.referencesUseCase.forcePush(
-				currentBranch: self.currentBranch,
-				remotes: self.remotes,
-				operationState: self.operationState,
+			try await referencesUseCase.forcePush(
+				currentBranch: currentBranch,
+				remotes: remotes,
+				operationState: operationState,
 				selectedRemoteName: remoteName,
 				at: repositoryURL
 			)
@@ -194,18 +214,34 @@ public final class RepositorySyncViewModel: ObservableObject {
 	) {
 		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		networkTask?.cancel()
-		networkTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		let requestID = beginNetworkRequest()
+		networkTask = Task { [weak self] in
+			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
-				actions.didProduceSnapshot(try await operation())
+				let snapshot = try await operation()
+				guard let self, self.activeNetworkRequestID == requestID else { return }
+				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, self.activeNetworkRequestID == requestID else { return }
 				actions.didReceiveError(error.localizedDescription)
 				await restoreSnapshot(at: expectedRepositoryURL)
 			}
 		}
+	}
+
+	private func beginNetworkRequest() -> Int {
+		networkRequestSequence += 1
+		activeNetworkRequestID = networkRequestSequence
+		isLoading = true
+		return networkRequestSequence
+	}
+
+	private func finishNetworkRequest(id: Int) {
+		guard activeNetworkRequestID == id else { return }
+		activeNetworkRequestID = nil
+		isLoading = false
 	}
 
 	private func restoreSnapshot(at repositoryURL: URL) async {

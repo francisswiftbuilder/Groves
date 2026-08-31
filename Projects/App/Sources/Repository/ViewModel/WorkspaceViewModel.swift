@@ -13,9 +13,12 @@ final class WorkspaceViewModel: ObservableObject {
 	private let dependencies: WorkspaceViewModelDependencies
 	private let actions: WorkspaceViewModelActions
 	private var refreshTask: Task<Void, Never>?
+	private var repositoryMonitorTask: Task<Void, Never>?
+	private var monitoredRepositoryURL: URL?
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var conflictFocusTask: Task<Void, Never>?
 	private var contentLoadID: UUID?
+	private var hasLoadedContent = false
 
 	init(
 		dependencies: WorkspaceViewModelDependencies,
@@ -34,6 +37,7 @@ final class WorkspaceViewModel: ObservableObject {
 
 	deinit {
 		refreshTask?.cancel()
+		repositoryMonitorTask?.cancel()
 		automaticRefreshTask?.cancel()
 		conflictFocusTask?.cancel()
 	}
@@ -85,11 +89,15 @@ final class WorkspaceViewModel: ObservableObject {
 
 	func didChooseRepository(_ url: URL) {
 		refreshTask?.cancel()
-		let loadID = beginContentLoad()
+		let changesRepository = repositoryURL != url
+		if changesRepository {
+			hasLoadedContent = false
+		}
+		let loadID = beginContentLoad(showsLoadingState: !hasLoadedContent)
 		refreshTask = Task {
 			defer { finishContentLoad(id: loadID) }
 			do {
-				if repositoryURL != url {
+				if changesRepository {
 					actions.resetContent()
 					expandedSidebarGroups = []
 				}
@@ -106,7 +114,7 @@ final class WorkspaceViewModel: ObservableObject {
 	func didRequestRefresh() {
 		guard let repositoryURL else { return }
 		refreshTask?.cancel()
-		let loadID = beginContentLoad()
+		let loadID = beginContentLoad(showsLoadingState: !hasLoadedContent)
 		refreshTask = Task {
 			defer { finishContentLoad(id: loadID) }
 			do {
@@ -119,8 +127,22 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func monitorRepositoryChanges() async {
-		guard let repositoryURL else { return }
+	func setRepositoryMonitoringActive(_ isActive: Bool) {
+		guard isActive, let repositoryURL else {
+			stopRepositoryMonitoring()
+			return
+		}
+		guard monitoredRepositoryURL != repositoryURL || repositoryMonitorTask == nil else {
+			return
+		}
+		stopRepositoryMonitoring()
+		monitoredRepositoryURL = repositoryURL
+		repositoryMonitorTask = Task { [weak self] in
+			await self?.monitorRepositoryChanges(at: repositoryURL)
+		}
+	}
+
+	private func monitorRepositoryChanges(at repositoryURL: URL) async {
 		let events = RepositoryFileSystemMonitor.events(at: repositoryURL)
 		defer {
 			automaticRefreshTask?.cancel()
@@ -144,6 +166,14 @@ final class WorkspaceViewModel: ObservableObject {
 				} catch {}
 			}
 		}
+	}
+
+	private func stopRepositoryMonitoring() {
+		repositoryMonitorTask?.cancel()
+		repositoryMonitorTask = nil
+		monitoredRepositoryURL = nil
+		automaticRefreshTask?.cancel()
+		automaticRefreshTask = nil
 	}
 
 	func didChangeDiffOptions() {
@@ -177,13 +207,16 @@ final class WorkspaceViewModel: ObservableObject {
 		try Task.checkCancellation()
 		guard self.repositoryURL == repositoryURL else { throw CancellationError() }
 		actions.distributeSnapshot(snapshot, repositoryURL)
+		hasLoadedContent = true
 	}
 
-	private func beginContentLoad() -> UUID {
+	private func beginContentLoad(showsLoadingState: Bool) -> UUID {
 		let id = UUID()
 		contentLoadID = id
 		isLoading = true
-		isLoadingContent = true
+		if showsLoadingState {
+			isLoadingContent = true
+		}
 		return id
 	}
 

@@ -12,8 +12,8 @@ struct WorkspaceDetail: View {
 	@ObservedObject var viewModel: WorkspaceViewModel
 	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
 	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
-	@ObservedObject private var syncViewModel: RepositorySyncViewModel
-	@ObservedObject private var remotesViewModel: RemotesViewModel
+	let syncViewModel: RepositorySyncViewModel
+	let remotesViewModel: RemotesViewModel
 	let changesViewModel: ChangesViewModel
 	let changesDiffViewModel: ChangesDiffViewModel
 	let commitViewModel: CommitViewModel
@@ -22,6 +22,9 @@ struct WorkspaceDetail: View {
 	let stashesViewModel: StashesViewModel
 	let treeViewModel: RepositoryTreeViewModel
 	let diffPreferences: WorkspaceDiffPreferences
+	let changesDiffSearchViewModel: RepositorySearchViewModel
+	let historyDiffSearchViewModel: RepositorySearchViewModel
+	let stashesDiffSearchViewModel: RepositorySearchViewModel
 	let commitActions: RepositoryCommitActions
 
 	init(
@@ -38,6 +41,9 @@ struct WorkspaceDetail: View {
 		stashesViewModel: StashesViewModel,
 		treeViewModel: RepositoryTreeViewModel,
 		diffPreferences: WorkspaceDiffPreferences,
+		changesDiffSearchViewModel: RepositorySearchViewModel,
+		historyDiffSearchViewModel: RepositorySearchViewModel,
+		stashesDiffSearchViewModel: RepositorySearchViewModel,
 		commitActions: RepositoryCommitActions
 	) {
 		self.viewModel = viewModel
@@ -48,11 +54,14 @@ struct WorkspaceDetail: View {
 		self.historyViewModel = historyViewModel
 		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
 		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
-		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
-		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
+		self.syncViewModel = syncViewModel
+		self.remotesViewModel = remotesViewModel
 		self.stashesViewModel = stashesViewModel
 		self.treeViewModel = treeViewModel
 		self.diffPreferences = diffPreferences
+		self.changesDiffSearchViewModel = changesDiffSearchViewModel
+		self.historyDiffSearchViewModel = historyDiffSearchViewModel
+		self.stashesDiffSearchViewModel = stashesDiffSearchViewModel
 		self.commitActions = commitActions
 	}
 
@@ -75,6 +84,7 @@ struct WorkspaceDetail: View {
 				switch viewModel.selectedSection ?? .changes {
 				case .changes:
 					ChangesView(
+						diffSearchViewModel: changesDiffSearchViewModel,
 						viewModel: changesViewModel,
 						diffViewModel: changesDiffViewModel,
 						commitViewModel: commitViewModel,
@@ -86,15 +96,15 @@ struct WorkspaceDetail: View {
 						onDiffOptionsChanged: viewModel.didChangeDiffOptions
 					)
 				case .history, .branches:
-					HistoryView(
+					RepositoryHistoryDetailView(
+						diffSearchViewModel: historyDiffSearchViewModel,
 						historyViewModel: historyViewModel,
+						operationViewModel: operationViewModel,
+						referencesViewModel: referencesViewModel,
+						syncViewModel: syncViewModel,
+						remotesViewModel: remotesViewModel,
 						diffPreferences: diffPreferences,
 						repositoryName: viewModel.repositoryName,
-						currentBranchStatus: referencesViewModel.currentBranchStatus,
-						operationState: operationViewModel.operationState,
-						isOperationLoading: operationViewModel.isLoading || syncViewModel.isLoading,
-						canCheckoutCommit: referencesViewModel.canCheckoutCommit,
-						remoteNames: Set(remotesViewModel.remotes.map(\.name)),
 						commitActions: commitActions,
 						onDiffOptionsChanged: viewModel.didChangeDiffOptions
 					)
@@ -105,6 +115,7 @@ struct WorkspaceDetail: View {
 					)
 				case .stashes:
 					StashesView(
+						diffSearchViewModel: stashesDiffSearchViewModel,
 						stashesViewModel: stashesViewModel,
 						diffPreferences: diffPreferences,
 						onDiffOptionsChanged: viewModel.didChangeDiffOptions

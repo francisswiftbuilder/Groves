@@ -26,6 +26,13 @@ final class DiffPresentationContractTests: XCTestCase {
 
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
 		try await waitUntil { await gate.callCount(of: label) == 1 }
+		let searchModel = workspace.changesDiffSearchViewModel
+		searchModel.update(
+			sources: [RepositorySearchSource(id: 1, text: "layout search state")]
+		)
+		searchModel.query = "search"
+		try await waitUntil { searchModel.matches.count == 1 }
+		let selectedMatch = searchModel.currentMatch
 
 		workspace.diffPreferences.presentationMode = .sideBySide
 		workspace.diffPreferences.presentationMode = .unified
@@ -37,6 +44,8 @@ final class DiffPresentationContractTests: XCTestCase {
 			1,
 			"Switching layout must not reload the diff"
 		)
+		XCTAssertEqual(searchModel.query, "search")
+		XCTAssertEqual(searchModel.currentMatch, selectedMatch)
 	}
 
 	func testSingleParseProducesBothLayouts() async throws {
@@ -50,6 +59,65 @@ final class DiffPresentationContractTests: XCTestCase {
 			model.sideBySideRows.isEmpty,
 			"Both layouts must be ready after one parse, so switching layout needs no work"
 		)
+	}
+
+	func testParsingAReplacementKeepsTheLastDocumentVisible() async throws {
+		let model = DiffViewerViewModel()
+		let initialDiff = Self.diff(lineCount: 20)
+		await model.update(diff: initialDiff)
+		let initialDocument = model.document
+		let replacementTask = Task {
+			await model.update(diff: Self.diff(lineCount: 100_000))
+		}
+
+		try await waitUntil { model.isParsing }
+
+		XCTAssertEqual(model.document, initialDocument)
+		await replacementTask.value
+		XCTAssertNotEqual(model.document, initialDocument)
+	}
+
+	func testAutomaticSnapshotRefreshKeepsTheSelectedDiffVisible() async throws {
+		let change = WorkingTreeChange(
+			path: "README.md",
+			previousPath: nil,
+			indexState: .unchanged,
+			workingTreeState: .modified
+		)
+		let gate = GitDiffGate(suspendsRequests: true)
+		let diff = Self.diff(lineCount: 8)
+		let workspace = makeRepositoryWorkspace(
+			repository: GitRepositoryStub(
+				changes: [change],
+				unstagedDiff: diff,
+				diffGate: gate
+			)
+		)
+		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
+
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		try await waitUntil { await gate.callCount(of: label) == 1 }
+		await gate.resumeCall(0)
+		try await waitUntil { workspace.changesDiffViewModel.diff == diff }
+
+		workspace.viewModel.didProduceSnapshot(
+			RepositorySnapshot(
+				changes: [change],
+				amendChanges: [],
+				commits: [],
+				branches: [],
+				remotes: [],
+				operationState: .normal,
+				tags: [],
+				stashes: [],
+				fileTree: []
+			)
+		)
+		try await waitUntil { await gate.callCount(of: label) == 2 }
+
+		XCTAssertFalse(workspace.changesDiffViewModel.isLoading)
+		XCTAssertEqual(workspace.changesDiffViewModel.diff, diff)
+		await gate.resumeCall(1)
 	}
 
 	func testSearchStateSurvivesAnIdenticalSourceUpdate() async throws {
@@ -74,6 +142,51 @@ final class DiffPresentationContractTests: XCTestCase {
 			selectedMatch,
 			"Re-rendering the same diff must not reset the find selection"
 		)
+	}
+
+	func testLayoutChangeKeepsCallerOwnedSearchState() async throws {
+		let searchModel = RepositorySearchViewModel()
+		let document = DiffDocument(lines: DiffParser.parse(Self.diff(lineCount: 8)))
+		let sideBySideRows = DiffSideBySideBuilder.build(from: document)
+		searchModel.update(
+			sources: document.lines.map {
+				RepositorySearchSource(id: $0.id, text: $0.sourceText)
+			}
+		)
+		searchModel.query = "added"
+		try await waitUntil { searchModel.matches.isEmpty == false }
+		searchModel.next()
+		let selectedMatch = searchModel.currentMatch
+
+		let sideBySide = DiffViewer(
+			searchModel: searchModel,
+			document: document,
+			sideBySideRows: sideBySideRows,
+			presentationMode: .sideBySide,
+			filePath: "Sources/App.swift",
+			lineAction: nil,
+			hunkActions: [],
+			isApplyingAction: false,
+			onApplyLine: { _, _ in },
+			onApplyHunk: { _, _ in }
+		)
+		let unified = DiffViewer(
+			searchModel: searchModel,
+			document: document,
+			sideBySideRows: sideBySideRows,
+			presentationMode: .unified,
+			filePath: "Sources/App.swift",
+			lineAction: nil,
+			hunkActions: [],
+			isApplyingAction: false,
+			onApplyLine: { _, _ in },
+			onApplyHunk: { _, _ in }
+		)
+
+		XCTAssertTrue(sideBySide.searchModel === searchModel)
+		XCTAssertTrue(unified.searchModel === searchModel)
+		XCTAssertEqual(searchModel.query, "added")
+		XCTAssertEqual(searchModel.currentMatch, selectedMatch)
 	}
 
 	func testTenThousandLineDiffParsesOnce() async throws {
@@ -116,7 +229,7 @@ final class DiffPresentationContractTests: XCTestCase {
 		XCTAssertEqual(callCount, 1, "A single selection must issue a single diff request")
 		XCTAssertLessThan(
 			elapsed,
-			.seconds(10),
+			.seconds(2),
 			"Parsing \(lineCount) lines took \(elapsed)"
 		)
 	}

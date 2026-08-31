@@ -3,17 +3,19 @@ import CoreRepositoryUI
 import SwiftUI
 
 public struct ChangesView: View {
+	private let diffSearchViewModel: RepositorySearchViewModel
 	@ObservedObject private var viewModel: ChangesViewModel
 	private let diffViewModel: ChangesDiffViewModel
-	@ObservedObject private var commitViewModel: CommitViewModel
-	@ObservedObject private var conflictViewModel: ConflictViewModel
-	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
+	private let commitViewModel: CommitViewModel
+	private let conflictViewModel: ConflictViewModel
+	private let diffPreferences: WorkspaceDiffPreferences
 	private let repositoryName: String
 	private let currentBranchStatus: String
 	private let repositoryURL: URL?
 	private let onDiffOptionsChanged: () -> Void
 
 	public init(
+		diffSearchViewModel: RepositorySearchViewModel,
 		viewModel: ChangesViewModel,
 		diffViewModel: ChangesDiffViewModel,
 		commitViewModel: CommitViewModel,
@@ -24,11 +26,12 @@ public struct ChangesView: View {
 		repositoryURL: URL?,
 		onDiffOptionsChanged: @escaping () -> Void
 	) {
+		self.diffSearchViewModel = diffSearchViewModel
 		_viewModel = ObservedObject(wrappedValue: viewModel)
 		self.diffViewModel = diffViewModel
-		_commitViewModel = ObservedObject(wrappedValue: commitViewModel)
-		_conflictViewModel = ObservedObject(wrappedValue: conflictViewModel)
-		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
+		self.commitViewModel = commitViewModel
+		self.conflictViewModel = conflictViewModel
+		self.diffPreferences = diffPreferences
 		self.repositoryName = repositoryName
 		self.currentBranchStatus = currentBranchStatus
 		self.repositoryURL = repositoryURL
@@ -50,6 +53,7 @@ public struct ChangesView: View {
 				.frame(maxWidth: .infinity)
 			} center: {
 				ChangesDiffPane(
+					searchViewModel: diffSearchViewModel,
 					viewModel: viewModel,
 					diffViewModel: diffViewModel,
 					conflictViewModel: conflictViewModel,

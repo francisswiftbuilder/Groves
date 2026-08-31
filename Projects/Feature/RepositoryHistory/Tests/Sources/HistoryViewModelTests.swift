@@ -107,6 +107,18 @@ final class HistoryViewModelTests: XCTestCase {
 		try await waitUntil { viewModel.displayedCommitGraphItems.map(\.commit) == [commits[1]] }
 	}
 
+	func testRunningLayoutDoesNotRetainViewModel() {
+		let commits = (0..<10_000).map { makeCommit(index: $0) }
+		weak var weakViewModel: HistoryViewModel?
+		autoreleasepool {
+			let viewModel = makeViewModel()
+			viewModel.apply(makeSnapshot(commits: commits))
+			weakViewModel = viewModel
+		}
+
+		XCTAssertNil(weakViewModel)
+	}
+
 	private func makeViewModel(
 		useCase: HistoryChangesUseCaseStub = HistoryChangesUseCaseStub()
 	) -> HistoryViewModel {

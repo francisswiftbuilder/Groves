@@ -3,11 +3,25 @@ import Foundation
 
 enum CommitGraphLayoutBuilder {
 	static func build(commits: [GitCommit]) -> [CommitGraphItem] {
+		(try? build(commits: commits, checksCancellation: false)) ?? []
+	}
+
+	static func buildCancellable(commits: [GitCommit]) throws -> [CommitGraphItem] {
+		try build(commits: commits, checksCancellation: true)
+	}
+
+	private static func build(
+		commits: [GitCommit],
+		checksCancellation: Bool
+	) throws -> [CommitGraphItem] {
 		var columns: [CommitGraphColumn] = []
 		var nextColumnID = 0
 		var nextColorIndex = 0
 
-		return commits.map { commit in
+		return try commits.map { commit in
+			if checksCancellation {
+				try Task.checkCancellation()
+			}
 			let lane: Int
 			let startsAtCommit: Bool
 			if let existingLane = columns.firstIndex(where: { $0.targetHash == commit.hash }) {

@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct DiffView: View {
 	@StateObject private var viewerModel = DiffViewerViewModel()
+	private let searchModel: RepositorySearchViewModel
 	@Binding var options: GitDiffOptions
 	@Binding var presentationMode: DiffPresentationMode
 	let diff: String
@@ -23,6 +24,7 @@ public struct DiffView: View {
 	let onApplyHunk: (GitDiffHunkSelection, GitDiffHunkAction) -> Void
 
 	public init(
+		searchModel: RepositorySearchViewModel,
 		options: Binding<GitDiffOptions>,
 		presentationMode: Binding<DiffPresentationMode>,
 		diff: String,
@@ -41,6 +43,7 @@ public struct DiffView: View {
 		onApplyLine: @escaping (GitDiffLineSelection, GitDiffLineAction) -> Void,
 		onApplyHunk: @escaping (GitDiffHunkSelection, GitDiffHunkAction) -> Void
 	) {
+		self.searchModel = searchModel
 		_options = options
 		_presentationMode = presentationMode
 		self.diff = diff
@@ -182,7 +185,7 @@ public struct DiffView: View {
 				.controlSize(.regular)
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 				.accessibilityLabel("Applying diff change")
-		} else if isLoadingDiff || viewerModel.isParsing {
+		} else if isLoadingDiff || viewerModel.isParsing && viewerModel.document.lines.isEmpty {
 			LoadingStateView(
 				title: "Loading Diff",
 				message: "Reading the selected file changes."
@@ -213,6 +216,7 @@ public struct DiffView: View {
 			)
 		} else {
 			DiffViewer(
+				searchModel: searchModel,
 				document: viewerModel.document,
 				sideBySideRows: viewerModel.sideBySideRows,
 				presentationMode: presentationMode,

@@ -17,6 +17,9 @@ final class RepositoryWorkspaceAssembly {
 
 	func makeWorkspace(repositoryURL: URL?) -> RepositoryWorkspace {
 		let diffPreferences = WorkspaceDiffPreferences()
+		let changesDiffSearchViewModel = RepositorySearchViewModel()
+		let historyDiffSearchViewModel = RepositorySearchViewModel()
+		let stashesDiffSearchViewModel = RepositorySearchViewModel()
 		let output = RepositoryWorkspaceOutput()
 		let openExternalEditor: (@MainActor (URL, String?) throws -> Void)?
 		if let opener = dependencies.externalEditorOpener {
@@ -355,6 +358,9 @@ final class RepositoryWorkspaceAssembly {
 			stashesViewModel: stashesViewModel,
 			treeViewModel: treeViewModel,
 			diffPreferences: diffPreferences,
+			changesDiffSearchViewModel: changesDiffSearchViewModel,
+			historyDiffSearchViewModel: historyDiffSearchViewModel,
+			stashesDiffSearchViewModel: stashesDiffSearchViewModel,
 			commitActions: commitActions,
 			focusedActions: {
 				self.makeFocusedActions(

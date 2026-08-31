@@ -154,8 +154,12 @@ public final class ChangesViewModel: ObservableObject {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		changes = snapshot.changes
-		amendChanges = snapshot.amendChanges
+		if changes != snapshot.changes {
+			changes = snapshot.changes
+		}
+		if amendChanges != snapshot.amendChanges {
+			amendChanges = snapshot.amendChanges
+		}
 		operationState = snapshot.operationState
 		preserveSelection(forceReload: true)
 	}
@@ -378,22 +382,25 @@ public final class ChangesViewModel: ObservableObject {
 		if isAmendingCommit {
 			availableSelections.formUnion(amendChanges.map { WorkspaceChangeSelection.amend($0.id) })
 		}
-		selectedChangeIDs.formIntersection(availableSelections)
-		if selectedChangeIDs.isEmpty, let firstConflict = conflicts.first {
-			selectedChangeIDs = [.conflict(firstConflict.path)]
-		} else if selectedChangeIDs.isEmpty,
+		var selection = selectedChangeIDs.intersection(availableSelections)
+		if selection.isEmpty, let firstConflict = conflicts.first {
+			selection = [.conflict(firstConflict.path)]
+		} else if selection.isEmpty,
 			let firstStagedChange = displayedWorkingTreeChanges.first(where: \.isStaged)
 		{
-			selectedChangeIDs = [.staged(firstStagedChange.id)]
-		} else if selectedChangeIDs.isEmpty,
+			selection = [.staged(firstStagedChange.id)]
+		} else if selection.isEmpty,
 			let firstUnstagedChange = displayedWorkingTreeChanges.first(where: \.hasWorkingTreeChange)
 		{
-			selectedChangeIDs = [.unstaged(firstUnstagedChange.id)]
-		} else if selectedChangeIDs.isEmpty,
+			selection = [.unstaged(firstUnstagedChange.id)]
+		} else if selection.isEmpty,
 			isAmendingCommit,
 			let firstChangeID = amendChanges.first?.id
 		{
-			selectedChangeIDs = [.amend(firstChangeID)]
+			selection = [.amend(firstChangeID)]
+		}
+		if selectedChangeIDs != selection {
+			selectedChangeIDs = selection
 		}
 		didChangeSelectedChanges(forceReload: forceReload)
 	}

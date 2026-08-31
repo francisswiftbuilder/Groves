@@ -94,4 +94,22 @@ final class DiffSideBySideBuilderTests: XCTestCase {
 		XCTAssertEqual(rows.count, 50_001)
 		XCTAssertLessThan(elapsed, .seconds(2))
 	}
+
+	func testCancellableBuilderStopsWhenTaskIsCancelled() async {
+		let diff = "@@ -1 +1 @@\n-old\n+new"
+		let document = DiffDocument(lines: DiffParser.parse(diff))
+		let task = Task.detached {
+			try DiffSideBySideBuilder.buildCancellable(from: document)
+		}
+
+		task.cancel()
+
+		do {
+			_ = try await task.value
+			XCTFail("Expected cancellation")
+		} catch is CancellationError {
+		} catch {
+			XCTFail("Unexpected error: \(error)")
+		}
+	}
 }

@@ -40,6 +40,38 @@ final class RepositorySearchViewModelTests: XCTestCase {
 		XCTAssertEqual(model.statusText, "2 of 3")
 	}
 
+	func testTenThousandLineSearchStartsWithinMainActorBudget() async throws {
+		let model = RepositorySearchViewModel()
+		let sources = (0..<10_000).map {
+			RepositorySearchSource(id: $0, text: "line \($0) contains needle")
+		}
+		model.update(sources: sources)
+		let clock = ContinuousClock()
+		let start = clock.now
+
+		model.query = "needle"
+
+		let elapsed = start.duration(to: clock.now)
+		XCTAssertLessThan(elapsed, .milliseconds(100))
+		try await waitUntil(timeout: .seconds(2)) { model.matches.count == sources.count }
+	}
+
+	func testRunningSearchDoesNotRetainViewModel() {
+		weak var weakModel: RepositorySearchViewModel?
+		autoreleasepool {
+			let model = RepositorySearchViewModel()
+			model.update(
+				sources: (0..<10_000).map {
+					RepositorySearchSource(id: $0, text: "searchable line \($0)")
+				}
+			)
+			model.query = "missing"
+			weakModel = model
+		}
+
+		XCTAssertNil(weakModel)
+	}
+
 	private func waitUntil(
 		timeout: Duration = .seconds(1),
 		condition: @escaping @MainActor () -> Bool

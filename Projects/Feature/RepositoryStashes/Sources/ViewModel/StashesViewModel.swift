@@ -71,7 +71,10 @@ public final class StashesViewModel: ObservableObject {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		hasChanges = snapshot.changes.isEmpty == false
+		let snapshotHasChanges = snapshot.changes.isEmpty == false
+		if hasChanges != snapshotHasChanges {
+			hasChanges = snapshotHasChanges
+		}
 		if stashes != snapshot.stashes {
 			stashes = snapshot.stashes
 		}
@@ -170,9 +173,14 @@ public final class StashesViewModel: ObservableObject {
 					options: options,
 					at: repositoryURL
 				)
-				let parsedFiles = await Task.detached(priority: .userInitiated) {
-					CommitDiffFileParser.parse(requestedDiff)
-				}.value
+				let parseWorker = Task.detached(priority: .userInitiated) {
+					try CommitDiffFileParser.parseCancellable(requestedDiff)
+				}
+				let parsedFiles = try await withTaskCancellationHandler {
+					try await parseWorker.value
+				} onCancel: {
+					parseWorker.cancel()
+				}
 				guard activeDiffRequest == request else { return }
 				activeDiffRequest = nil
 				isLoadingDiff = false

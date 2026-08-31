@@ -5,13 +5,13 @@ import FeatureRepositoryStashes
 import SwiftUI
 
 struct RepositorySidebar: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
+	let viewModel: WorkspaceViewModel
 	@ObservedObject var windowViewModel: RepositoryWindowViewModel
-	@ObservedObject private var changesViewModel: ChangesViewModel
-	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
-	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
-	@ObservedObject private var remotesViewModel: RemotesViewModel
-	@ObservedObject private var stashesViewModel: StashesViewModel
+	let changesViewModel: ChangesViewModel
+	let operationViewModel: RepositoryOperationViewModel
+	let referencesViewModel: RepositoryReferencesViewModel
+	let remotesViewModel: RemotesViewModel
+	let stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
 
 	init(
@@ -26,11 +26,11 @@ struct RepositorySidebar: View {
 	) {
 		self.viewModel = viewModel
 		self.windowViewModel = windowViewModel
-		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
-		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
-		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
-		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
-		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
+		self.changesViewModel = changesViewModel
+		self.operationViewModel = operationViewModel
+		self.referencesViewModel = referencesViewModel
+		self.remotesViewModel = remotesViewModel
+		self.stashesViewModel = stashesViewModel
 		self.repositoryID = repositoryID
 	}
 

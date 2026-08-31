@@ -5,6 +5,7 @@ import SwiftUI
 
 public struct HistoryView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
+	private let diffSearchViewModel: RepositorySearchViewModel
 	@ObservedObject private var historyViewModel: HistoryViewModel
 	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
 	let repositoryName: String
@@ -17,6 +18,7 @@ public struct HistoryView: View {
 	let onDiffOptionsChanged: () -> Void
 
 	public init(
+		diffSearchViewModel: RepositorySearchViewModel,
 		historyViewModel: HistoryViewModel,
 		diffPreferences: WorkspaceDiffPreferences,
 		repositoryName: String,
@@ -28,6 +30,7 @@ public struct HistoryView: View {
 		commitActions: RepositoryCommitActions,
 		onDiffOptionsChanged: @escaping () -> Void
 	) {
+		self.diffSearchViewModel = diffSearchViewModel
 		_historyViewModel = ObservedObject(wrappedValue: historyViewModel)
 		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
 		self.repositoryName = repositoryName
@@ -57,6 +60,7 @@ public struct HistoryView: View {
 						.frame(maxWidth: .infinity)
 				} center: {
 					CommitDiffView(
+						searchModel: diffSearchViewModel,
 						options: $diffPreferences.options,
 						presentationMode: $diffPreferences.presentationMode,
 						file: historyViewModel.selectedCommitFile,
@@ -68,7 +72,6 @@ public struct HistoryView: View {
 							|| historyViewModel.isLoadingCommitImageDiff,
 						onOptionsChanged: onDiffOptionsChanged
 					)
-					.id(historyViewModel.selectedCommitID)
 					.frame(maxWidth: .infinity)
 				} trailing: {
 					CommitInspectorView(

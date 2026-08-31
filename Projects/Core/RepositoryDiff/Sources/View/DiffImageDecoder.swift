@@ -5,7 +5,8 @@ import ImageIO
 enum DiffImageDecoder {
 	static func decode(_ data: Data?, maximumPixelSize: CGFloat = 2_560) async -> NSImage? {
 		guard let data else { return nil }
-		return await Task.detached(priority: .userInitiated) {
+		let worker = Task.detached(priority: .userInitiated) { () -> NSImage? in
+			guard !Task.isCancelled else { return nil }
 			let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
 			guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
 				return nil
@@ -20,7 +21,13 @@ enum DiffImageDecoder {
 			guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else {
 				return nil
 			}
+			guard !Task.isCancelled else { return nil }
 			return NSImage(cgImage: image, size: .zero)
-		}.value
+		}
+		return await withTaskCancellationHandler {
+			await worker.value
+		} onCancel: {
+			worker.cancel()
+		}
 	}
 }

@@ -72,9 +72,15 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		branches = snapshot.branches
-		tags = snapshot.tags
-		operationState = snapshot.operationState
+		if branches != snapshot.branches {
+			branches = snapshot.branches
+		}
+		if tags != snapshot.tags {
+			tags = snapshot.tags
+		}
+		if operationState != snapshot.operationState {
+			operationState = snapshot.operationState
+		}
 		changes = snapshot.changes
 		preserveSelection()
 	}
@@ -319,7 +325,10 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 
 	private func preserveSelection() {
 		if branches.contains(where: { $0.id == selectedBranchID }) == false {
-			selectedBranchID = branches.first(where: \.isCurrent)?.id ?? branches.first?.id
+			let selection = branches.first(where: \.isCurrent)?.id ?? branches.first?.id
+			if selectedBranchID != selection {
+				selectedBranchID = selection
+			}
 		}
 	}
 

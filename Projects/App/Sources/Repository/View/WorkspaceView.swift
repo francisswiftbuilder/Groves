@@ -8,14 +8,13 @@ import FeatureRepositoryTree
 import SwiftUI
 
 struct WorkspaceView: View {
-	@Environment(\.scenePhase) private var scenePhase
-	@ObservedObject var viewModel: WorkspaceViewModel
-	@ObservedObject var windowViewModel: RepositoryWindowViewModel
-	@ObservedObject private var historyViewModel: HistoryViewModel
-	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
-	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
-	@ObservedObject private var syncViewModel: RepositorySyncViewModel
-	@ObservedObject private var remotesViewModel: RemotesViewModel
+	let viewModel: WorkspaceViewModel
+	let windowViewModel: RepositoryWindowViewModel
+	let historyViewModel: HistoryViewModel
+	let operationViewModel: RepositoryOperationViewModel
+	let referencesViewModel: RepositoryReferencesViewModel
+	let syncViewModel: RepositorySyncViewModel
+	let remotesViewModel: RemotesViewModel
 	let changesViewModel: ChangesViewModel
 	let changesDiffViewModel: ChangesDiffViewModel
 	let commitViewModel: CommitViewModel
@@ -23,6 +22,9 @@ struct WorkspaceView: View {
 	let stashesViewModel: StashesViewModel
 	let treeViewModel: RepositoryTreeViewModel
 	let diffPreferences: WorkspaceDiffPreferences
+	let changesDiffSearchViewModel: RepositorySearchViewModel
+	let historyDiffSearchViewModel: RepositorySearchViewModel
+	let stashesDiffSearchViewModel: RepositorySearchViewModel
 	let commitActions: RepositoryCommitActions
 	let focusedActions: () -> RepositoryFocusedActions
 	let repositoryID: RepositoryTab.ID
@@ -42,6 +44,9 @@ struct WorkspaceView: View {
 		stashesViewModel: StashesViewModel,
 		treeViewModel: RepositoryTreeViewModel,
 		diffPreferences: WorkspaceDiffPreferences,
+		changesDiffSearchViewModel: RepositorySearchViewModel,
+		historyDiffSearchViewModel: RepositorySearchViewModel,
+		stashesDiffSearchViewModel: RepositorySearchViewModel,
 		commitActions: RepositoryCommitActions,
 		focusedActions: @escaping () -> RepositoryFocusedActions,
 		repositoryID: RepositoryTab.ID
@@ -52,14 +57,17 @@ struct WorkspaceView: View {
 		self.changesDiffViewModel = changesDiffViewModel
 		self.commitViewModel = commitViewModel
 		self.conflictViewModel = conflictViewModel
-		_historyViewModel = ObservedObject(wrappedValue: historyViewModel)
-		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
-		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
-		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
-		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
+		self.historyViewModel = historyViewModel
+		self.operationViewModel = operationViewModel
+		self.referencesViewModel = referencesViewModel
+		self.syncViewModel = syncViewModel
+		self.remotesViewModel = remotesViewModel
 		self.stashesViewModel = stashesViewModel
 		self.treeViewModel = treeViewModel
 		self.diffPreferences = diffPreferences
+		self.changesDiffSearchViewModel = changesDiffSearchViewModel
+		self.historyDiffSearchViewModel = historyDiffSearchViewModel
+		self.stashesDiffSearchViewModel = stashesDiffSearchViewModel
 		self.commitActions = commitActions
 		self.focusedActions = focusedActions
 		self.repositoryID = repositoryID
@@ -100,6 +108,9 @@ struct WorkspaceView: View {
 								stashesViewModel: stashesViewModel,
 								treeViewModel: treeViewModel,
 								diffPreferences: diffPreferences,
+								changesDiffSearchViewModel: changesDiffSearchViewModel,
+								historyDiffSearchViewModel: historyDiffSearchViewModel,
+								stashesDiffSearchViewModel: stashesDiffSearchViewModel,
 								commitActions: commitActions
 							)
 						}
@@ -107,24 +118,22 @@ struct WorkspaceView: View {
 				}
 			}
 		}
-		.task(id: workingTreeMonitorID) {
-			guard scenePhase == .active else { return }
-			await viewModel.monitorRepositoryChanges()
-		}
-		.focusedSceneValue(\.repositoryActions, focusedActions())
+		.modifier(RepositoryMonitoringModifier(viewModel: viewModel))
+		.modifier(
+			RepositoryFocusedActionsModifier(
+				historyViewModel: historyViewModel,
+				operationViewModel: operationViewModel,
+				referencesViewModel: referencesViewModel,
+				remotesViewModel: remotesViewModel,
+				actions: focusedActions
+			)
+		)
 	}
 
 	private func clearDeletedSidebarSelection(for tag: GitTag) {
 		guard case .tag(let repositoryID, let id) = windowViewModel.sidebarSelection else { return }
 		guard tag.id == id, repositoryID == self.repositoryID else { return }
 		windowViewModel.selectSidebarItem(nil)
-	}
-
-	private var workingTreeMonitorID: WorkingTreeMonitorID {
-		WorkingTreeMonitorID(
-			repositoryURL: viewModel.repositoryURL,
-			scenePhase: scenePhase
-		)
 	}
 
 }
