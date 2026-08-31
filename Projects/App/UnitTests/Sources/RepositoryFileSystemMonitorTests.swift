@@ -56,8 +56,15 @@ final class RepositoryFileSystemMonitorTests: XCTestCase {
 		)
 		let eventTask = Task {
 			var didFulfillExpectation = false
-			for await _ in events {
+			for await paths in events {
 				guard !didFulfillExpectation else { continue }
+				let expectedDirectoryPath = directoryURL.standardizedFileURL.path
+				XCTAssertTrue(
+					paths.contains {
+						URL(fileURLWithPath: $0).standardizedFileURL.path
+							.hasPrefix(expectedDirectoryPath)
+					}
+				)
 				didFulfillExpectation = true
 				eventExpectation.fulfill()
 			}

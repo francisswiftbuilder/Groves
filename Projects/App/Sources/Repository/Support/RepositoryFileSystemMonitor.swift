@@ -2,14 +2,14 @@ import CoreServices
 import Foundation
 
 final class RepositoryFileSystemMonitor: @unchecked Sendable {
-	private let continuation: AsyncStream<Void>.Continuation
+	private let continuation: AsyncStream<[String]>.Continuation
 	private let queue: DispatchQueue
 	private var stream: FSEventStreamRef?
 	private var contextInfo: UnsafeMutableRawPointer?
 	private var isStopped = false
 
 	private init(
-		continuation: AsyncStream<Void>.Continuation,
+		continuation: AsyncStream<[String]>.Continuation,
 		queue: DispatchQueue
 	) {
 		self.continuation = continuation
@@ -22,7 +22,7 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 			label: "dev.trees.repository-file-system-monitor",
 			qos: .utility
 		)
-	) -> AsyncStream<Void> {
+	) -> AsyncStream<[String]> {
 		AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
 			let eventID = FSEventsGetCurrentEventId()
 			let monitor = RepositoryFileSystemMonitor(
@@ -116,8 +116,8 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 		continuation.finish()
 	}
 
-	func didReceiveEvents() {
-		continuation.yield()
+	func didReceiveEvents(at paths: [String]) {
+		continuation.yield(paths)
 	}
 }
 
@@ -130,8 +130,12 @@ private func repositoryFileSystemEventCallback(
 	_ eventIDs: UnsafePointer<FSEventStreamEventId>
 ) {
 	guard eventCount > 0, let contextInfo else { return }
+	let pathPointers = eventPaths.assumingMemoryBound(to: UnsafePointer<CChar>.self)
+	let paths = (0..<eventCount).map { index in
+		String(cString: pathPointers[index])
+	}
 	let monitor = Unmanaged<RepositoryFileSystemMonitor>
 		.fromOpaque(contextInfo)
 		.takeUnretainedValue()
-	monitor.didReceiveEvents()
+	monitor.didReceiveEvents(at: paths)
 }

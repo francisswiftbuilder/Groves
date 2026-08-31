@@ -5,20 +5,24 @@ private var developmentSigningSettings: SettingsDictionary {
 	let codeSignIdentity = Environment.codeSignIdentity.getString(default: "")
 	let developmentTeam = Environment.developmentTeam.getString(default: "")
 
-	guard codeSignIdentity.isEmpty == false, developmentTeam.isEmpty == false else {
-		return [:]
+	guard codeSignIdentity.isEmpty == developmentTeam.isEmpty else {
+		fatalError(
+			"TUIST_CODE_SIGN_IDENTITY and TUIST_DEVELOPMENT_TEAM must both be set or both be empty."
+		)
 	}
+	guard codeSignIdentity.isEmpty == false else { return [:] }
 
 	return [
-		"CODE_SIGN_IDENTITY": .string(codeSignIdentity),
-		"CODE_SIGN_STYLE": "Manual",
+		"CODE_SIGN_IDENTITY": "Apple Development",
+		"CODE_SIGN_STYLE": "Automatic",
 		"DEVELOPMENT_TEAM": .string(developmentTeam),
 	]
 }
 
 private var appTargetSettings: SettingsDictionary {
 	var settings: SettingsDictionary = [
-		"PRODUCT_NAME": "Trees"
+		"CODE_SIGN_ENTITLEMENTS": .string(Permissions.appEntitlementsBuildSetting),
+		"PRODUCT_NAME": "Trees",
 	]
 	settings.merge(developmentSigningSettings) { _, signing in signing }
 	return settings

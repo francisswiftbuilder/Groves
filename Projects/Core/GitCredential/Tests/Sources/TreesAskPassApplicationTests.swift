@@ -88,8 +88,35 @@ struct TreesAskPassApplicationTests {
 		)
 	}
 
+	@Test
+	func keychainFailureWritesOnlySanitizedDiagnostic() {
+		let store = GitCredentialStore(
+			service: "Trees.Tests.private-account",
+			securityClient: GitCredentialSecurityClientStub(),
+			accessGroupResolver: { throw GitCredentialStoreError.missingAccessGroup }
+		)
+		var standardError = Data()
+		let application = TreesAskPassApplication(
+			credentialStore: store,
+			decisionStore: makeDecisionStore(),
+			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
+			readStandardInput: {
+				Data("protocol=https\nhost=private.example\nusername=private-account\n\n".utf8)
+			},
+			writeStandardError: { standardError.append($0) }
+		)
+
+		let status = application.run(arguments: ["credential", "get"], environment: [:])
+		let message = String(decoding: standardError, as: UTF8.self)
+
+		#expect(status == EXIT_FAILURE)
+		#expect(message.contains("stage=resolve-access-group"))
+		#expect(message.contains("private.example") == false)
+		#expect(message.contains("private-account") == false)
+	}
+
 	private func makeStore() -> GitCredentialStore {
-		GitCredentialStore(service: "Trees.Tests.\(UUID().uuidString)")
+		makeTestCredentialStore()
 	}
 
 	private func makeDecisionStore() -> GitCredentialSaveDecisionStore {

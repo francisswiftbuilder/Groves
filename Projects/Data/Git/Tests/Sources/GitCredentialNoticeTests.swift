@@ -9,9 +9,11 @@ final class GitCredentialNoticeTests: XCTestCase {
 	func testCredentialPersistenceFailureKeepsTheCommandResult() async throws {
 		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
-		let store = GitCredentialPersistingStub(
-			commitError: GitCredentialStoreError.keychain(-25308)
+		let commitError = GitCredentialStoreError(
+			operation: .copySecret,
+			status: -25308
 		)
+		let store = GitCredentialPersistingStub(commitError: commitError)
 		let recorder = GitProcessNoticeRecorder()
 		let runner = GitProcessRunner(
 			configuration: GitProcessConfiguration(
@@ -26,7 +28,14 @@ final class GitCredentialNoticeTests: XCTestCase {
 		)
 
 		XCTAssertTrue(result.standardOutput.contains("true"))
-		XCTAssertEqual(recorder.notices, [.credentialPersistenceFailed])
+		XCTAssertEqual(
+			recorder.notices,
+			[
+				.credentialPersistenceFailed(
+					diagnostic: "commit: \(commitError.diagnosticDescription)"
+				)
+			]
+		)
 		XCTAssertEqual(store.discardCount, 1, "The pending credential must be discarded")
 	}
 
@@ -51,12 +60,14 @@ final class GitCredentialNoticeTests: XCTestCase {
 		XCTAssertEqual(store.commitCount, 1)
 	}
 
-	func testUnrecoverableDiscardStillSendsASingleNotice() async throws {
+	func testUnrecoverableDiscardPreservesBothDiagnosticsInASingleNotice() async throws {
 		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let commitError = GitCredentialStoreError(operation: .copySecret, status: -25308)
+		let discardError = GitCredentialStoreError(operation: .delete, status: -25300)
 		let store = GitCredentialPersistingStub(
-			commitError: GitCredentialStoreError.keychain(-25308),
-			discardError: GitCredentialStoreError.keychain(-25300)
+			commitError: commitError,
+			discardError: discardError
 		)
 		let recorder = GitProcessNoticeRecorder()
 		let runner = GitProcessRunner(
@@ -71,14 +82,22 @@ final class GitCredentialNoticeTests: XCTestCase {
 			at: repositoryURL
 		)
 
-		XCTAssertEqual(recorder.notices, [.credentialPersistenceFailed])
+		XCTAssertEqual(
+			recorder.notices,
+			[
+				.credentialPersistenceFailed(
+					diagnostic: "commit: \(commitError.diagnosticDescription); "
+						+ "discard: \(discardError.diagnosticDescription)"
+				)
+			]
+		)
 	}
 
 	func testFailedCommandSendsNoCredentialNotice() async throws {
 		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let store = GitCredentialPersistingStub(
-			commitError: GitCredentialStoreError.keychain(-25308)
+			commitError: GitCredentialStoreError(operation: .copySecret, status: -25308)
 		)
 		let recorder = GitProcessNoticeRecorder()
 		let runner = GitProcessRunner(
@@ -106,14 +125,13 @@ final class GitCredentialNoticeTests: XCTestCase {
 		let sourceURL = try GitTestRepositoryFactory.makeRepository(name: "TreesNoticeSource")
 		defer { try? FileManager.default.removeItem(at: sourceURL) }
 		let recorder = GitProcessNoticeRecorder()
+		let commitError = GitCredentialStoreError(operation: .copySecret, status: -25308)
 		let repository = LocalGitRepository(
 			runner: GitProcessRunner(
 				configuration: GitProcessConfiguration(
 					noticeHandler: { [recorder] notice in recorder.record(notice) }
 				),
-				credentialStore: GitCredentialPersistingStub(
-					commitError: GitCredentialStoreError.keychain(-25308)
-				)
+				credentialStore: GitCredentialPersistingStub(commitError: commitError)
 			)
 		)
 
@@ -126,6 +144,13 @@ final class GitCredentialNoticeTests: XCTestCase {
 			FileManager.default.fileExists(atPath: clonedURL.appending(path: ".git").path),
 			"A credential persistence failure must not delete the cloned repository"
 		)
-		XCTAssertEqual(recorder.notices, [.credentialPersistenceFailed])
+		XCTAssertEqual(
+			recorder.notices,
+			[
+				.credentialPersistenceFailed(
+					diagnostic: "commit: \(commitError.diagnosticDescription)"
+				)
+			]
+		)
 	}
 }

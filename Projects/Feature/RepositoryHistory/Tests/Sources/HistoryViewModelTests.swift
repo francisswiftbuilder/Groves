@@ -119,6 +119,28 @@ final class HistoryViewModelTests: XCTestCase {
 		XCTAssertNil(weakViewModel)
 	}
 
+	func testWorkingTreeAvailabilityUpdatesWithoutCommitHistoryChanges() {
+		let viewModel = makeViewModel()
+		let commits = [makeCommit(index: 0)]
+		viewModel.apply(makeSnapshot(commits: commits))
+
+		viewModel.apply(
+			makeSnapshot(
+				commits: commits,
+				changes: [
+					WorkingTreeChange(
+						path: "Sources/App.swift",
+						previousPath: nil,
+						indexState: .unchanged,
+						workingTreeState: .modified
+					)
+				]
+			)
+		)
+
+		XCTAssertTrue(viewModel.checkoutAvailability.hasWorkingTreeChanges)
+	}
+
 	private func makeViewModel(
 		useCase: HistoryChangesUseCaseStub = HistoryChangesUseCaseStub()
 	) -> HistoryViewModel {
@@ -150,9 +172,12 @@ final class HistoryViewModelTests: XCTestCase {
 		)
 	}
 
-	private func makeSnapshot(commits: [GitCommit]) -> RepositorySnapshot {
+	private func makeSnapshot(
+		commits: [GitCommit],
+		changes: [WorkingTreeChange] = []
+	) -> RepositorySnapshot {
 		RepositorySnapshot(
-			changes: [],
+			changes: changes,
 			amendChanges: [],
 			commits: commits,
 			branches: [],

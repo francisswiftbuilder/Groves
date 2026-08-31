@@ -137,7 +137,7 @@ struct GitCredentialPromptCoordinatorTests {
 	}
 
 	private func makeStore() -> GitCredentialStore {
-		GitCredentialStore(service: "Trees.Tests.\(UUID().uuidString)")
+		makeTestCredentialStore()
 	}
 
 	private func makeDecisionStore() -> GitCredentialSaveDecisionStore {

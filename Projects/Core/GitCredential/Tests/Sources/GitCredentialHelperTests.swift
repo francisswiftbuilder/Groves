@@ -7,7 +7,7 @@ import Testing
 struct GitCredentialHelperTests {
 	@Test
 	func storeKeepsSecretPendingUntilTheOperationSucceeds() throws {
-		let store = GitCredentialStore(service: "Trees.Tests.\(UUID().uuidString)")
+		let store = makeTestCredentialStore()
 		let decisionStore = GitCredentialSaveDecisionStore(
 			suiteName: "Trees.Tests.\(UUID().uuidString)")
 		let helper = GitCredentialHelper(store: store, decisionStore: decisionStore)
@@ -30,7 +30,7 @@ struct GitCredentialHelperTests {
 
 	@Test
 	func storeIsSkippedWhenSavingIsDeclinedOrUnattributed() throws {
-		let store = GitCredentialStore(service: "Trees.Tests.\(UUID().uuidString)")
+		let store = makeTestCredentialStore()
 		let decisionStore = GitCredentialSaveDecisionStore(
 			suiteName: "Trees.Tests.\(UUID().uuidString)")
 		let helper = GitCredentialHelper(store: store, decisionStore: decisionStore)
@@ -52,7 +52,7 @@ struct GitCredentialHelperTests {
 
 	@Test
 	func getReturnsStoredCredentialAndEraseRemovesIt() throws {
-		let store = GitCredentialStore(service: "Trees.Tests.\(UUID().uuidString)")
+		let store = makeTestCredentialStore()
 		let helper = GitCredentialHelper(
 			store: store,
 			decisionStore: GitCredentialSaveDecisionStore(suiteName: "Trees.Tests.\(UUID().uuidString)")
@@ -80,7 +80,7 @@ struct GitCredentialHelperTests {
 
 	@Test
 	func sshKeysWithTheSameNameAreDistinctCredentials() throws {
-		let store = GitCredentialStore(service: "Trees.Tests.\(UUID().uuidString)")
+		let store = makeTestCredentialStore()
 		let personal = GitCredentialDescriptor.sshKey(at: "/Users/trees/.ssh/id_ed25519")
 		let work = GitCredentialDescriptor.sshKey(at: "/Users/trees/work/.ssh/id_ed25519")
 		defer { try? store.deleteAll() }
@@ -97,15 +97,15 @@ struct GitCredentialHelperTests {
 	}
 
 	@Test
-	func legacySSHCredentialIsMigratedToThePathScopedIdentifier() throws {
-		let store = GitCredentialStore(service: "Trees.Tests.\(UUID().uuidString)")
+	func legacySSHCredentialIsNotAssignedToAnAmbiguousPath() throws {
+		let store = makeTestCredentialStore()
 		let descriptor = GitCredentialDescriptor.sshKey(at: "/Users/trees/.ssh/id_rsa")
 		let legacy = GitCredentialDescriptor(kind: .ssh, host: "SSH Key", account: "id_rsa")
 		defer { try? store.deleteAll() }
 		try store.save(secret: "legacy-passphrase", for: legacy)
 
-		#expect(try store.secret(for: descriptor) == "legacy-passphrase")
-		#expect(try store.secret(for: legacy) == nil)
-		#expect(try store.descriptors() == [descriptor])
+		#expect(try store.secret(for: descriptor) == nil)
+		#expect(try store.secret(for: legacy) == "legacy-passphrase")
+		#expect(try store.descriptors() == [legacy])
 	}
 }
