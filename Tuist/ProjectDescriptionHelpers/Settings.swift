@@ -21,6 +21,7 @@ private var developmentSigningSettings: SettingsDictionary {
 
 private var appTargetSettings: SettingsDictionary {
 	var settings: SettingsDictionary = [
+		"ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "",
 		"CODE_SIGN_ENTITLEMENTS": .string(Permissions.appEntitlementsBuildSetting),
 		"PRODUCT_NAME": "Trees",
 	]

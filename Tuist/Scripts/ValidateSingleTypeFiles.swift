@@ -15,6 +15,7 @@ let enumerator = fileManager.enumerator(
 var violations: [String] = []
 
 while let fileURL = enumerator?.nextObject() as? URL {
+	guard fileURL.pathComponents.contains("Derived") == false else { continue }
 	guard fileURL.pathExtension == "swift" else { continue }
 	guard let values = try? fileURL.resourceValues(forKeys: Set(keys)), values.isRegularFile == true
 	else {
