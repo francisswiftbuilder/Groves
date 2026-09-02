@@ -154,7 +154,9 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 		viewModel.didRequestFetchAll()
 		await fulfillment(of: [started], timeout: 2)
 		XCTAssertEqual(viewModel.activity, .fetchAll)
-		try? await Task.sleep(for: .milliseconds(300))
+		for _ in 0..<200 where viewModel.presentedActivity != .fetchAll {
+			try? await Task.sleep(for: .milliseconds(10))
+		}
 		XCTAssertEqual(viewModel.presentedActivity, .fetchAll)
 
 		viewModel.didRequestCancelOperation()
