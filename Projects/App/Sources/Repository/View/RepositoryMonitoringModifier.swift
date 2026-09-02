@@ -8,20 +8,16 @@ struct RepositoryMonitoringModifier: ViewModifier {
 	func body(content: Content) -> some View {
 		content
 			.onAppear {
-				updateRepositoryMonitoring()
+				viewModel.onAppear(isSceneActive: scenePhase == .active)
 			}
 			.onChange(of: scenePhase) { _, _ in
-				updateRepositoryMonitoring()
+				viewModel.didChangeSceneActivation(scenePhase == .active)
 			}
 			.onReceive(viewModel.$repositoryURL.removeDuplicates()) { _ in
-				updateRepositoryMonitoring()
+				viewModel.didChangeMonitoredRepository()
 			}
 			.onDisappear {
-				viewModel.setRepositoryMonitoringActive(false)
+				viewModel.onDisappear()
 			}
-	}
-
-	private func updateRepositoryMonitoring() {
-		viewModel.setRepositoryMonitoringActive(scenePhase == .active)
 	}
 }

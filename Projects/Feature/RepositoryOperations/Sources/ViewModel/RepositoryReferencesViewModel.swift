@@ -129,6 +129,12 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 		pendingConfirmation = nil
 	}
 
+	public func onDisappear() {
+		mutationTask?.cancel()
+		mutationTask = nil
+		isLoading = false
+	}
+
 	public func didPresentNewBranch(from commit: GitCommit? = nil) {
 		newBranchName = ""
 		pendingBranchStartCommit = commit
@@ -338,7 +344,9 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 			isLoading = true
 			defer { isLoading = false }
 			do {
-				actions.didProduceSnapshot(try await operation())
+				let snapshot = try await operation()
+				try Task.checkCancellation()
+				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {

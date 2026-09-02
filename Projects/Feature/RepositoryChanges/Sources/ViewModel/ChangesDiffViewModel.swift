@@ -122,6 +122,19 @@ public final class ChangesDiffViewModel: ObservableObject {
 		didSelect(selection, forceReload: true)
 	}
 
+	public func onAppear() {
+		guard
+			let selection,
+			displayedSelection != selection.identifier,
+			!isLoading
+		else { return }
+		didSelect(selection, forceReload: true)
+	}
+
+	public func onDisappear() {
+		cancelTasks()
+	}
+
 	public func reset() {
 		cancelTasks()
 		selection = nil

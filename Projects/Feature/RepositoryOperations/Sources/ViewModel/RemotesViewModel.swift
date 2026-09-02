@@ -5,8 +5,8 @@ import Foundation
 @MainActor
 public final class RemotesViewModel: ObservableObject {
 	public struct Actions {
-		let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
-		let didReceiveError: @MainActor (String) -> Void
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
 
 		public init(
 			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
@@ -18,9 +18,9 @@ public final class RemotesViewModel: ObservableObject {
 	}
 
 	public struct Dependencies {
-		let contentUseCase: any RepositoryContentUseCase
-		let referencesUseCase: any RepositoryReferencesUseCase
-		let repositoryURL: @MainActor () -> URL?
+		public let contentUseCase: any RepositoryContentUseCase
+		public let referencesUseCase: any RepositoryReferencesUseCase
+		public let repositoryURL: @MainActor () -> URL?
 
 		public init(
 			contentUseCase: any RepositoryContentUseCase,
@@ -85,6 +85,12 @@ public final class RemotesViewModel: ObservableObject {
 		editorPresentation = nil
 		pendingRename = nil
 		pendingConfirmation = nil
+	}
+
+	public func onDisappear() {
+		mutationTask?.cancel()
+		mutationTask = nil
+		isLoading = false
 	}
 
 	public func didPresentAddRemote() {
@@ -198,7 +204,9 @@ public final class RemotesViewModel: ObservableObject {
 			isLoading = true
 			defer { isLoading = false }
 			do {
-				actions.didProduceSnapshot(try await operation())
+				let snapshot = try await operation()
+				try Task.checkCancellation()
+				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {

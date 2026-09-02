@@ -52,9 +52,12 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
 		var openedRepositoryID: UUID?
 
-		viewModel.didChooseRepository(repositoryURL) { repositoryID in
-			openedRepositoryID = repositoryID
-		}
+		viewModel.didChooseRepository(
+			repositoryURL,
+			actions: .init { repositoryID in
+				openedRepositoryID = repositoryID
+			}
+		)
 
 		try await waitUntil { viewModel.tabs.count == 1 }
 
@@ -74,10 +77,11 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 
 		viewModel.didRequestCloneRepository(
 			from: "https://github.com/owner/ClonedTrees.git",
-			into: URL(fileURLWithPath: "/tmp", isDirectory: true)
-		) { repositoryID in
-			openedRepositoryID = repositoryID
-		}
+			into: URL(fileURLWithPath: "/tmp", isDirectory: true),
+			actions: .init { repositoryID in
+				openedRepositoryID = repositoryID
+			}
+		)
 
 		try await waitUntil { viewModel.tabs.count == 1 }
 

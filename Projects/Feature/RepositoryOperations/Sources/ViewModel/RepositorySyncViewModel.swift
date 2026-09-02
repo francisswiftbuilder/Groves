@@ -98,6 +98,13 @@ public final class RepositorySyncViewModel: ObservableObject {
 		state = .empty
 	}
 
+	public func onDisappear() {
+		networkTask?.cancel()
+		networkTask = nil
+		activeNetworkRequestID = nil
+		isLoading = false
+	}
+
 	public func didRequestPull() {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),

@@ -365,6 +365,10 @@ public final class ChangesViewModel: ObservableObject {
 		pendingConfirmation = nil
 	}
 
+	public func onDisappear() {
+		cancelTasks()
+	}
+
 	func didConfirmPendingConfirmation() {
 		guard let confirmation = pendingConfirmation else { return }
 		pendingConfirmation = nil

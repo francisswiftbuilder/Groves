@@ -55,6 +55,7 @@ public final class StashesViewModel: ObservableObject {
 	private var imageDiffTask: Task<Void, Never>?
 	private var activeDiffRequest: StashDiffRequest?
 	private var activeImageDiffRequest: StashImageDiffRequest?
+	private var displayedStashID: String?
 	private var requestSequence = 0
 
 	public init(
@@ -127,6 +128,33 @@ public final class StashesViewModel: ObservableObject {
 		clearDiffState()
 	}
 
+	public func onAppear() {
+		guard !isLoadingDiff else { return }
+		if let selectedStash, displayedStashID != selectedStash.id {
+			requestDiff()
+		} else if let selectedFile,
+			DiffImageFileSupport.isSupported(path: selectedFile.path),
+			imageDiff == nil,
+			!isLoadingImageDiff
+		{
+			requestImageDiff()
+		}
+	}
+
+	public func onDisappear() {
+		mutationTask?.cancel()
+		diffTask?.cancel()
+		imageDiffTask?.cancel()
+		mutationTask = nil
+		diffTask = nil
+		imageDiffTask = nil
+		activeDiffRequest = nil
+		activeImageDiffRequest = nil
+		isLoading = false
+		isLoadingDiff = false
+		isLoadingImageDiff = false
+	}
+
 	public func didChangeWorkingTreeState(hasChanges: Bool) {
 		self.hasChanges = hasChanges
 	}
@@ -173,6 +201,7 @@ public final class StashesViewModel: ObservableObject {
 		imageDiffTask?.cancel()
 		activeDiffRequest = nil
 		activeImageDiffRequest = nil
+		displayedStashID = nil
 		selectedFileID = nil
 		files = []
 		diff = ""
@@ -215,6 +244,7 @@ public final class StashesViewModel: ObservableObject {
 				isLoadingDiff = false
 				diff = requestedDiff
 				files = parsedFiles
+				displayedStashID = stash.id
 				selectedFileID =
 					parsedFiles.contains { $0.id == selectedFileID }
 					? selectedFileID : parsedFiles.first?.id
