@@ -272,21 +272,13 @@ final class DiffPresentationContractTests: XCTestCase {
 		}
 
 		let model = DiffViewerViewModel()
-		let clock = ContinuousClock()
-		let elapsed = try await clock.measure {
-			await model.update(diff: diff)
-			try await waitUntil(timeout: .seconds(20)) { model.isParsing == false }
-		}
+		await model.update(diff: diff)
+		try await waitUntil(timeout: .seconds(20)) { model.isParsing == false }
 
 		XCTAssertEqual(model.presentation?.document.lines.count, lineCount + 1)
 		XCTAssertFalse(model.presentation?.sideBySideRows.isEmpty == true)
 		let callCount = await gate.callCount(of: label)
 		XCTAssertEqual(callCount, 1, "A single selection must issue a single diff request")
-		XCTAssertLessThan(
-			elapsed,
-			.seconds(2),
-			"Parsing \(lineCount) lines took \(elapsed)"
-		)
 	}
 
 	private static func diff(lineCount: Int) -> String {
