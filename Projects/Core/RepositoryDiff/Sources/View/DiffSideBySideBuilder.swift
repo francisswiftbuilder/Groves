@@ -68,6 +68,9 @@ enum DiffSideBySideBuilder {
 	) throws -> [DiffSideBySideRow] {
 		let deletions = lines.filter { $0.kind == .deletion }
 		let additions = lines.filter { $0.kind == .addition }
+		if deletions.count == 1, additions.count == 1 {
+			return indexPairedRows(deletions: deletions, additions: additions)
+		}
 		guard deletions.count <= 64, additions.count <= 64,
 			lines.allSatisfy({ $0.sourceText.count <= 512 })
 		else {
