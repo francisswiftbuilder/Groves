@@ -69,7 +69,18 @@ enum DiffSideBySideBuilder {
 		let deletions = lines.filter { $0.kind == .deletion }
 		let additions = lines.filter { $0.kind == .addition }
 		if deletions.count == 1, additions.count == 1 {
-			return indexPairedRows(deletions: deletions, additions: additions)
+			let similarity = try editSimilarity(
+				deletions[0].sourceText,
+				additions[0].sourceText,
+				checksCancellation: checksCancellation
+			)
+			if similarity >= 0.2 {
+				return indexPairedRows(deletions: deletions, additions: additions)
+			}
+			return [
+				makeRow(oldLine: deletions[0], newLine: nil),
+				makeRow(oldLine: nil, newLine: additions[0]),
+			]
 		}
 		guard deletions.count <= 64, additions.count <= 64,
 			lines.allSatisfy({ $0.sourceText.count <= 512 })
