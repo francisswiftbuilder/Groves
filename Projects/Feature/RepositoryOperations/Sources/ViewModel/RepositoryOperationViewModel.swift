@@ -4,6 +4,41 @@ import Foundation
 
 @MainActor
 public final class RepositoryOperationViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+		public let didRequestViewConflicts: @MainActor (GitConflict) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void,
+			didRequestViewConflicts: @escaping @MainActor (GitConflict) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+			self.didRequestViewConflicts = didRequestViewConflicts
+		}
+	}
+
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+		public let referencesUseCase: any RepositoryReferencesUseCase
+		public let operationsUseCase: (any RepositoryOperationsUseCase)?
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			referencesUseCase: any RepositoryReferencesUseCase,
+			operationsUseCase: (any RepositoryOperationsUseCase)?,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.referencesUseCase = referencesUseCase
+			self.operationsUseCase = operationsUseCase
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published public private(set) var operationState: RepositoryOperationState = .normal
 	@Published public private(set) var isLoading = false
 	@Published var pendingMainlineAction: PendingMainlineAction?
@@ -11,15 +46,15 @@ public final class RepositoryOperationViewModel: ObservableObject {
 	@Published var resetMode: GitResetMode = .mixed
 	@Published var pendingConfirmation: RepositoryOperationConfirmation?
 
-	private let dependencies: RepositoryOperationViewModelDependencies
-	private let actions: RepositoryOperationViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var changes: [WorkingTreeChange] = []
 	private var currentBranch: GitBranch?
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
-		dependencies: RepositoryOperationViewModelDependencies,
-		actions: RepositoryOperationViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions

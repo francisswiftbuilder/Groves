@@ -94,12 +94,12 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 			}
 		}
 		var viewModel: RepositorySyncViewModel? = RepositorySyncViewModel(
-			dependencies: RepositorySyncViewModelDependencies(
+			dependencies: RepositorySyncViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: referencesUseCase,
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
 			),
-			actions: RepositorySyncViewModelActions(
+			actions: RepositorySyncViewModel.Actions(
 				didProduceSnapshot: { _ in },
 				didReceiveError: { _ in }
 			)
@@ -124,12 +124,12 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 			}
 		)
 		let viewModel = RepositorySyncViewModel(
-			dependencies: RepositorySyncViewModelDependencies(
+			dependencies: RepositorySyncViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: useCase,
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
 			),
-			actions: RepositorySyncViewModelActions(
+			actions: RepositorySyncViewModel.Actions(
 				didProduceSnapshot: { _ in },
 				didReceiveError: { _ in }
 			)
@@ -150,13 +150,13 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 		didRequestViewConflicts: @escaping @MainActor (GitConflict) -> Void = { _ in }
 	) -> RepositoryOperationViewModel {
 		RepositoryOperationViewModel(
-			dependencies: RepositoryOperationViewModelDependencies(
+			dependencies: RepositoryOperationViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: OperationsReferencesUseCaseStub(),
 				operationsUseCase: nil,
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
 			),
-			actions: RepositoryOperationViewModelActions(
+			actions: RepositoryOperationViewModel.Actions(
 				didProduceSnapshot: { _ in },
 				didReceiveError: { _ in },
 				didRequestViewConflicts: didRequestViewConflicts

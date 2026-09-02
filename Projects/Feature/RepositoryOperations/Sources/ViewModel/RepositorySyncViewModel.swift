@@ -4,13 +4,42 @@ import Foundation
 
 @MainActor
 public final class RepositorySyncViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+		}
+	}
+
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+		public let referencesUseCase: any RepositoryReferencesUseCase
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			referencesUseCase: any RepositoryReferencesUseCase,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.referencesUseCase = referencesUseCase
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published var pendingPullDivergence: RepositoryPullDivergence?
 	@Published var pendingConfirmation: RepositorySyncConfirmation?
 	@Published public private(set) var isLoading = false
 	@Published private var state = RepositorySyncState.empty
 
-	private let dependencies: RepositorySyncViewModelDependencies
-	private let actions: RepositorySyncViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var currentBranch: GitBranch?
 	private var operationState: RepositoryOperationState = .normal
 	private var networkTask: Task<Void, Never>?
@@ -18,8 +47,8 @@ public final class RepositorySyncViewModel: ObservableObject {
 	private var networkRequestSequence = 0
 
 	public init(
-		dependencies: RepositorySyncViewModelDependencies,
-		actions: RepositorySyncViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
