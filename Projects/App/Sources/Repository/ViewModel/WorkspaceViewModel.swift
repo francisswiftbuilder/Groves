@@ -3,6 +3,19 @@ import Foundation
 
 @MainActor
 final class WorkspaceViewModel: ObservableObject {
+	struct Actions {
+		let resetContent: @MainActor () -> Void
+		let distributeSnapshot: @MainActor (RepositorySnapshot, URL?, Bool) -> Void
+		let refreshDiffPresentation: @MainActor () -> Void
+		let focusConflict: @MainActor (GitConflict) async -> Void
+		let activateSidebarSelection: @MainActor (RepositorySidebarSelection) -> Void
+	}
+
+	struct Dependencies {
+		let contentUseCase: any RepositoryContentUseCase
+		let canAutomaticallyRefresh: @MainActor () -> Bool
+	}
+
 	@Published private(set) var selectedSection: WorkspaceSection? = .changes
 	@Published var expandedSidebarGroups: Set<RepositorySidebarGroup> = []
 	@Published private(set) var repositoryURL: URL?
@@ -10,8 +23,8 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var isLoadingContent: Bool
 	@Published var alertMessage: String?
 
-	private let dependencies: WorkspaceViewModelDependencies
-	private let actions: WorkspaceViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var refreshTask: Task<Void, Never>?
 	private var repositoryMonitorTask: Task<Void, Never>?
 	private var monitoredRepositoryURL: URL?
@@ -23,8 +36,8 @@ final class WorkspaceViewModel: ObservableObject {
 	private var automaticRefreshRevalidatesSelectedContent = false
 
 	init(
-		dependencies: WorkspaceViewModelDependencies,
-		actions: WorkspaceViewModelActions,
+		dependencies: Dependencies,
+		actions: Actions,
 		repositoryURL: URL? = nil
 	) {
 		self.dependencies = dependencies

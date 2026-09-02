@@ -5,6 +5,39 @@ import Foundation
 
 @MainActor
 public final class ChangesDiffViewModel: ObservableObject {
+	public struct Actions {
+		public let didApplyMutation:
+			@MainActor ([WorkingTreeChange], WorkingTreeChange, GitDiffSource) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+
+		public init(
+			didApplyMutation:
+				@escaping @MainActor (
+					[WorkingTreeChange], WorkingTreeChange, GitDiffSource
+				) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void
+		) {
+			self.didApplyMutation = didApplyMutation
+			self.didReceiveError = didReceiveError
+		}
+	}
+
+	public struct Dependencies {
+		public let changesUseCase: any RepositoryChangesUseCase
+		public let preferences: WorkspaceDiffPreferences
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			changesUseCase: any RepositoryChangesUseCase,
+			preferences: WorkspaceDiffPreferences,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.changesUseCase = changesUseCase
+			self.preferences = preferences
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published private(set) var diff = ""
 	@Published private(set) var imageDiff: GitImageDiff?
 	@Published public private(set) var isLoading = false
@@ -15,8 +48,8 @@ public final class ChangesDiffViewModel: ObservableObject {
 		dependencies.preferences
 	}
 
-	private let dependencies: ChangesDiffViewModelDependencies
-	private let actions: ChangesDiffViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var selection: ChangesDiffSelection?
 	private var displayedSelection: WorkspaceChangeSelection?
 	private var activeLoadRequestID: Int?
@@ -27,8 +60,8 @@ public final class ChangesDiffViewModel: ObservableObject {
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
-		dependencies: ChangesDiffViewModelDependencies,
-		actions: ChangesDiffViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions

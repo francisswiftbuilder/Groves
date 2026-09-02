@@ -4,6 +4,35 @@ import Foundation
 
 @MainActor
 public final class RemotesViewModel: ObservableObject {
+	public struct Actions {
+		let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		let didReceiveError: @MainActor (String) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+		}
+	}
+
+	public struct Dependencies {
+		let contentUseCase: any RepositoryContentUseCase
+		let referencesUseCase: any RepositoryReferencesUseCase
+		let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			referencesUseCase: any RepositoryReferencesUseCase,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.referencesUseCase = referencesUseCase
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published public var selectedRemoteID: String?
 	@Published public private(set) var remotes: [GitRemote] = []
 	@Published public private(set) var isLoading = false
@@ -11,13 +40,13 @@ public final class RemotesViewModel: ObservableObject {
 	@Published var pendingRename: GitRemote?
 	@Published var pendingConfirmation: RepositoryRemoteConfirmation?
 
-	private let dependencies: RemotesViewModelDependencies
-	private let actions: RemotesViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
-		dependencies: RemotesViewModelDependencies,
-		actions: RemotesViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions

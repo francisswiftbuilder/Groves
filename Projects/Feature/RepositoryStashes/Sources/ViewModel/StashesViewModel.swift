@@ -5,6 +5,35 @@ import Foundation
 
 @MainActor
 public final class StashesViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+		}
+	}
+
+	public struct Dependencies {
+		public let useCase: any RepositoryStashesUseCase
+		public let preferences: WorkspaceDiffPreferences
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			useCase: any RepositoryStashesUseCase,
+			preferences: WorkspaceDiffPreferences,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.useCase = useCase
+			self.preferences = preferences
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published public private(set) var selectedStashID: String?
 	@Published public private(set) var selectedFileID: CommitDiffFile.ID?
 	@Published var newStashMessage = ""
@@ -19,8 +48,8 @@ public final class StashesViewModel: ObservableObject {
 	@Published private(set) var hasChanges = false
 	@Published var pendingDrop: GitStash?
 
-	private let dependencies: StashesViewModelDependencies
-	private let actions: StashesViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var mutationTask: Task<Void, Never>?
 	private var diffTask: Task<Void, Never>?
 	private var imageDiffTask: Task<Void, Never>?
@@ -29,8 +58,8 @@ public final class StashesViewModel: ObservableObject {
 	private var requestSequence = 0
 
 	public init(
-		dependencies: StashesViewModelDependencies,
-		actions: StashesViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions

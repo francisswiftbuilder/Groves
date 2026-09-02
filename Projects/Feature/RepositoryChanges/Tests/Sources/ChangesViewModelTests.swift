@@ -150,12 +150,12 @@ final class ChangesViewModelTests: XCTestCase {
 		}
 	) -> ChangesViewModel {
 		ChangesViewModel(
-			dependencies: ChangesViewModelDependencies(
+			dependencies: ChangesViewModel.Dependencies(
 				contentUseCase: ChangesContentUseCaseStub(),
 				changesUseCase: ChangesUseCaseStub(),
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
 			),
-			actions: ChangesViewModelActions(
+			actions: ChangesViewModel.Actions(
 				didProduceSnapshot: { _ in },
 				didReceiveError: { _ in },
 				didSelectConflict: didSelectConflict,
