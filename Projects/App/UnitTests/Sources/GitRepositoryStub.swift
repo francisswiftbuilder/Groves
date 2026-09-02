@@ -369,12 +369,14 @@ func makeRepositoryTabsViewModel(
 		)
 	)
 	return RepositoryTabsViewModel(
-		useCase: makeRepositoryTabsUseCase(
-			repository: repository,
-			savedRepositoryStore: savedRepositoryStore
-		),
-		makeWorkspace: { repositoryURL in
-			workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)
-		}
+		dependencies: .init(
+			useCase: makeRepositoryTabsUseCase(
+				repository: repository,
+				savedRepositoryStore: savedRepositoryStore
+			),
+			makeWorkspace: { repositoryURL in
+				workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)
+			}
+		)
 	)
 }

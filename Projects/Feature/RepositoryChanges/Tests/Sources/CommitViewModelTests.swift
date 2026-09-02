@@ -44,12 +44,12 @@ final class CommitViewModelTests: XCTestCase {
 
 	private func makeViewModel() -> CommitViewModel {
 		CommitViewModel(
-			dependencies: CommitViewModelDependencies(
+			dependencies: CommitViewModel.Dependencies(
 				contentUseCase: ChangesContentUseCaseStub(),
 				changesUseCase: ChangesUseCaseStub(),
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
 			),
-			actions: CommitViewModelActions(
+			actions: CommitViewModel.Actions(
 				didProduceSnapshot: { _ in },
 				didReceiveError: { _ in },
 				didChangeAmendingCommit: { _ in }

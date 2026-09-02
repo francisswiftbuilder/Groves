@@ -62,6 +62,20 @@ public final class RepositorySearchViewModel: ObservableObject, RepositoryFindAc
 		currentIndex = ((currentIndex ?? 0) - 1 + matches.count) % matches.count
 	}
 
+	public func onAppear() {
+		guard !query.isEmpty, matches.isEmpty else { return }
+		requestSearch(preservingCurrentMatch: true)
+	}
+
+	public func onDisappear() {
+		searchTask?.cancel()
+		searchTask = nil
+		if !query.isEmpty {
+			matches = []
+			currentIndex = nil
+		}
+	}
+
 	func activeRange(for sourceID: Int) -> DiffTextRange? {
 		guard let currentMatch, currentMatch.sourceID == sourceID else { return nil }
 		return DiffTextRange(location: currentMatch.location, length: currentMatch.length)

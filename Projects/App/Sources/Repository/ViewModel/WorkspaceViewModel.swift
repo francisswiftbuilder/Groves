@@ -3,6 +3,19 @@ import Foundation
 
 @MainActor
 final class WorkspaceViewModel: ObservableObject {
+	struct Actions {
+		let resetContent: @MainActor () -> Void
+		let distributeSnapshot: @MainActor (RepositorySnapshot, URL?, Bool) -> Void
+		let refreshDiffPresentation: @MainActor () -> Void
+		let focusConflict: @MainActor (GitConflict) async -> Void
+		let activateSidebarSelection: @MainActor (RepositorySidebarSelection) -> Void
+	}
+
+	struct Dependencies {
+		let contentUseCase: any RepositoryContentUseCase
+		let canAutomaticallyRefresh: @MainActor () -> Bool
+	}
+
 	@Published private(set) var selectedSection: WorkspaceSection? = .changes
 	@Published var expandedSidebarGroups: Set<RepositorySidebarGroup> = []
 	@Published private(set) var repositoryURL: URL?
@@ -10,8 +23,8 @@ final class WorkspaceViewModel: ObservableObject {
 	@Published private(set) var isLoadingContent: Bool
 	@Published var alertMessage: String?
 
-	private let dependencies: WorkspaceViewModelDependencies
-	private let actions: WorkspaceViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var refreshTask: Task<Void, Never>?
 	private var repositoryMonitorTask: Task<Void, Never>?
 	private var monitoredRepositoryURL: URL?
@@ -21,10 +34,12 @@ final class WorkspaceViewModel: ObservableObject {
 	private var hasLoadedContent = false
 	private var refreshesWhenMonitoringResumes = false
 	private var automaticRefreshRevalidatesSelectedContent = false
+	private var isVisible = false
+	private var isSceneActive = false
 
 	init(
-		dependencies: WorkspaceViewModelDependencies,
-		actions: WorkspaceViewModelActions,
+		dependencies: Dependencies,
+		actions: Actions,
 		repositoryURL: URL? = nil
 	) {
 		self.dependencies = dependencies
@@ -129,8 +144,42 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func setRepositoryMonitoringActive(_ isActive: Bool) {
-		guard isActive else {
+	func onAppear(isSceneActive: Bool) {
+		isVisible = true
+		self.isSceneActive = isSceneActive
+		updateRepositoryMonitoring()
+		resumeContentLoadIfNeeded()
+	}
+
+	func onDisappear() {
+		isVisible = false
+		refreshTask?.cancel()
+		refreshTask = nil
+		conflictFocusTask?.cancel()
+		conflictFocusTask = nil
+		contentLoadID = nil
+		isLoading = false
+		isLoadingContent = false
+		updateRepositoryMonitoring()
+	}
+
+	func didChangeSceneActivation(_ isActive: Bool) {
+		isSceneActive = isActive
+		updateRepositoryMonitoring()
+		resumeContentLoadIfNeeded()
+	}
+
+	func didChangeMonitoredRepository() {
+		updateRepositoryMonitoring()
+	}
+
+	private func resumeContentLoadIfNeeded() {
+		guard isVisible, isSceneActive, !hasLoadedContent, !isLoading else { return }
+		didRequestRefresh()
+	}
+
+	private func updateRepositoryMonitoring() {
+		guard isVisible, isSceneActive else {
 			if repositoryMonitorTask != nil {
 				refreshesWhenMonitoringResumes = true
 			}

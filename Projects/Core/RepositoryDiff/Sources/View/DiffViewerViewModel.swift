@@ -16,6 +16,7 @@ final class DiffViewerViewModel: ObservableObject {
 	}
 
 	struct Presentation: Equatable {
+		let revision: Int
 		let input: Input
 		let document: DiffDocument
 		let sideBySideRows: [DiffSideBySideRow]
@@ -55,6 +56,7 @@ final class DiffViewerViewModel: ObservableObject {
 				lines: try DiffParser.parseCancellable(input.diff).filter { $0.kind != .metadata }
 			)
 			return Presentation(
+				revision: requestID,
 				input: input,
 				document: document,
 				sideBySideRows: try DiffSideBySideBuilder.buildCancellable(from: document)

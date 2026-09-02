@@ -4,14 +4,46 @@ import Foundation
 
 @MainActor
 public final class ConflictViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+		}
+	}
+
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+		public let operationsUseCase: any RepositoryOperationsUseCase
+		public let openExternalEditor: (@MainActor (URL, String?) throws -> Void)?
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			operationsUseCase: any RepositoryOperationsUseCase,
+			openExternalEditor: (@MainActor (URL, String?) throws -> Void)?,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.operationsUseCase = operationsUseCase
+			self.openExternalEditor = openExternalEditor
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published private(set) var content: GitConflictContent?
 	@Published private(set) var isLoadingContent = false
 	@Published public private(set) var isLoading = false
 	@Published var pendingConfirmation: ConflictConfirmation?
 	@Published private(set) var operationState: RepositoryOperationState = .normal
 
-	private let dependencies: ConflictViewModelDependencies
-	private let actions: ConflictViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var selectedConflict: GitConflict?
 	private var activeContentRequestID: Int?
 	private var contentRequestSequence = 0
@@ -21,8 +53,8 @@ public final class ConflictViewModel: ObservableObject {
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
-		dependencies: ConflictViewModelDependencies,
-		actions: ConflictViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
@@ -93,6 +125,22 @@ public final class ConflictViewModel: ObservableObject {
 		isLoading = false
 		pendingConfirmation = nil
 		operationState = .normal
+	}
+
+	public func onAppear() {
+		guard selectedConflict != nil, content == nil, !isLoadingContent else { return }
+		didSelectConflict(selectedConflict, forceReload: true)
+	}
+
+	public func onDisappear() {
+		contentTask?.cancel()
+		mutationTask?.cancel()
+		contentTask = nil
+		mutationTask = nil
+		activeContentRequestID = nil
+		activeMutationRequestID = nil
+		isLoadingContent = false
+		isLoading = false
 	}
 
 	public func didSelectConflict(_ conflict: GitConflict?, forceReload: Bool = false) {

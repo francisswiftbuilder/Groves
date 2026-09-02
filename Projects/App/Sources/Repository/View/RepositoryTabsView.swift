@@ -12,25 +12,8 @@ struct RepositoryTabsView: View {
 		Group {
 			if let repositoryTab {
 				WorkspaceView(
-					viewModel: repositoryTab.workspace.viewModel,
+					workspace: repositoryTab.workspace,
 					windowViewModel: windowViewModel,
-					changesViewModel: repositoryTab.workspace.changesViewModel,
-					changesDiffViewModel: repositoryTab.workspace.changesDiffViewModel,
-					commitViewModel: repositoryTab.workspace.commitViewModel,
-					conflictViewModel: repositoryTab.workspace.conflictViewModel,
-					historyViewModel: repositoryTab.workspace.historyViewModel,
-					operationViewModel: repositoryTab.workspace.operationViewModel,
-					referencesViewModel: repositoryTab.workspace.referencesViewModel,
-					syncViewModel: repositoryTab.workspace.syncViewModel,
-					remotesViewModel: repositoryTab.workspace.remotesViewModel,
-					stashesViewModel: repositoryTab.workspace.stashesViewModel,
-					treeViewModel: repositoryTab.workspace.treeViewModel,
-					diffPreferences: repositoryTab.workspace.diffPreferences,
-					changesDiffSearchViewModel: repositoryTab.workspace.changesDiffSearchViewModel,
-					historyDiffSearchViewModel: repositoryTab.workspace.historyDiffSearchViewModel,
-					stashesDiffSearchViewModel: repositoryTab.workspace.stashesDiffSearchViewModel,
-					commitActions: repositoryTab.workspace.commitActions,
-					focusedActions: repositoryTab.workspace.focusedActions,
 					repositoryID: repositoryTab.id
 				)
 			} else {
@@ -112,12 +95,15 @@ struct RepositoryTabsView: View {
 			guard let url = urls.first else { return }
 			switch request {
 			case .openRepository:
-				viewModel.didChooseRepository(url, onOpen: showRepository)
+				viewModel.didChooseRepository(
+					url,
+					actions: .init(didOpenRepository: showRepository)
+				)
 			case .clone(let remoteURL):
 				viewModel.didRequestCloneRepository(
 					from: remoteURL,
 					into: url,
-					onOpen: showRepository
+					actions: .init(didOpenRepository: showRepository)
 				)
 			}
 		case .failure(let error):

@@ -5,6 +5,7 @@ struct DiffImagePane: View {
 	let title: String
 	let image: NSImage?
 	let byteCount: Int?
+	let decodingFailed: Bool
 	let zoom: CGFloat
 	let unavailableMessage: String
 
@@ -52,6 +53,12 @@ struct DiffImagePane: View {
 					}
 					.defaultScrollAnchor(.center)
 				}
+			} else if decodingFailed {
+				ContentUnavailableView(
+					"Could Not Decode \(title) Image",
+					systemImage: "photo.badge.exclamationmark",
+					description: Text("The image data uses a format that Trees cannot display.")
+				)
 			} else {
 				ContentUnavailableView(
 					unavailableMessage,

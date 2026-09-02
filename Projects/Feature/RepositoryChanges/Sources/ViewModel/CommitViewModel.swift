@@ -4,20 +4,52 @@ import Foundation
 
 @MainActor
 public final class CommitViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+		public let didChangeAmendingCommit: @MainActor (Bool) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void,
+			didChangeAmendingCommit: @escaping @MainActor (Bool) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+			self.didChangeAmendingCommit = didChangeAmendingCommit
+		}
+	}
+
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+		public let changesUseCase: any RepositoryChangesUseCase
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			changesUseCase: any RepositoryChangesUseCase,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.changesUseCase = changesUseCase
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published var subject = ""
 	@Published var body = ""
 	@Published private(set) var isAmendingCommit = false
 	@Published public private(set) var isLoading = false
 	@Published private var availability = CommitAvailability.empty
 
-	private let dependencies: CommitViewModelDependencies
-	private let actions: CommitViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var commits: [GitCommit] = []
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
-		dependencies: CommitViewModelDependencies,
-		actions: CommitViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
@@ -73,6 +105,12 @@ public final class CommitViewModel: ObservableObject {
 		commits = []
 		availability = .empty
 		setAmendingCommit(false)
+	}
+
+	public func onDisappear() {
+		mutationTask?.cancel()
+		mutationTask = nil
+		isLoading = false
 	}
 
 	func didRequestCommit() {
@@ -147,6 +185,7 @@ public final class CommitViewModel: ObservableObject {
 			defer { isLoading = false }
 			do {
 				let snapshot = try await operation()
+				try Task.checkCancellation()
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return

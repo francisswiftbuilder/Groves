@@ -4,6 +4,35 @@ import Foundation
 
 @MainActor
 public final class RemotesViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+		}
+	}
+
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+		public let referencesUseCase: any RepositoryReferencesUseCase
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			referencesUseCase: any RepositoryReferencesUseCase,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.referencesUseCase = referencesUseCase
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published public var selectedRemoteID: String?
 	@Published public private(set) var remotes: [GitRemote] = []
 	@Published public private(set) var isLoading = false
@@ -11,13 +40,13 @@ public final class RemotesViewModel: ObservableObject {
 	@Published var pendingRename: GitRemote?
 	@Published var pendingConfirmation: RepositoryRemoteConfirmation?
 
-	private let dependencies: RemotesViewModelDependencies
-	private let actions: RemotesViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
-		dependencies: RemotesViewModelDependencies,
-		actions: RemotesViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
@@ -56,6 +85,12 @@ public final class RemotesViewModel: ObservableObject {
 		editorPresentation = nil
 		pendingRename = nil
 		pendingConfirmation = nil
+	}
+
+	public func onDisappear() {
+		mutationTask?.cancel()
+		mutationTask = nil
+		isLoading = false
 	}
 
 	public func didPresentAddRemote() {
@@ -169,7 +204,9 @@ public final class RemotesViewModel: ObservableObject {
 			isLoading = true
 			defer { isLoading = false }
 			do {
-				actions.didProduceSnapshot(try await operation())
+				let snapshot = try await operation()
+				try Task.checkCancellation()
+				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {

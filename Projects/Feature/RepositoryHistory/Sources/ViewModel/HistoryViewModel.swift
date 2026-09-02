@@ -5,6 +5,41 @@ import Foundation
 
 @MainActor
 public final class HistoryViewModel: ObservableObject {
+	public struct Actions {
+		public let didReceiveError: @MainActor (String) -> Void
+		public let didRequestPresentation: @MainActor () -> Void
+		public let didFocusBranch: @MainActor (GitBranch) -> Void
+		public let didFocusRemoteBranch: @MainActor (GitRemoteBranch) -> Void
+
+		public init(
+			didReceiveError: @escaping @MainActor (String) -> Void,
+			didRequestPresentation: @escaping @MainActor () -> Void,
+			didFocusBranch: @escaping @MainActor (GitBranch) -> Void,
+			didFocusRemoteBranch: @escaping @MainActor (GitRemoteBranch) -> Void
+		) {
+			self.didReceiveError = didReceiveError
+			self.didRequestPresentation = didRequestPresentation
+			self.didFocusBranch = didFocusBranch
+			self.didFocusRemoteBranch = didFocusRemoteBranch
+		}
+	}
+
+	public struct Dependencies {
+		public let changesUseCase: any RepositoryChangesUseCase
+		public let preferences: WorkspaceDiffPreferences
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			changesUseCase: any RepositoryChangesUseCase,
+			preferences: WorkspaceDiffPreferences,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.changesUseCase = changesUseCase
+			self.preferences = preferences
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published var selectedCommitID: String?
 	@Published var selectedCommitFileID: CommitDiffFile.ID?
 	@Published var searchText = ""
@@ -28,12 +63,16 @@ public final class HistoryViewModel: ObservableObject {
 	private var commitImageDiffTask: Task<Void, Never>?
 	private var layoutTask: Task<Void, Never>?
 	private var searchTask: Task<Void, Never>?
-	private let dependencies: HistoryViewModelDependencies
-	private let actions: HistoryViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
+
+	public var selectedCommitIDChanges: AnyPublisher<Void, Never> {
+		$selectedCommitID.map { _ in () }.eraseToAnyPublisher()
+	}
 
 	public init(
-		dependencies: HistoryViewModelDependencies,
-		actions: HistoryViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
@@ -86,6 +125,36 @@ public final class HistoryViewModel: ObservableObject {
 		commitImageDiffTask?.cancel()
 		layoutTask?.cancel()
 		searchTask?.cancel()
+		commitDiffTask = nil
+		commitImageDiffTask = nil
+		layoutTask = nil
+		searchTask = nil
+		activeCommitDiffRequestID = nil
+		requestedCommitDiffID = nil
+		activeCommitImageDiffRequestID = nil
+		isLoadingCommitDiff = false
+		isLoadingCommitImageDiff = false
+	}
+
+	public func onAppear() {
+		if commitGraphItems.map(\.commit) != commits {
+			requestLayout()
+			return
+		}
+		if !searchText.isEmpty, displayedCommitGraphItems == commitGraphItems {
+			requestFilter()
+		}
+		if let selectedCommit, displayedCommitDiffID != selectedCommit.id {
+			didChangeSelectedCommit(forceReload: true)
+		} else if selectedCommitFile.map({ DiffImageFileSupport.isSupported(path: $0.path) }) == true,
+			commitImageDiff == nil
+		{
+			didChangeSelectedCommitImageDiff()
+		}
+	}
+
+	public func onDisappear() {
+		cancelTasks()
 	}
 
 	public func reset() {

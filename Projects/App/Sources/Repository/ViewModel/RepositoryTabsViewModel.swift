@@ -3,22 +3,26 @@ import Foundation
 
 @MainActor
 final class RepositoryTabsViewModel: ObservableObject {
+	struct Actions {
+		let didOpenRepository: @MainActor (RepositoryTab.ID) -> Void
+	}
+
+	struct Dependencies {
+		let useCase: any RepositoryTabsUseCase
+		let makeWorkspace: @MainActor (URL) -> RepositoryWorkspace
+	}
+
 	@Published private(set) var tabs: [RepositoryTab] = []
 	@Published private(set) var selectedTabID: SavedRepository.ID?
 	@Published private(set) var isAddingRepository = false
 	@Published var alertMessage: String?
 
-	private let useCase: any RepositoryTabsUseCase
-	private let makeWorkspace: @MainActor (URL) -> RepositoryWorkspace
+	private let dependencies: Dependencies
 	private var addRepositoryTask: Task<Void, Never>?
 	private var didRestoreRepositoryWindows = false
 
-	init(
-		useCase: any RepositoryTabsUseCase,
-		makeWorkspace: @escaping @MainActor (URL) -> RepositoryWorkspace
-	) {
-		self.useCase = useCase
-		self.makeWorkspace = makeWorkspace
+	init(dependencies: Dependencies) {
+		self.dependencies = dependencies
 		restoreTabs()
 	}
 
@@ -41,7 +45,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 
 	func didChooseRepository(
 		_ url: URL,
-		onOpen: @escaping (RepositoryTab.ID) -> Void = { _ in }
+		actions: Actions
 	) {
 		addRepositoryTask?.cancel()
 		addRepositoryTask = Task {
@@ -49,8 +53,9 @@ final class RepositoryTabsViewModel: ObservableObject {
 			defer { isAddingRepository = false }
 
 			do {
-				let repository = try await useCase.openRepository(at: url)
-				openRepository(repository, onOpen: onOpen)
+				let repository = try await dependencies.useCase.openRepository(at: url)
+				try Task.checkCancellation()
+				openRepository(repository, actions: actions)
 			} catch is CancellationError {
 				return
 			} catch {
@@ -62,7 +67,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 	func didRequestCloneRepository(
 		from remoteURL: String,
 		into directoryURL: URL,
-		onOpen: @escaping (RepositoryTab.ID) -> Void = { _ in }
+		actions: Actions
 	) {
 		addRepositoryTask?.cancel()
 		addRepositoryTask = Task {
@@ -70,11 +75,12 @@ final class RepositoryTabsViewModel: ObservableObject {
 			defer { isAddingRepository = false }
 
 			do {
-				let repository = try await useCase.cloneRepository(
+				let repository = try await dependencies.useCase.cloneRepository(
 					from: remoteURL,
 					into: directoryURL
 				)
-				openRepository(repository, onOpen: onOpen)
+				try Task.checkCancellation()
+				openRepository(repository, actions: actions)
 			} catch is CancellationError {
 				return
 			} catch {
@@ -104,7 +110,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 		if selectedTabID != id {
 			selectedTabID = id
 			do {
-				try useCase.selectRepository(id: id)
+				try dependencies.useCase.selectRepository(id: id)
 			} catch {
 				alertMessage = error.localizedDescription
 			}
@@ -126,7 +132,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 	func didRequestCloseTab(_ id: SavedRepository.ID) -> SavedRepository.ID? {
 		guard tabs.contains(where: { $0.id == id }) else { return nil }
 		do {
-			let snapshot = try useCase.removeRepository(id: id)
+			let snapshot = try dependencies.useCase.removeRepository(id: id)
 			reconcileTabs(with: snapshot.repositories)
 			selectedTabID = snapshot.selectedRepositoryID
 			activateSelectedTabIfNeeded()
@@ -139,7 +145,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 
 	private func restoreTabs() {
 		do {
-			let snapshot = try useCase.loadTabs()
+			let snapshot = try dependencies.useCase.loadTabs()
 			tabs = snapshot.repositories.map(makeTab)
 			selectedTabID = snapshot.selectedRepositoryID
 			activateSelectedTabIfNeeded()
@@ -151,20 +157,20 @@ final class RepositoryTabsViewModel: ObservableObject {
 	private func makeTab(repository: SavedRepository) -> RepositoryTab {
 		RepositoryTab(
 			repository: repository,
-			workspace: makeWorkspace(repository.url)
+			workspace: dependencies.makeWorkspace(repository.url)
 		)
 	}
 
 	private func openRepository(
 		_ repository: SavedRepository,
-		onOpen: (RepositoryTab.ID) -> Void
+		actions: Actions
 	) {
 		if tabs.contains(where: { $0.id == repository.id }) == false {
 			tabs.append(makeTab(repository: repository))
 		}
 		selectedTabID = repository.id
 		activateSelectedTabIfNeeded()
-		onOpen(repository.id)
+		actions.didOpenRepository(repository.id)
 	}
 
 	private func reconcileTabs(with repositories: [SavedRepository]) {

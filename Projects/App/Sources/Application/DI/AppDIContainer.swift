@@ -41,13 +41,15 @@ final class AppDIContainer {
 				)
 			)
 			return RepositoryTabsViewModel(
-				useCase: RepositoryUseCaseFactory.makeTabsUseCase(
-					repository: repository,
-					savedRepositoryStore: try SwiftDataSavedRepositoryStore()
-				),
-				makeWorkspace: { repositoryURL in
-					workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)
-				}
+				dependencies: .init(
+					useCase: RepositoryUseCaseFactory.makeTabsUseCase(
+						repository: repository,
+						savedRepositoryStore: try SwiftDataSavedRepositoryStore()
+					),
+					makeWorkspace: { repositoryURL in
+						workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)
+					}
+				)
 			)
 		}
 	}

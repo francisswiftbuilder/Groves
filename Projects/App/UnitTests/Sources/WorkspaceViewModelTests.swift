@@ -37,7 +37,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		var workspace: RepositoryWorkspace? = makeRepositoryWorkspace()
 		workspace?.viewModel.didChooseRepository(repositoryURL)
 		try await waitUntil { workspace?.viewModel.repositoryURL == repositoryURL }
-		workspace?.viewModel.setRepositoryMonitoringActive(true)
+		workspace?.viewModel.onAppear(isSceneActive: true)
 		weak var weakViewModel = workspace?.viewModel
 
 		workspace = nil
@@ -59,9 +59,9 @@ final class WorkspaceViewModelTests: XCTestCase {
 		)
 		try await waitUntil { !workspace.viewModel.isLoading }
 
-		workspace.viewModel.setRepositoryMonitoringActive(true)
-		workspace.viewModel.setRepositoryMonitoringActive(false)
-		workspace.viewModel.setRepositoryMonitoringActive(true)
+		workspace.viewModel.onAppear(isSceneActive: true)
+		workspace.viewModel.didChangeSceneActivation(false)
+		workspace.viewModel.didChangeSceneActivation(true)
 
 		try await waitUntilCallCount(
 			2,
