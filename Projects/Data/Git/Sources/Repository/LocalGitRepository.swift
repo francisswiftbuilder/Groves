@@ -450,7 +450,7 @@ public struct LocalGitRepository: GitRepository {
 				path: change.path,
 				at: repositoryURL
 			)
-			return await GitImageDiff(before: before, after: after)
+			return try await GitImageDiff(before: before, after: after)
 		case .unstaged:
 			async let before = requestBlobData(
 				revision: "",
@@ -458,7 +458,7 @@ public struct LocalGitRepository: GitRepository {
 				at: repositoryURL
 			)
 			async let after = requestWorkingTreeData(path: change.path, at: repositoryURL)
-			return await GitImageDiff(before: before, after: after)
+			return try await GitImageDiff(before: before, after: after)
 		}
 	}
 
@@ -477,7 +477,7 @@ public struct LocalGitRepository: GitRepository {
 			path: change.path,
 			at: repositoryURL
 		)
-		return await GitImageDiff(before: before, after: after)
+		return try await GitImageDiff(before: before, after: after)
 	}
 
 	public func requestCommitImageDiff(
@@ -496,7 +496,7 @@ public struct LocalGitRepository: GitRepository {
 			path: path,
 			at: repositoryURL
 		)
-		return await GitImageDiff(before: before, after: after)
+		return try await GitImageDiff(before: before, after: after)
 	}
 
 	public func requestStashImageDiff(
@@ -510,7 +510,7 @@ public struct LocalGitRepository: GitRepository {
 			path: previousPath ?? path,
 			at: repositoryURL
 		)
-		let trackedAfter = await requestBlobData(
+		let trackedAfter = try await requestBlobData(
 			revision: stash.reference,
 			path: path,
 			at: repositoryURL
@@ -519,13 +519,13 @@ public struct LocalGitRepository: GitRepository {
 		if let trackedAfter {
 			after = trackedAfter
 		} else {
-			after = await requestBlobData(
+			after = try await requestBlobData(
 				revision: "\(stash.reference)^3",
 				path: path,
 				at: repositoryURL
 			)
 		}
-		return await GitImageDiff(before: before, after: after)
+		return try await GitImageDiff(before: before, after: after)
 	}
 
 	public func requestStage(path: String, at repositoryURL: URL) async throws {
@@ -846,11 +846,12 @@ public struct LocalGitRepository: GitRepository {
 			path: conflict.path,
 			at: repositoryURL
 		)
-		let workingTreeData = try? await requestFileContents(
-			at: conflict.path,
-			in: repositoryURL
+		async let requestedWorkingTreeData = requestWorkingTreeData(
+			path: conflict.path,
+			at: repositoryURL
 		)
-		let stageContents = await (baseData, currentData, incomingData)
+		let stageContents = try await (baseData, currentData, incomingData)
+		let workingTreeData = try await requestedWorkingTreeData
 		let base = stageContents.0.flatMap { String(data: $0, encoding: .utf8) }
 		let current = stageContents.1.flatMap { String(data: $0, encoding: .utf8) }
 		let incoming = stageContents.2.flatMap { String(data: $0, encoding: .utf8) }
@@ -900,9 +901,9 @@ public struct LocalGitRepository: GitRepository {
 		exists: Bool,
 		path: String,
 		at repositoryURL: URL
-	) async -> Data? {
+	) async throws -> Data? {
 		guard exists else { return nil }
-		return await requestBlobData(
+		return try await requestBlobData(
 			revision: ":\(stage)",
 			path: path,
 			at: repositoryURL
@@ -1410,20 +1411,40 @@ public struct LocalGitRepository: GitRepository {
 		revision: String?,
 		path: String,
 		at repositoryURL: URL
-	) async -> Data? {
+	) async throws -> Data? {
 		guard let revision else { return nil }
 		let object = revision.isEmpty ? ":\(path)" : "\(revision):\(path)"
 		guard
-			let result = try? await runner.requestRun(
-				arguments: ["show", object],
+			let sizeResult = try? await runner.requestRun(
+				arguments: ["cat-file", "-s", object],
 				at: repositoryURL
+			),
+			let byteCount = Int(
+				sizeResult.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
 			)
 		else { return nil }
-		guard result.standardOutputData.count <= Self.maximumPreviewByteCount else { return nil }
+		guard byteCount <= Self.maximumPreviewByteCount else {
+			throw GitRepositoryError.fileTooLarge
+		}
+		let result = try await runner.requestRun(
+			arguments: ["show", object],
+			at: repositoryURL
+		)
+		guard result.standardOutputData.count <= Self.maximumPreviewByteCount else {
+			throw GitRepositoryError.fileTooLarge
+		}
 		return result.standardOutputData
 	}
 
-	private func requestWorkingTreeData(path: String, at repositoryURL: URL) async -> Data? {
-		try? await requestFileContents(at: path, in: repositoryURL)
+	private func requestWorkingTreeData(path: String, at repositoryURL: URL) async throws -> Data? {
+		do {
+			return try await requestFileContents(at: path, in: repositoryURL)
+		} catch is CancellationError {
+			throw CancellationError()
+		} catch GitRepositoryError.fileTooLarge {
+			throw GitRepositoryError.fileTooLarge
+		} catch {
+			return nil
+		}
 	}
 }

@@ -6,6 +6,8 @@ import SwiftUI
 public struct ImageDiffView: View {
 	@State private var beforeImage: NSImage?
 	@State private var afterImage: NSImage?
+	@State private var beforeDecodingFailed = false
+	@State private var afterDecodingFailed = false
 	@State private var isDecoding = true
 	@State private var zoom = 1.0
 	let diff: GitImageDiff
@@ -32,6 +34,7 @@ public struct ImageDiffView: View {
 							title: beforeTitle,
 							image: beforeImage,
 							byteCount: diff.before?.count,
+							decodingFailed: beforeDecodingFailed,
 							zoom: zoom,
 							unavailableMessage: "No \(beforeTitle) Image"
 						)
@@ -41,6 +44,7 @@ public struct ImageDiffView: View {
 							title: afterTitle,
 							image: afterImage,
 							byteCount: diff.after?.count,
+							decodingFailed: afterDecodingFailed,
 							zoom: zoom,
 							unavailableMessage: "No \(afterTitle) Image"
 						)
@@ -56,10 +60,17 @@ public struct ImageDiffView: View {
 		}
 		.task(id: diff) {
 			isDecoding = true
+			beforeDecodingFailed = false
+			afterDecodingFailed = false
 			async let requestedBeforeImage = DiffImageDecoder.decode(diff.before)
 			async let requestedAfterImage = DiffImageDecoder.decode(diff.after)
-			beforeImage = await requestedBeforeImage
-			afterImage = await requestedAfterImage
+			let decodedBeforeImage = await requestedBeforeImage
+			let decodedAfterImage = await requestedAfterImage
+			guard !Task.isCancelled else { return }
+			beforeImage = decodedBeforeImage
+			afterImage = decodedAfterImage
+			beforeDecodingFailed = diff.before != nil && decodedBeforeImage == nil
+			afterDecodingFailed = diff.after != nil && decodedAfterImage == nil
 			isDecoding = false
 		}
 	}
