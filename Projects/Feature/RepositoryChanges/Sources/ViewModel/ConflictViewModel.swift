@@ -127,6 +127,22 @@ public final class ConflictViewModel: ObservableObject {
 		operationState = .normal
 	}
 
+	public func onAppear() {
+		guard selectedConflict != nil, content == nil, !isLoadingContent else { return }
+		didSelectConflict(selectedConflict, forceReload: true)
+	}
+
+	public func onDisappear() {
+		contentTask?.cancel()
+		mutationTask?.cancel()
+		contentTask = nil
+		mutationTask = nil
+		activeContentRequestID = nil
+		activeMutationRequestID = nil
+		isLoadingContent = false
+		isLoading = false
+	}
+
 	public func didSelectConflict(_ conflict: GitConflict?, forceReload: Bool = false) {
 		let didChangeSelection = selectedConflict?.id != conflict?.id
 		guard forceReload || didChangeSelection else { return }

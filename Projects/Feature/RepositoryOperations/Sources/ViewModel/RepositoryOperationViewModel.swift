@@ -125,6 +125,12 @@ public final class RepositoryOperationViewModel: ObservableObject {
 
 	func cancelTasks() {
 		mutationTask?.cancel()
+		mutationTask = nil
+		isLoading = false
+	}
+
+	public func onDisappear() {
+		cancelTasks()
 	}
 
 	public func didRequestMergeBranch(_ branch: GitBranch) {
@@ -298,6 +304,7 @@ public final class RepositoryOperationViewModel: ObservableObject {
 			defer { isLoading = false }
 			do {
 				let snapshot = try await operation()
+				try Task.checkCancellation()
 				didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return

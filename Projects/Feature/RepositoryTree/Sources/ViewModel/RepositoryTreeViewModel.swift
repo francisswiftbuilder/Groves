@@ -63,6 +63,22 @@ public final class RepositoryTreeViewModel: ObservableObject {
 		filePreview = .none
 	}
 
+	public func onAppear() {
+		guard selectedTreeNodeID != nil, filePreview == .none else { return }
+		didSelectTreeNode(
+			node(id: selectedTreeNodeID, in: fileTree),
+			preservesCurrentPreview: false
+		)
+	}
+
+	public func onDisappear() {
+		filePreviewTask?.cancel()
+		filePreviewTask = nil
+		if filePreview == .loading {
+			filePreview = .none
+		}
+	}
+
 	func setTreeNode(_ nodeID: String, isExpanded: Bool) {
 		if isExpanded {
 			guard !expandedTreeNodeIDs.contains(nodeID) else { return }

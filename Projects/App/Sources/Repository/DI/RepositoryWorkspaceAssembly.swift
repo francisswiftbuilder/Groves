@@ -1,3 +1,4 @@
+import Combine
 import CoreRepositoryDiff
 import DomainGitInterface
 import FeatureRepositoryChanges
@@ -351,6 +352,39 @@ final class RepositoryWorkspaceAssembly {
 			createTag: referencesViewModel.didPresentNewTag,
 			reset: operationViewModel.didPresentReset
 		)
+		let focusedActionsStateChanges = Publishers.MergeMany(
+			operationViewModel.$operationState.map { _ in () }.eraseToAnyPublisher(),
+			historyViewModel.selectedCommitIDChanges,
+			referencesViewModel.$selectedBranchID.map { _ in () }.eraseToAnyPublisher(),
+			referencesViewModel.$branches.map { _ in () }.eraseToAnyPublisher(),
+			remotesViewModel.$selectedRemoteID.map { _ in () }.eraseToAnyPublisher(),
+			remotesViewModel.$remotes.map { _ in () }.eraseToAnyPublisher()
+		)
+		.eraseToAnyPublisher()
+		let focusedActionsViewModel = RepositoryFocusedActionsViewModel(
+			dependencies: .init(
+				stateChanges: focusedActionsStateChanges,
+				operationState: { operationViewModel.operationState },
+				selectedBranch: { referencesViewModel.selectedBranch },
+				selectedCommit: { historyViewModel.selectedCommit },
+				selectedRemote: { remotesViewModel.selectedRemote }
+			),
+			actions: .init(
+				refresh: viewModel.didRequestRefresh,
+				viewConflicts: operationViewModel.didViewConflicts,
+				performOperationAction: operationViewModel.didPerformOperationAction,
+				presentOperationAction: operationViewModel.didPresentOperationAction,
+				rebase: operationViewModel.didRequestRebase,
+				renameBranch: referencesViewModel.didPresentBranchRename,
+				cherryPick: operationViewModel.didPresentCherryPick,
+				revert: operationViewModel.didPresentRevert,
+				reset: operationViewModel.didPresentReset,
+				addRemote: remotesViewModel.didPresentAddRemote,
+				renameRemote: remotesViewModel.didPresentRename,
+				editRemote: remotesViewModel.didPresentEditor,
+				deleteRemote: remotesViewModel.didPresentDeletion
+			)
+		)
 		return RepositoryWorkspace(
 			viewModel: viewModel,
 			changesViewModel: changesViewModel,
@@ -369,85 +403,7 @@ final class RepositoryWorkspaceAssembly {
 			historyDiffSearchViewModel: historyDiffSearchViewModel,
 			stashesDiffSearchViewModel: stashesDiffSearchViewModel,
 			commitActions: commitActions,
-			focusedActions: {
-				self.makeFocusedActions(
-					viewModel: viewModel,
-					historyViewModel: historyViewModel,
-					operationViewModel: operationViewModel,
-					referencesViewModel: referencesViewModel,
-					remotesViewModel: remotesViewModel
-				)
-			}
-		)
-	}
-
-	private func makeFocusedActions(
-		viewModel: WorkspaceViewModel,
-		historyViewModel: HistoryViewModel,
-		operationViewModel: RepositoryOperationViewModel,
-		referencesViewModel: RepositoryReferencesViewModel,
-		remotesViewModel: RemotesViewModel
-	) -> RepositoryFocusedActions {
-		let operation = operationViewModel.operationState.operation
-		let viewConflicts: (() -> Void)? =
-			operationViewModel.operationState.hasConflicts
-			? { operationViewModel.didViewConflicts() }
-			: nil
-		let continueOperation: (() -> Void)? =
-			operation != nil && !operationViewModel.operationState.hasConflicts
-			? { operationViewModel.didPerformOperationAction(.continue) }
-			: nil
-		let skipOperation: (() -> Void)? =
-			operation != nil && operation?.kind != .merge
-			? { operationViewModel.didPresentOperationAction(.skip) }
-			: nil
-		let abortOperation: (() -> Void)? =
-			operation != nil
-			? { operationViewModel.didPresentOperationAction(.abort) }
-			: nil
-		let rebaseSelectedBranch: (() -> Void)?
-		let renameSelectedBranch: (() -> Void)?
-		if let branch = referencesViewModel.selectedBranch {
-			rebaseSelectedBranch = { operationViewModel.didRequestRebase(onto: branch) }
-			renameSelectedBranch = { referencesViewModel.didPresentBranchRename(branch) }
-		} else {
-			rebaseSelectedBranch = nil
-			renameSelectedBranch = nil
-		}
-		let cherryPickSelectedCommit: (() -> Void)?
-		let revertSelectedCommit: (() -> Void)?
-		let resetSelectedCommit: (() -> Void)?
-		if let commit = historyViewModel.selectedCommit {
-			cherryPickSelectedCommit = { operationViewModel.didPresentCherryPick(commit) }
-			revertSelectedCommit = { operationViewModel.didPresentRevert(commit) }
-			resetSelectedCommit = { operationViewModel.didPresentReset(commit) }
-		} else {
-			cherryPickSelectedCommit = nil
-			revertSelectedCommit = nil
-			resetSelectedCommit = nil
-		}
-		let selectedRemote = remotesViewModel.selectedRemote
-		return RepositoryFocusedActions(
-			refresh: { viewModel.didRequestRefresh() },
-			viewConflicts: viewConflicts,
-			continueOperation: continueOperation,
-			skipOperation: skipOperation,
-			abortOperation: abortOperation,
-			rebaseSelectedBranch: rebaseSelectedBranch,
-			renameSelectedBranch: renameSelectedBranch,
-			cherryPickSelectedCommit: cherryPickSelectedCommit,
-			revertSelectedCommit: revertSelectedCommit,
-			resetSelectedCommit: resetSelectedCommit,
-			addRemote: { remotesViewModel.didPresentAddRemote() },
-			renameSelectedRemote: selectedRemote.map { remote in
-				{ remotesViewModel.didPresentRename(remote) }
-			},
-			editSelectedRemote: selectedRemote.map { remote in
-				{ remotesViewModel.didPresentEditor(remote) }
-			},
-			deleteSelectedRemote: selectedRemote.map { remote in
-				{ remotesViewModel.didPresentDeletion(remote) }
-			}
+			focusedActionsViewModel: focusedActionsViewModel
 		)
 	}
 }

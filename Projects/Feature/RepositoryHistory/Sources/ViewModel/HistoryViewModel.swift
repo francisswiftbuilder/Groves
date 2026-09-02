@@ -66,6 +66,10 @@ public final class HistoryViewModel: ObservableObject {
 	private let dependencies: Dependencies
 	private let actions: Actions
 
+	public var selectedCommitIDChanges: AnyPublisher<Void, Never> {
+		$selectedCommitID.map { _ in () }.eraseToAnyPublisher()
+	}
+
 	public init(
 		dependencies: Dependencies,
 		actions: Actions
@@ -121,6 +125,36 @@ public final class HistoryViewModel: ObservableObject {
 		commitImageDiffTask?.cancel()
 		layoutTask?.cancel()
 		searchTask?.cancel()
+		commitDiffTask = nil
+		commitImageDiffTask = nil
+		layoutTask = nil
+		searchTask = nil
+		activeCommitDiffRequestID = nil
+		requestedCommitDiffID = nil
+		activeCommitImageDiffRequestID = nil
+		isLoadingCommitDiff = false
+		isLoadingCommitImageDiff = false
+	}
+
+	public func onAppear() {
+		if commitGraphItems.map(\.commit) != commits {
+			requestLayout()
+			return
+		}
+		if !searchText.isEmpty, displayedCommitGraphItems == commitGraphItems {
+			requestFilter()
+		}
+		if let selectedCommit, displayedCommitDiffID != selectedCommit.id {
+			didChangeSelectedCommit(forceReload: true)
+		} else if selectedCommitFile.map({ DiffImageFileSupport.isSupported(path: $0.path) }) == true,
+			commitImageDiff == nil
+		{
+			didChangeSelectedCommitImageDiff()
+		}
+	}
+
+	public func onDisappear() {
+		cancelTasks()
 	}
 
 	public func reset() {

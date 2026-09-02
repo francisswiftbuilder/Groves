@@ -5,9 +5,9 @@ import Foundation
 @MainActor
 public final class CommitViewModel: ObservableObject {
 	public struct Actions {
-		let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
-		let didReceiveError: @MainActor (String) -> Void
-		let didChangeAmendingCommit: @MainActor (Bool) -> Void
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+		public let didChangeAmendingCommit: @MainActor (Bool) -> Void
 
 		public init(
 			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
@@ -21,9 +21,9 @@ public final class CommitViewModel: ObservableObject {
 	}
 
 	public struct Dependencies {
-		let contentUseCase: any RepositoryContentUseCase
-		let changesUseCase: any RepositoryChangesUseCase
-		let repositoryURL: @MainActor () -> URL?
+		public let contentUseCase: any RepositoryContentUseCase
+		public let changesUseCase: any RepositoryChangesUseCase
+		public let repositoryURL: @MainActor () -> URL?
 
 		public init(
 			contentUseCase: any RepositoryContentUseCase,
@@ -107,6 +107,12 @@ public final class CommitViewModel: ObservableObject {
 		setAmendingCommit(false)
 	}
 
+	public func onDisappear() {
+		mutationTask?.cancel()
+		mutationTask = nil
+		isLoading = false
+	}
+
 	func didRequestCommit() {
 		guard let repositoryURL = dependencies.repositoryURL(), canCommit else { return }
 		let subject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -179,6 +185,7 @@ public final class CommitViewModel: ObservableObject {
 			defer { isLoading = false }
 			do {
 				let snapshot = try await operation()
+				try Task.checkCancellation()
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return

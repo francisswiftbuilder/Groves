@@ -34,6 +34,8 @@ final class WorkspaceViewModel: ObservableObject {
 	private var hasLoadedContent = false
 	private var refreshesWhenMonitoringResumes = false
 	private var automaticRefreshRevalidatesSelectedContent = false
+	private var isVisible = false
+	private var isSceneActive = false
 
 	init(
 		dependencies: Dependencies,
@@ -142,8 +144,42 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func setRepositoryMonitoringActive(_ isActive: Bool) {
-		guard isActive else {
+	func onAppear(isSceneActive: Bool) {
+		isVisible = true
+		self.isSceneActive = isSceneActive
+		updateRepositoryMonitoring()
+		resumeContentLoadIfNeeded()
+	}
+
+	func onDisappear() {
+		isVisible = false
+		refreshTask?.cancel()
+		refreshTask = nil
+		conflictFocusTask?.cancel()
+		conflictFocusTask = nil
+		contentLoadID = nil
+		isLoading = false
+		isLoadingContent = false
+		updateRepositoryMonitoring()
+	}
+
+	func didChangeSceneActivation(_ isActive: Bool) {
+		isSceneActive = isActive
+		updateRepositoryMonitoring()
+		resumeContentLoadIfNeeded()
+	}
+
+	func didChangeMonitoredRepository() {
+		updateRepositoryMonitoring()
+	}
+
+	private func resumeContentLoadIfNeeded() {
+		guard isVisible, isSceneActive, !hasLoadedContent, !isLoading else { return }
+		didRequestRefresh()
+	}
+
+	private func updateRepositoryMonitoring() {
+		guard isVisible, isSceneActive else {
 			if repositoryMonitorTask != nil {
 				refreshesWhenMonitoringResumes = true
 			}
