@@ -6,7 +6,7 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
 	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
 	@ObservedObject private var syncViewModel: RepositorySyncViewModel
-	@ObservedObject private var remotesViewModel: RemotesViewModel
+	private let remotesViewModel: RemotesViewModel
 	let onCreateBranch: () -> Void
 
 	init(
@@ -21,7 +21,7 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
 		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
 		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
-		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
+		self.remotesViewModel = remotesViewModel
 		self.onCreateBranch = onCreateBranch
 	}
 
@@ -40,6 +40,12 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 			.help("Create a Branch from \(referencesViewModel.currentBranchName)")
 		}
 
+		if let activity = syncViewModel.presentedActivity {
+			ToolbarItem(placement: .primaryAction) {
+				RepositorySyncProgressIndicator(activity: activity)
+			}
+		}
+
 		ToolbarSpacer(.fixed, placement: .primaryAction)
 
 		ToolbarItemGroup(placement: .primaryAction) {
@@ -51,53 +57,17 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 			.disabled(viewModel.isLoading || operationViewModel.isLoading || syncViewModel.isLoading)
 			.help("Refresh Repository")
 
-			if syncViewModel.isLoading {
-				ControlGroup {
-					ProgressView()
-						.controlSize(.small)
-						.accessibilityLabel("Git operation in progress")
-
-					Button("Cancel", systemImage: "xmark.circle") {
-						syncViewModel.didRequestCancelOperation()
-					}
-					.help("Cancel Git Operation")
-				}
-			} else {
-				Menu {
-					Button("Fetch All Remotes", systemImage: "arrow.triangle.2.circlepath") {
-						syncViewModel.didRequestFetchAll()
-					}
-
-					if !remotesViewModel.remotes.isEmpty {
-						Divider()
-						ForEach(remotesViewModel.remotes) { remote in
-							Button(remote.name, systemImage: "icloud.and.arrow.down") {
-								syncViewModel.didRequestFetch(remoteName: remote.name)
-							}
-						}
-					}
-				} label: {
-					Label("Fetch", systemImage: "arrow.triangle.2.circlepath")
-				}
-				.accessibilityLabel("Fetch")
-				.disabled(remotesViewModel.remotes.isEmpty)
-				.help("Fetch Remote References")
-			}
+			RepositoryFetchToolbarControl(
+				syncViewModel: syncViewModel,
+				remotesViewModel: remotesViewModel
+			)
 		}
 
 		ToolbarSpacer(.fixed, placement: .primaryAction)
 
 		ToolbarItemGroup(placement: .primaryAction) {
-			if !syncViewModel.isLoading {
-				Button {
-					syncViewModel.didRequestPull()
-				} label: {
-					Label("Pull", systemImage: "arrow.down")
-				}
-				.help("Pull Current Branch")
-
-				RepositoryPushMenu(viewModel: syncViewModel)
-			}
+			RepositoryPullToolbarControl(viewModel: syncViewModel)
+			RepositoryPushMenu(viewModel: syncViewModel)
 		}
 	}
 }

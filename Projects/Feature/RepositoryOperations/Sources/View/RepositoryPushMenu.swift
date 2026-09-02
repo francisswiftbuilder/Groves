@@ -13,19 +13,23 @@ public struct RepositoryPushMenu: View {
 	}
 
 	public var body: some View {
-		Menu {
-			branchPushControl(forceWithLease: false)
-			branchPushControl(forceWithLease: true)
+		if viewModel.presentedActivity?.isPush == true {
+			RepositorySyncCancelButton(viewModel: viewModel)
+		} else {
+			Menu {
+				branchPushControl(forceWithLease: false)
+				branchPushControl(forceWithLease: true)
 
-			Divider()
+				Divider()
 
-			tagPushControl
-		} label: {
-			Label("Push", systemImage: "arrow.up")
+				tagPushControl
+			} label: {
+				Label("Push", systemImage: "arrow.up")
+			}
+			.accessibilityLabel("Push")
+			.disabled(viewModel.isLoading || !hasAvailableAction)
+			.help("Push Current Branch or Tags")
 		}
-		.accessibilityLabel("Push")
-		.disabled(viewModel.isLoading || !hasAvailableAction)
-		.help("Push Current Branch or Tags")
 	}
 
 	private var hasAvailableAction: Bool {

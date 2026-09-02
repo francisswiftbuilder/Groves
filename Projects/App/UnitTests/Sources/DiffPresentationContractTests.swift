@@ -110,6 +110,7 @@ final class DiffPresentationContractTests: XCTestCase {
 		)
 		await model.update(input: initialInput)
 		let initialPresentation = model.presentation
+		let initialRevision = model.presentation?.revision
 		let replacementTask = Task {
 			await model.update(input: replacementInput)
 		}
@@ -121,6 +122,7 @@ final class DiffPresentationContractTests: XCTestCase {
 		XCTAssertFalse(model.canInteract(with: replacementInput))
 		await replacementTask.value
 		XCTAssertNotEqual(model.presentation, initialPresentation)
+		XCTAssertNotEqual(model.presentation?.revision, initialRevision)
 		XCTAssertEqual(model.presentation?.input, replacementInput)
 		XCTAssertTrue(model.canInteract(with: replacementInput))
 	}

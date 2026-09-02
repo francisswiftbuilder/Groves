@@ -163,6 +163,7 @@ public struct CommitDiffView: View {
 					onApplyLine: { _, _ in },
 					onApplyHunk: { _, _ in }
 				)
+				.id(presentation.revision)
 			}
 		} else {
 			EmptyStateView(

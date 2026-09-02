@@ -109,11 +109,117 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 		viewModel?.didRequestFetchAll()
 		await fulfillment(of: [started], timeout: 2)
 		XCTAssertEqual(viewModel?.isLoading, true)
+		XCTAssertEqual(viewModel?.activity, .fetchAll)
 
 		viewModel = nil
 
 		XCTAssertNil(weakViewModel)
 		await fulfillment(of: [cancelled], timeout: 2)
+	}
+
+	func testCancellingSyncClearsActivity() async {
+		let started = expectation(description: "Network task started")
+		let cancelled = expectation(description: "Network task cancelled")
+		let referencesUseCase = OperationsReferencesUseCaseStub { _ in
+			started.fulfill()
+			return try await withTaskCancellationHandler {
+				try await Task.sleep(for: .seconds(60))
+				return RepositorySnapshot(
+					changes: [],
+					amendChanges: [],
+					commits: [],
+					branches: [],
+					remotes: [],
+					operationState: .normal,
+					tags: [],
+					stashes: [],
+					fileTree: []
+				)
+			} onCancel: {
+				cancelled.fulfill()
+			}
+		}
+		let viewModel = RepositorySyncViewModel(
+			dependencies: RepositorySyncViewModel.Dependencies(
+				contentUseCase: OperationsContentUseCaseStub(),
+				referencesUseCase: referencesUseCase,
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+			),
+			actions: RepositorySyncViewModel.Actions(
+				didProduceSnapshot: { _ in },
+				didReceiveError: { _ in }
+			)
+		)
+
+		viewModel.didRequestFetchAll()
+		await fulfillment(of: [started], timeout: 2)
+		XCTAssertEqual(viewModel.activity, .fetchAll)
+		try? await Task.sleep(for: .milliseconds(300))
+		XCTAssertEqual(viewModel.presentedActivity, .fetchAll)
+
+		viewModel.didRequestCancelOperation()
+		await fulfillment(of: [cancelled], timeout: 2)
+		for _ in 0..<100 where viewModel.activity != nil {
+			try? await Task.sleep(for: .milliseconds(10))
+		}
+
+		XCTAssertNil(viewModel.activity)
+		XCTAssertNil(viewModel.presentedActivity)
+		XCTAssertFalse(viewModel.isLoading)
+	}
+
+	func testShortSyncDoesNotPresentTransientActivity() async {
+		let completed = expectation(description: "Network task completed")
+		let referencesUseCase = OperationsReferencesUseCaseStub { _ in
+			RepositorySnapshot(
+				changes: [],
+				amendChanges: [],
+				commits: [],
+				branches: [],
+				remotes: [],
+				operationState: .normal,
+				tags: [],
+				stashes: [],
+				fileTree: []
+			)
+		}
+		let viewModel = RepositorySyncViewModel(
+			dependencies: RepositorySyncViewModel.Dependencies(
+				contentUseCase: OperationsContentUseCaseStub(),
+				referencesUseCase: referencesUseCase,
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+			),
+			actions: RepositorySyncViewModel.Actions(
+				didProduceSnapshot: { _ in completed.fulfill() },
+				didReceiveError: { _ in }
+			)
+		)
+
+		viewModel.didRequestFetchAll()
+		await fulfillment(of: [completed], timeout: 2)
+		try? await Task.sleep(for: .milliseconds(300))
+
+		XCTAssertNil(viewModel.activity)
+		XCTAssertNil(viewModel.presentedActivity)
+		XCTAssertFalse(viewModel.isLoading)
+	}
+
+	func testSyncActivityUsesSpecificStatusAndCancellationLabels() {
+		XCTAssertEqual(
+			RepositorySyncViewModel.Activity.fetchRemote("origin").statusDescription,
+			"Fetching origin"
+		)
+		XCTAssertEqual(
+			RepositorySyncViewModel.Activity.pull("develop").statusDescription,
+			"Pulling develop"
+		)
+		XCTAssertEqual(
+			RepositorySyncViewModel.Activity.pushTags("origin").cancellationLabel,
+			"Cancel Tag Push"
+		)
+		XCTAssertTrue(RepositorySyncViewModel.Activity.fetchAll.isFetch)
+		XCTAssertTrue(RepositorySyncViewModel.Activity.pull("develop").isPull)
+		XCTAssertTrue(RepositorySyncViewModel.Activity.push(nil).isPush)
 	}
 
 	func testSyncPushActionUpdatesWhenOnlyBranchStateChanges() {
