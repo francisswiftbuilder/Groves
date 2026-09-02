@@ -24,7 +24,7 @@ final class RepositoryWorkspace {
 	let historyDiffSearchViewModel: RepositorySearchViewModel
 	let stashesDiffSearchViewModel: RepositorySearchViewModel
 	let commitActions: RepositoryCommitActions
-	let focusedActions: () -> RepositoryFocusedActions
+	let focusedActionsViewModel: RepositoryFocusedActionsViewModel
 
 	init(
 		viewModel: WorkspaceViewModel,
@@ -44,7 +44,7 @@ final class RepositoryWorkspace {
 		historyDiffSearchViewModel: RepositorySearchViewModel,
 		stashesDiffSearchViewModel: RepositorySearchViewModel,
 		commitActions: RepositoryCommitActions,
-		focusedActions: @escaping () -> RepositoryFocusedActions
+		focusedActionsViewModel: RepositoryFocusedActionsViewModel
 	) {
 		self.viewModel = viewModel
 		self.changesViewModel = changesViewModel
@@ -63,6 +63,36 @@ final class RepositoryWorkspace {
 		self.historyDiffSearchViewModel = historyDiffSearchViewModel
 		self.stashesDiffSearchViewModel = stashesDiffSearchViewModel
 		self.commitActions = commitActions
-		self.focusedActions = focusedActions
+		self.focusedActionsViewModel = focusedActionsViewModel
+	}
+
+	func onAppear() {
+		changesDiffViewModel.onAppear()
+		conflictViewModel.onAppear()
+		historyViewModel.onAppear()
+		stashesViewModel.onAppear()
+		treeViewModel.onAppear()
+		changesDiffSearchViewModel.onAppear()
+		historyDiffSearchViewModel.onAppear()
+		stashesDiffSearchViewModel.onAppear()
+		focusedActionsViewModel.onAppear()
+	}
+
+	func onDisappear() {
+		changesViewModel.onDisappear()
+		changesDiffViewModel.onDisappear()
+		commitViewModel.onDisappear()
+		conflictViewModel.onDisappear()
+		historyViewModel.onDisappear()
+		operationViewModel.onDisappear()
+		referencesViewModel.onDisappear()
+		syncViewModel.onDisappear()
+		remotesViewModel.onDisappear()
+		stashesViewModel.onDisappear()
+		treeViewModel.onDisappear()
+		changesDiffSearchViewModel.onDisappear()
+		historyDiffSearchViewModel.onDisappear()
+		stashesDiffSearchViewModel.onDisappear()
+		focusedActionsViewModel.onDisappear()
 	}
 }

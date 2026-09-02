@@ -25,7 +25,13 @@ struct ConflictPreview: View {
 				conflictHeader
 			}
 			.focusedSceneValue(\.repositoryFindActions, searchModel)
-			.onAppear { updateSearchSources() }
+			.onAppear {
+				searchModel.onAppear()
+				updateSearchSources()
+			}
+			.onDisappear {
+				searchModel.onDisappear()
+			}
 			.onChange(of: viewModel.content) { _, _ in updateSearchSources() }
 	}
 

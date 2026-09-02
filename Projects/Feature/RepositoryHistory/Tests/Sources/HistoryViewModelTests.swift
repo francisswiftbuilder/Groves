@@ -145,12 +145,12 @@ final class HistoryViewModelTests: XCTestCase {
 		useCase: HistoryChangesUseCaseStub = HistoryChangesUseCaseStub()
 	) -> HistoryViewModel {
 		HistoryViewModel(
-			dependencies: HistoryViewModelDependencies(
+			dependencies: HistoryViewModel.Dependencies(
 				changesUseCase: useCase,
 				preferences: WorkspaceDiffPreferences(),
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
 			),
-			actions: HistoryViewModelActions(
+			actions: HistoryViewModel.Actions(
 				didReceiveError: { _ in },
 				didRequestPresentation: {},
 				didFocusBranch: { _ in },

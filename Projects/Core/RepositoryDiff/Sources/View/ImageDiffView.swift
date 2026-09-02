@@ -1,18 +1,22 @@
-import AppKit
 import CoreRepositoryUI
 import DomainGitInterface
 import SwiftUI
 
 public struct ImageDiffView: View {
-	@State private var beforeImage: NSImage?
-	@State private var afterImage: NSImage?
-	@State private var isDecoding = true
+	@StateObject private var viewModel: ImageDiffViewModel
 	@State private var zoom = 1.0
 	let diff: GitImageDiff
 	let beforeTitle: String
 	let afterTitle: String
 
 	public init(diff: GitImageDiff, beforeTitle: String, afterTitle: String) {
+		_viewModel = StateObject(
+			wrappedValue: ImageDiffViewModel(
+				dependencies: .init { data in
+					await DiffImageDecoder.decode(data)
+				}
+			)
+		)
 		self.diff = diff
 		self.beforeTitle = beforeTitle
 		self.afterTitle = afterTitle
@@ -20,18 +24,20 @@ public struct ImageDiffView: View {
 
 	public var body: some View {
 		Group {
-			if isDecoding {
+			switch viewModel.state {
+			case .idle, .loading:
 				LoadingStateView(
 					title: "Loading Images",
 					message: "Preparing both versions for comparison."
 				)
-			} else {
+			case .loaded(let presentation):
 				ScrollView(.horizontal) {
 					HStack(spacing: 10) {
 						DiffImagePane(
 							title: beforeTitle,
-							image: beforeImage,
+							image: presentation.beforeImage,
 							byteCount: diff.before?.count,
+							decodingFailed: presentation.beforeDecodingFailed,
 							zoom: zoom,
 							unavailableMessage: "No \(beforeTitle) Image"
 						)
@@ -39,8 +45,9 @@ public struct ImageDiffView: View {
 
 						DiffImagePane(
 							title: afterTitle,
-							image: afterImage,
+							image: presentation.afterImage,
 							byteCount: diff.after?.count,
+							decodingFailed: presentation.afterDecodingFailed,
 							zoom: zoom,
 							unavailableMessage: "No \(afterTitle) Image"
 						)
@@ -54,13 +61,14 @@ public struct ImageDiffView: View {
 		.safeAreaInset(edge: .top) {
 			zoomControls
 		}
-		.task(id: diff) {
-			isDecoding = true
-			async let requestedBeforeImage = DiffImageDecoder.decode(diff.before)
-			async let requestedAfterImage = DiffImageDecoder.decode(diff.after)
-			beforeImage = await requestedBeforeImage
-			afterImage = await requestedAfterImage
-			isDecoding = false
+		.onAppear {
+			viewModel.onAppear(diff: diff)
+		}
+		.onChange(of: diff) { _, diff in
+			viewModel.didChangeDiff(diff)
+		}
+		.onDisappear {
+			viewModel.onDisappear()
 		}
 	}
 

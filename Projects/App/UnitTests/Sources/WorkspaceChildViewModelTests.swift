@@ -1,4 +1,5 @@
 import DomainGitInterface
+import Foundation
 import XCTest
 
 @testable import FeatureRepositoryChanges
@@ -23,6 +24,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		weak let stashesViewModel = workspace?.stashesViewModel
 		weak let treeViewModel = workspace?.treeViewModel
 		weak let diffPreferences = workspace?.diffPreferences
+		weak let focusedActionsViewModel = workspace?.focusedActionsViewModel
 
 		workspace = nil
 
@@ -39,6 +41,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		XCTAssertNil(stashesViewModel)
 		XCTAssertNil(treeViewModel)
 		XCTAssertNil(diffPreferences)
+		XCTAssertNil(focusedActionsViewModel)
 	}
 
 	func testSnapshotIsDistributedAcrossChildViewModels() async throws {
@@ -91,7 +94,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		XCTAssertTrue(changesDiffViewModel.preferences === preferences)
 	}
 
-	func testHistoryViewModelCancelsPendingDebouncedSearch() async throws {
+	func testWorkspaceDisappearCancelsPendingDebouncedSearch() async throws {
 		let workspace = makeRepositoryWorkspace()
 		let historyViewModel = workspace.historyViewModel
 		let commits = [
@@ -132,10 +135,47 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		try await waitUntil { historyViewModel.commitGraphItems.count == commits.count }
 
 		historyViewModel.didChangeSearchText("missing")
-		historyViewModel.cancelTasks()
+		workspace.onDisappear()
 		try await Task.sleep(for: .milliseconds(200))
 
 		XCTAssertEqual(historyViewModel.displayedCommitGraphItems.count, commits.count)
+	}
+
+	func testWorkspaceAppearResumesIncompleteHistoryLayout() async throws {
+		let workspace = makeRepositoryWorkspace()
+		let historyViewModel = workspace.historyViewModel
+		let commits = (0..<1_000).reversed().map { index in
+			GitCommit(
+				hash: String(format: "%040d", index),
+				shortHash: String(format: "%07d", index),
+				parentHashes: index == 0 ? [] : [String(format: "%040d", index - 1)],
+				author: "Trees",
+				date: .distantPast,
+				references: index == 999 ? ["HEAD"] : [],
+				subject: "Commit \(index)",
+				body: ""
+			)
+		}
+
+		workspace.viewModel.didProduceSnapshot(
+			RepositorySnapshot(
+				changes: [],
+				amendChanges: [],
+				commits: commits,
+				branches: [],
+				remotes: [],
+				operationState: .normal,
+				tags: [],
+				stashes: [],
+				fileTree: []
+			)
+		)
+		workspace.onDisappear()
+		workspace.onAppear()
+
+		try await waitUntil { historyViewModel.commitGraphItems.count == commits.count }
+
+		XCTAssertEqual(historyViewModel.commitGraphItems.map(\.commit), commits)
 	}
 
 	func testStashesViewModelTracksWorkingTreeStateWithoutTheChangesViewModel() {
@@ -165,6 +205,42 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		stashesViewModel.reset()
 
 		XCTAssertFalse(stashesViewModel.hasChanges)
+	}
+
+	func testFocusedActionsFollowLifecycleAndSelectionState() async {
+		let workspace = makeRepositoryWorkspace()
+		let branch = GitBranch(
+			name: "feature",
+			shortHash: "abcdef1",
+			upstream: nil,
+			isCurrent: false
+		)
+		workspace.viewModel.didProduceSnapshot(
+			RepositorySnapshot(
+				changes: [],
+				amendChanges: [],
+				commits: [],
+				branches: [branch],
+				remotes: [],
+				operationState: .normal,
+				tags: [],
+				stashes: [],
+				fileTree: []
+			)
+		)
+		workspace.referencesViewModel.selectedBranchID = branch.id
+		workspace.onAppear()
+		await Task.yield()
+
+		XCTAssertNotNil(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch)
+
+		workspace.onDisappear()
+		workspace.referencesViewModel.selectedBranchID = nil
+		await Task.yield()
+		XCTAssertNotNil(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch)
+
+		workspace.onAppear()
+		XCTAssertNil(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch)
 	}
 
 	private func waitUntil(

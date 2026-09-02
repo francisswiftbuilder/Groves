@@ -4,16 +4,24 @@ import Foundation
 
 @MainActor
 public final class RepositoryTreeViewModel: ObservableObject {
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+
+		public init(contentUseCase: any RepositoryContentUseCase) {
+			self.contentUseCase = contentUseCase
+		}
+	}
+
 	@Published private(set) var fileTree: [RepositoryTreeNode] = []
 	@Published private(set) var selectedTreeNodeID: String?
 	@Published var expandedTreeNodeIDs: Set<String> = []
 	@Published private(set) var filePreview: RepositoryFilePreview = .none
 
-	private let dependencies: RepositoryTreeViewModelDependencies
+	private let dependencies: Dependencies
 	private var repositoryURL: URL?
 	private var filePreviewTask: Task<Void, Never>?
 
-	public init(dependencies: RepositoryTreeViewModelDependencies) {
+	public init(dependencies: Dependencies) {
 		self.dependencies = dependencies
 	}
 
@@ -53,6 +61,22 @@ public final class RepositoryTreeViewModel: ObservableObject {
 		selectedTreeNodeID = nil
 		expandedTreeNodeIDs = []
 		filePreview = .none
+	}
+
+	public func onAppear() {
+		guard selectedTreeNodeID != nil, filePreview == .none else { return }
+		didSelectTreeNode(
+			node(id: selectedTreeNodeID, in: fileTree),
+			preservesCurrentPreview: false
+		)
+	}
+
+	public func onDisappear() {
+		filePreviewTask?.cancel()
+		filePreviewTask = nil
+		if filePreview == .loading {
+			filePreview = .none
+		}
 	}
 
 	func setTreeNode(_ nodeID: String, isExpanded: Bool) {

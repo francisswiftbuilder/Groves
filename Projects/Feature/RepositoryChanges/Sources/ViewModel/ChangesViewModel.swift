@@ -4,6 +4,41 @@ import Foundation
 
 @MainActor
 public final class ChangesViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+		public let didSelectConflict: @MainActor (GitConflict?) -> Void
+		public let didSelectDiff: @MainActor (ChangesDiffSelection?, Bool) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void,
+			didSelectConflict: @escaping @MainActor (GitConflict?) -> Void,
+			didSelectDiff: @escaping @MainActor (ChangesDiffSelection?, Bool) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+			self.didSelectConflict = didSelectConflict
+			self.didSelectDiff = didSelectDiff
+		}
+	}
+
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+		public let changesUseCase: any RepositoryChangesUseCase
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			changesUseCase: any RepositoryChangesUseCase,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.changesUseCase = changesUseCase
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published var selectedChangeIDs: Set<WorkspaceChangeSelection> = []
 	@Published var filterText = ""
 	@Published private(set) var isAmendingCommit = false
@@ -11,15 +46,15 @@ public final class ChangesViewModel: ObservableObject {
 	@Published public private(set) var isLoading = false
 	@Published var pendingConfirmation: ChangesConfirmation?
 
-	private let dependencies: ChangesViewModelDependencies
-	private let actions: ChangesViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
 
 	public init(
-		dependencies: ChangesViewModelDependencies,
-		actions: ChangesViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
@@ -328,6 +363,10 @@ public final class ChangesViewModel: ObservableObject {
 
 	func didDismissPendingConfirmation() {
 		pendingConfirmation = nil
+	}
+
+	public func onDisappear() {
+		cancelTasks()
 	}
 
 	func didConfirmPendingConfirmation() {

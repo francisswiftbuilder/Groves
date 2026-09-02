@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RepositoryWelcomeContainerView: View {
-	@ObservedObject var viewModel: RepositoryWindowViewModel
+	let viewModel: RepositoryWindowViewModel
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
 	let onCloneRepository: () -> Void

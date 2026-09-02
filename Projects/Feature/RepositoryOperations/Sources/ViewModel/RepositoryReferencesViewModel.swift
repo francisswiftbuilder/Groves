@@ -4,6 +4,35 @@ import Foundation
 
 @MainActor
 public final class RepositoryReferencesViewModel: ObservableObject {
+	public struct Actions {
+		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
+		public let didReceiveError: @MainActor (String) -> Void
+
+		public init(
+			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
+			didReceiveError: @escaping @MainActor (String) -> Void
+		) {
+			self.didProduceSnapshot = didProduceSnapshot
+			self.didReceiveError = didReceiveError
+		}
+	}
+
+	public struct Dependencies {
+		public let contentUseCase: any RepositoryContentUseCase
+		public let referencesUseCase: any RepositoryReferencesUseCase
+		public let repositoryURL: @MainActor () -> URL?
+
+		public init(
+			contentUseCase: any RepositoryContentUseCase,
+			referencesUseCase: any RepositoryReferencesUseCase,
+			repositoryURL: @escaping @MainActor () -> URL?
+		) {
+			self.contentUseCase = contentUseCase
+			self.referencesUseCase = referencesUseCase
+			self.repositoryURL = repositoryURL
+		}
+	}
+
 	@Published public var selectedBranchID: String?
 	@Published public private(set) var branches: [GitBranch] = []
 	@Published public private(set) var tags: [GitTag] = []
@@ -19,14 +48,14 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 	@Published private(set) var pendingTagCommit: GitCommit?
 	@Published var pendingConfirmation: RepositoryReferenceConfirmation?
 
-	private let dependencies: RepositoryReferencesViewModelDependencies
-	private let actions: RepositoryReferencesViewModelActions
+	private let dependencies: Dependencies
+	private let actions: Actions
 	private var changes: [WorkingTreeChange] = []
 	private var mutationTask: Task<Void, Never>?
 
 	public init(
-		dependencies: RepositoryReferencesViewModelDependencies,
-		actions: RepositoryReferencesViewModelActions
+		dependencies: Dependencies,
+		actions: Actions
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
@@ -98,6 +127,12 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 		didDismissNewTag()
 		didDismissBranchRename()
 		pendingConfirmation = nil
+	}
+
+	public func onDisappear() {
+		mutationTask?.cancel()
+		mutationTask = nil
+		isLoading = false
 	}
 
 	public func didPresentNewBranch(from commit: GitCommit? = nil) {
@@ -309,7 +344,9 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 			isLoading = true
 			defer { isLoading = false }
 			do {
-				actions.didProduceSnapshot(try await operation())
+				let snapshot = try await operation()
+				try Task.checkCancellation()
+				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {

@@ -175,12 +175,12 @@ final class StashesViewModelTests: XCTestCase {
 
 	private func makeViewModel(useCase: StashesUseCaseStub) -> StashesViewModel {
 		StashesViewModel(
-			dependencies: StashesViewModelDependencies(
+			dependencies: StashesViewModel.Dependencies(
 				useCase: useCase,
 				preferences: WorkspaceDiffPreferences(),
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
 			),
-			actions: StashesViewModelActions(
+			actions: StashesViewModel.Actions(
 				didProduceSnapshot: { _ in },
 				didReceiveError: { _ in }
 			)

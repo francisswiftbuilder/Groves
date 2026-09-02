@@ -241,6 +241,7 @@ public struct DiffView: View {
 					onApplyHunk(selection, action)
 				}
 			)
+			.id(presentation.revision)
 		}
 	}
 
