@@ -9,7 +9,7 @@ enum DiffImageDecoder {
 			guard !Task.isCancelled else { return nil }
 			let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
 			guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
-				return nil
+				return NSImage(data: data)
 			}
 			let thumbnailOptions =
 				[
@@ -19,7 +19,7 @@ enum DiffImageDecoder {
 					kCGImageSourceShouldCacheImmediately: true,
 				] as CFDictionary
 			guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else {
-				return nil
+				return NSImage(data: data)
 			}
 			guard !Task.isCancelled else { return nil }
 			return NSImage(cgImage: image, size: .zero)

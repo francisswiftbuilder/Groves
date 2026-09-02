@@ -49,9 +49,9 @@ public struct EqualWidthHSplitView<Leading: View, Center: View, Trailing: View>:
 	}
 
 	public func updateNSView(_ splitView: ProportionalSplitView, context: Context) {
-		context.coordinator.leadingView?.rootView = leading
-		context.coordinator.centerView?.rootView = center
-		context.coordinator.trailingView?.rootView = trailing
+		context.coordinator.leadingView?.rootView = SplitPaneRootView(content: leading)
+		context.coordinator.centerView?.rootView = SplitPaneRootView(content: center)
+		context.coordinator.trailingView?.rootView = SplitPaneRootView(content: trailing)
 		splitView.proportions = normalizedProportions
 		splitView.minimumWidths = normalizedMinimumWidths
 	}
@@ -70,17 +70,19 @@ public struct EqualWidthHSplitView<Leading: View, Center: View, Trailing: View>:
 		return minimumWidths
 	}
 
-	private func hostingView<Content: View>(rootView: Content) -> NSHostingView<Content> {
-		let view = NSHostingView(rootView: rootView)
+	private func hostingView<Content: View>(
+		rootView: Content
+	) -> NSHostingView<SplitPaneRootView<Content>> {
+		let view = NSHostingView(rootView: SplitPaneRootView(content: rootView))
 		view.setContentHuggingPriority(.defaultLow, for: .horizontal)
 		view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 		return view
 	}
 
 	public final class Coordinator: NSObject, NSSplitViewDelegate {
-		var leadingView: NSHostingView<Leading>?
-		var centerView: NSHostingView<Center>?
-		var trailingView: NSHostingView<Trailing>?
+		var leadingView: NSHostingView<SplitPaneRootView<Leading>>?
+		var centerView: NSHostingView<SplitPaneRootView<Center>>?
+		var trailingView: NSHostingView<SplitPaneRootView<Trailing>>?
 
 		public func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
 			false
