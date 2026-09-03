@@ -153,7 +153,7 @@ final class ChangesViewModelTests: XCTestCase {
 			dependencies: ChangesViewModel.Dependencies(
 				contentUseCase: ChangesContentUseCaseStub(),
 				changesUseCase: ChangesUseCaseStub(),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: ChangesViewModel.Actions(
 				didProduceSnapshot: { _ in },

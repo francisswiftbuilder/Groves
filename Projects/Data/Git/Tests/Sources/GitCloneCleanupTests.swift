@@ -8,7 +8,7 @@ final class GitCloneCleanupTests: XCTestCase {
 	func testCancelledCloneLeavesNoDestinationBehind() async throws {
 		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
-		let sourceURL = try GitTestRepositoryFactory.makeRepository(name: "TreesCloneSource")
+		let sourceURL = try GitTestRepositoryFactory.makeRepository(name: "GrovesCloneSource")
 		defer { try? FileManager.default.removeItem(at: sourceURL) }
 		let repository = LocalGitRepository(
 			configuration: GitProcessConfiguration(terminationGracePeriod: 0.01)
@@ -86,7 +86,7 @@ final class GitCloneCleanupTests: XCTestCase {
 		do {
 			try await repository.requestAddRemote(
 				named: "origin",
-				fetchURL: "https://trees:token@github.com/owner/repo.git",
+				fetchURL: "https://groves:token@github.com/owner/repo.git",
 				pushURL: nil,
 				at: repositoryURL
 			)
@@ -114,7 +114,7 @@ final class GitCloneCleanupTests: XCTestCase {
 		do {
 			try await repository.requestUpdateRemote(
 				named: "origin",
-				fetchURL: "https://trees@github.com/owner/repo.git",
+				fetchURL: "https://groves@github.com/owner/repo.git",
 				pushURL: nil,
 				at: repositoryURL
 			)

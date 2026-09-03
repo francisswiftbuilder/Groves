@@ -148,7 +148,7 @@ final class HistoryViewModelTests: XCTestCase {
 			dependencies: HistoryViewModel.Dependencies(
 				changesUseCase: useCase,
 				preferences: WorkspaceDiffPreferences(),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: HistoryViewModel.Actions(
 				didReceiveError: { _ in },
@@ -164,7 +164,7 @@ final class HistoryViewModelTests: XCTestCase {
 			hash: String(repeating: "\(index)", count: 12),
 			shortHash: String(repeating: "\(index)", count: 7),
 			parentHashes: [],
-			author: "Trees",
+			author: "Groves",
 			date: .distantPast,
 			references: [],
 			subject: subject,

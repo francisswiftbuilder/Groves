@@ -15,7 +15,7 @@ final class AppDIContainer {
 		self.noticeCenter = noticeCenter
 		let repository = LocalGitRepository(
 			configuration: GitProcessConfiguration(
-				askPassHelperURL: TreesAskPassLocator.bundledHelperURL,
+				askPassHelperURL: GrovesAskPassLocator.bundledHelperURL,
 				noticeHandler: { notice in noticeCenter.post(notice) }
 			)
 		)
@@ -67,7 +67,7 @@ final class AppDIContainer {
 		case .failure(let error):
 			return AnyView(
 				ContentUnavailableView(
-					"Unable to Open Trees",
+					"Unable to Open Groves",
 					systemImage: "externaldrive.badge.exclamationmark",
 					description: Text(error.localizedDescription)
 				)

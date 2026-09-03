@@ -1,4 +1,4 @@
-# Trees
+# Groves
 
 A native Git GUI for macOS, built with Swift and SwiftUI.
 
@@ -35,11 +35,11 @@ Files whose first line is `// AUTO-GENERATED. DO NOT EDIT.` are produced by the
 synchronization scripts and are excluded from both; edit the emitter in
 `Tuist/Scripts` instead.
 
-After generating the project, open `Trees.xcworkspace` and run the `App` scheme.
+After generating the project, open `Groves.xcworkspace` and run the `App` scheme.
 The workspace name is derived from `environment.name`.
 
 Each module with a `Tests` target gets a scheme of the same name as its project,
-so `xcodebuild test` can run a single module. The `Trees-Workspace` scheme runs
+so `xcodebuild test` can run a single module. The `Groves-Workspace` scheme runs
 every module's tests.
 
 Added repositories and the last selected repository are persisted with SwiftData. Repository access is restored across launches using security-scoped bookmarks.

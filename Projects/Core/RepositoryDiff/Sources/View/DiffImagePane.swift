@@ -57,7 +57,7 @@ struct DiffImagePane: View {
 				ContentUnavailableView(
 					"Could Not Decode \(title) Image",
 					systemImage: "photo.badge.exclamationmark",
-					description: Text("The image data uses a format that Trees cannot display.")
+					description: Text("The image data uses a format that Groves cannot display.")
 				)
 			} else {
 				ContentUnavailableView(

@@ -3,7 +3,7 @@ import DomainGitInterface
 import Foundation
 import XCTest
 
-@testable import Trees
+@testable import Groves
 
 struct GitRepositoryStub: GitRepository {
 	actor ResponseSequence<Value: Sendable> {

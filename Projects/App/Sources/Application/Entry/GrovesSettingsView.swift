@@ -3,7 +3,7 @@ import CoreGitCredential
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct TreesSettingsView: View {
+struct GrovesSettingsView: View {
 	@AppStorage("externalEditorBundleIdentifier") private var bundleIdentifier = ""
 	@AppStorage("externalEditorDisplayName") private var displayName = "System Default"
 	@State private var selectionError: String?
@@ -72,7 +72,7 @@ struct TreesSettingsView: View {
 		.formStyle(.grouped)
 		.padding(20)
 		.frame(width: 520, height: 520)
-		.navigationTitle("Trees Settings")
+		.navigationTitle("Groves Settings")
 		.onChange(of: bundleIdentifier, initial: true) { validateSelection() }
 		.task { loadCredentials() }
 	}
@@ -152,5 +152,5 @@ struct TreesSettingsView: View {
 }
 
 #Preview {
-	TreesSettingsView()
+	GrovesSettingsView()
 }

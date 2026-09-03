@@ -2,13 +2,13 @@ import AppKit
 import SwiftUI
 
 @main
-struct TreesApp: App {
+struct GrovesApp: App {
 	init() {
 		NSWindow.allowsAutomaticWindowTabbing = true
 	}
 
 	var body: some Scene {
-		WindowGroup("Trees", id: "repository", for: UUID.self) { $repositoryID in
+		WindowGroup("Groves", id: "repository", for: UUID.self) { $repositoryID in
 			AppDIContainer.shared.makeRepositoryRootView(repositoryID: $repositoryID)
 				.frame(minWidth: 760, minHeight: 520)
 				.background {
@@ -29,7 +29,7 @@ struct TreesApp: App {
 		}
 
 		Settings {
-			TreesSettingsView()
+			GrovesSettingsView()
 		}
 	}
 }

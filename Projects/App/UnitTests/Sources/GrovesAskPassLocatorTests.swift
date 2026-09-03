@@ -1,18 +1,18 @@
 import XCTest
 
-@testable import Trees
+@testable import Groves
 
-final class TreesAskPassLocatorTests: XCTestCase {
+final class GrovesAskPassLocatorTests: XCTestCase {
 	func testTheLocatorResolvesTheHelperEmbeddedInTheHostBundle() throws {
 		let expected = Bundle.main.bundleURL
 			.appending(path: "Contents", directoryHint: .isDirectory)
 			.appending(path: "Helpers", directoryHint: .isDirectory)
-			.appending(path: "TreesAskPass")
+			.appending(path: "GrovesAskPass")
 
 		XCTAssertTrue(
 			FileManager.default.isExecutableFile(atPath: expected.path),
 			"The app bundle must embed an executable AskPass helper"
 		)
-		XCTAssertEqual(TreesAskPassLocator.bundledHelperURL, expected)
+		XCTAssertEqual(GrovesAskPassLocator.bundledHelperURL, expected)
 	}
 }

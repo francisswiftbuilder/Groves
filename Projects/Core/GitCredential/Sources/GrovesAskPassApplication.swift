@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-public final class TreesAskPassApplication {
+public final class GrovesAskPassApplication {
 	private let credentialStore: GitCredentialStore
 	private let decisionStore: GitCredentialSaveDecisionStore
 	private let credentialHelper: GitCredentialHelper
@@ -50,7 +50,7 @@ public final class TreesAskPassApplication {
 			writeStandardOutput(Data((value + "\n").utf8))
 			return EXIT_SUCCESS
 		} catch is CancellationError {
-			writeStandardError(Data("TREES_ASKPASS_CANCELLED\n".utf8))
+			writeStandardError(Data("GROVES_ASKPASS_CANCELLED\n".utf8))
 			return EXIT_FAILURE
 		} catch {
 			let diagnostic: String
@@ -59,7 +59,7 @@ public final class TreesAskPassApplication {
 			} else {
 				diagnostic = "error-type=\(String(reflecting: type(of: error)))"
 			}
-			writeStandardError(Data("Trees authentication helper failed (\(diagnostic)).\n".utf8))
+			writeStandardError(Data("Groves authentication helper failed (\(diagnostic)).\n".utf8))
 			return EXIT_FAILURE
 		}
 	}
@@ -72,7 +72,7 @@ public final class TreesAskPassApplication {
 		)
 		return try coordinator.value(
 			forPrompt: prompt,
-			operationID: environment["TREES_OPERATION_IDENTIFIER"]
+			operationID: environment["GROVES_OPERATION_IDENTIFIER"]
 		)
 	}
 
@@ -83,13 +83,13 @@ public final class TreesAskPassApplication {
 			let response = try credentialHelper.handle(
 				operation: operation,
 				input: input,
-				operationID: environment["TREES_OPERATION_IDENTIFIER"]
+				operationID: environment["GROVES_OPERATION_IDENTIFIER"]
 			)
 		else { return }
 		writeStandardOutput(Data(response.utf8))
 	}
 
 	private func parentProcessIdentifier(in environment: [String: String]) -> Int32? {
-		environment["TREES_PARENT_PROCESS_IDENTIFIER"].flatMap(Int32.init)
+		environment["GROVES_PARENT_PROCESS_IDENTIFIER"].flatMap(Int32.init)
 	}
 }

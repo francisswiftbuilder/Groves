@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 final class RepositoryUseCaseTests: XCTestCase {
 	func testOpeningRepositoryResolvesRootAndPersistsSelection() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let store = SavedRepositoryStoreSpy(repositories: [])
 		let useCase = RepositoryUseCaseFactory.makeTabsUseCase(
@@ -23,7 +23,7 @@ final class RepositoryUseCaseTests: XCTestCase {
 	}
 
 	func testStageRunsMutationBeforeReturningFreshSnapshot() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let change = WorkingTreeChange(
 			path: "Sources/GalleryView.swift",
@@ -43,7 +43,7 @@ final class RepositoryUseCaseTests: XCTestCase {
 	}
 
 	func testPushWithoutUpstreamUsesSelectedRemoteAndReturnsSnapshot() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let branch = GitBranch(
 			name: "feature/use-case",
@@ -80,7 +80,7 @@ final class RepositoryUseCaseTests: XCTestCase {
 	}
 
 	func testForcePushUsesSelectedRemoteAndReturnsSnapshot() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let branch = GitBranch(
 			name: "feature/force-push",
@@ -117,7 +117,7 @@ final class RepositoryUseCaseTests: XCTestCase {
 	}
 
 	func testPushTagsUsesExplicitRemoteAndReturnsSnapshot() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let tag = GitTag(
 			name: "release/1.0.0",
@@ -141,7 +141,7 @@ final class RepositoryUseCaseTests: XCTestCase {
 	}
 
 	func testMergeBranchRunsMutationBeforeReturningFreshSnapshot() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let currentBranch = GitBranch(
 			name: "main",
@@ -173,13 +173,13 @@ final class RepositoryUseCaseTests: XCTestCase {
 	}
 
 	func testCreateTagUsesExplicitCommitBeforeReturningFreshSnapshot() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let commit = GitCommit(
 			hash: "1234567890abcdef",
 			shortHash: "1234567",
 			parentHashes: [],
-			author: "Trees Tests",
+			author: "Groves Tests",
 			date: Date(timeIntervalSince1970: 0),
 			references: [],
 			subject: "Tagged commit",
@@ -211,7 +211,7 @@ final class RepositoryUseCaseTests: XCTestCase {
 	}
 
 	func testDeleteTagReturnsFreshSnapshot() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/Trees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let branch = GitBranch(
 			name: "main",

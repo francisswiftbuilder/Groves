@@ -2,7 +2,7 @@ import DomainGitInterface
 import Foundation
 
 enum GitTestRepositoryFactory {
-	static func makeRepository(name: String = "TreesProcessTests") throws -> URL {
+	static func makeRepository(name: String = "GrovesProcessTests") throws -> URL {
 		let url = FileManager.default.temporaryDirectory
 			.appending(path: "\(name)-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -10,7 +10,7 @@ enum GitTestRepositoryFactory {
 		return url
 	}
 
-	static func makeDirectory(name: String = "TreesProcessTestsDirectory") throws -> URL {
+	static func makeDirectory(name: String = "GrovesProcessTestsDirectory") throws -> URL {
 		let url = FileManager.default.temporaryDirectory
 			.appending(path: "\(name)-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

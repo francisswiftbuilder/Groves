@@ -99,7 +99,7 @@ struct GitCredentialPromptCoordinatorTests {
 	func aUsernameAnswerIsNeverStoredAsASecret() throws {
 		let store = makeStore()
 		let presenter = GitCredentialPromptPresenterStub(
-			answer: GitCredentialPromptAnswer(value: "trees", shouldSave: true)
+			answer: GitCredentialPromptAnswer(value: "groves", shouldSave: true)
 		)
 		let coordinator = makeCoordinator(store: store, presenter: presenter)
 		defer { try? store.deleteAll() }
@@ -110,7 +110,7 @@ struct GitCredentialPromptCoordinatorTests {
 		)
 		try store.commitPending(operationID: "operation")
 
-		#expect(value == "trees")
+		#expect(value == "groves")
 		#expect(presenter.presentedKinds == [.username])
 		#expect(try store.descriptors().isEmpty)
 	}
@@ -141,7 +141,7 @@ struct GitCredentialPromptCoordinatorTests {
 	}
 
 	private func makeDecisionStore() -> GitCredentialSaveDecisionStore {
-		GitCredentialSaveDecisionStore(suiteName: "Trees.Tests.\(UUID().uuidString)")
+		GitCredentialSaveDecisionStore(suiteName: "Groves.Tests.\(UUID().uuidString)")
 	}
 
 	private func makeCoordinator(

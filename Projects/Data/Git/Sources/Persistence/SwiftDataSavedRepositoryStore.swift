@@ -10,7 +10,7 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 
 	public convenience init(isStoredInMemoryOnly: Bool = false) throws {
 		let configuration = ModelConfiguration(
-			"Trees",
+			"Groves",
 			isStoredInMemoryOnly: isStoredInMemoryOnly
 		)
 		do {
@@ -31,18 +31,7 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 	}
 
 	public func requestRepositories() throws -> [SavedRepository] {
-		let records = try requestRecords()
-		var repositories: [SavedRepository] = []
-
-		for record in records {
-			do {
-				repositories.append(try requestResolveRepository(record))
-			} catch SavedRepositoryStoreError.bookmarkResolutionFailed {
-				continue
-			}
-		}
-
-		return repositories
+		try requestRecords().map(requestResolveRepository)
 	}
 
 	public func requestSaveRepository(at url: URL) throws -> SavedRepository {
@@ -68,7 +57,7 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 		}
 
 		try requestSaveContext()
-		return try requestResolveRepository(record)
+		return requestResolveRepository(record)
 	}
 
 	public func requestRemoveRepository(id: UUID) throws {
@@ -101,7 +90,7 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 
 	private func requestResolveRepository(
 		_ record: SavedRepositoryRecord
-	) throws -> SavedRepository {
+	) -> SavedRepository {
 		let resolution = requestBookmarkedURL(for: record)
 		let url =
 			resolution?.url
@@ -110,16 +99,14 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 				isDirectory: true
 			).standardizedFileURL
 
-		guard requestIsDirectory(at: url) else {
-			throw SavedRepositoryStoreError.bookmarkResolutionFailed
-		}
+		if requestIsDirectory(at: url) {
+			if accessedURLs[record.id] == nil, url.startAccessingSecurityScopedResource() {
+				accessedURLs[record.id] = url
+			}
 
-		if accessedURLs[record.id] == nil, url.startAccessingSecurityScopedResource() {
-			accessedURLs[record.id] = url
-		}
-
-		if resolution == nil || resolution?.isStale == true {
-			requestRefreshBookmark(for: record, url: url)
+			if resolution == nil || resolution?.isStale == true {
+				requestRefreshBookmark(for: record, url: url)
+			}
 		}
 
 		return SavedRepository(

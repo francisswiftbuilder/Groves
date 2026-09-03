@@ -19,14 +19,14 @@ let project = Project(
 	targets: [
 		.app,
 		.target(
-			name: TreesProduct.askPassTargetName,
+			name: GrovesProduct.askPassTargetName,
 			destinations: environment.destinations,
 			product: .commandLineTool,
-			productName: TreesProduct.askPassTargetName,
+			productName: GrovesProduct.askPassTargetName,
 			bundleId: environment.organizationName + ".AskPass",
 			deploymentTargets: environment.deploymentTargets,
 			infoPlist: .default,
-			sources: TreesProduct.askPassSources,
+			sources: GrovesProduct.askPassSources,
 			entitlements: Permissions.appEntitlements,
 			dependencies: [
 				.core(implements: .gitCredential)
@@ -34,14 +34,14 @@ let project = Project(
 			settings: askPassSettings
 		),
 		.target(
-			name: TreesProduct.appTestsTargetName,
+			name: GrovesProduct.appTestsTargetName,
 			destinations: environment.destinations,
 			product: .unitTests,
-			productName: TreesProduct.appTestsTargetName,
+			productName: GrovesProduct.appTestsTargetName,
 			bundleId: environment.organizationName + ".AppTests",
 			deploymentTargets: environment.deploymentTargets,
 			infoPlist: .default,
-			sources: TreesProduct.appTestsSources,
+			sources: GrovesProduct.appTestsSources,
 			dependencies: .appTestsDependencies,
 			settings: appTestsSettings
 		),
@@ -49,11 +49,11 @@ let project = Project(
 	schemes: [
 		.appScheme,
 		.scheme(
-			name: TreesProduct.appTestsTargetName,
+			name: GrovesProduct.appTestsTargetName,
 			shared: true,
-			buildAction: .buildAction(targets: [.target(TreesProduct.appTestsTargetName)]),
+			buildAction: .buildAction(targets: [.target(GrovesProduct.appTestsTargetName)]),
 			testAction: .targets(
-				[.testableTarget(target: .target(TreesProduct.appTestsTargetName))],
+				[.testableTarget(target: .target(GrovesProduct.appTestsTargetName))],
 				configuration: .debug,
 				options: .options(coverage: true)
 			)
