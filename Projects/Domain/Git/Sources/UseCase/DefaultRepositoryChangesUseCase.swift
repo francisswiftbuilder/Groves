@@ -1,11 +1,16 @@
 import DomainGitInterface
 import Foundation
 
-struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
-	let repository: any GitRepository
-	let content: any RepositoryContentUseCase
+public struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
+	private let repository: any GitRepository
+	private let content: any RepositoryContentUseCase
 
-	func loadDiff(
+	public init(repository: any GitRepository, content: any RepositoryContentUseCase) {
+		self.repository = repository
+		self.content = content
+	}
+
+	public func loadDiff(
 		for change: WorkingTreeChange,
 		source: GitDiffSource,
 		options: GitDiffOptions,
@@ -19,7 +24,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	func loadAmendDiff(
+	public func loadAmendDiff(
 		for change: GitAmendChange,
 		options: GitDiffOptions,
 		at repositoryURL: URL
@@ -31,7 +36,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	func loadCommitDiff(
+	public func loadCommitDiff(
 		for commit: GitCommit,
 		options: GitDiffOptions,
 		at repositoryURL: URL
@@ -43,7 +48,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	func loadImageDiff(
+	public func loadImageDiff(
 		for change: WorkingTreeChange,
 		source: GitDiffSource,
 		at repositoryURL: URL
@@ -55,14 +60,14 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	func loadAmendImageDiff(
+	public func loadAmendImageDiff(
 		for change: GitAmendChange,
 		at repositoryURL: URL
 	) async throws -> GitImageDiff {
 		try await repository.requestAmendImageDiff(for: change, at: repositoryURL)
 	}
 
-	func loadCommitImageDiff(
+	public func loadCommitImageDiff(
 		for commit: GitCommit,
 		path: String,
 		previousPath: String?,
@@ -76,7 +81,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	func stage(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+	public func stage(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		for change in changes where change.hasWorkingTreeChange {
@@ -85,7 +90,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func unstage(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+	public func unstage(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		for change in changes where change.isStaged {
@@ -94,7 +99,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func unstageFromAmend(_ changes: [GitAmendChange], at repositoryURL: URL) async throws
+	public func unstageFromAmend(_ changes: [GitAmendChange], at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		for change in changes {
@@ -103,7 +108,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func applyDiffLine(
+	public func applyDiffLine(
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
@@ -121,7 +126,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	func applyDiffHunk(
+	public func applyDiffHunk(
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
@@ -141,7 +146,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	func discard(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+	public func discard(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		for change in changes {
@@ -150,7 +155,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func commit(subject: String, body: String, amend: Bool, at repositoryURL: URL) async throws
+	public func commit(subject: String, body: String, amend: Bool, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestCommit(
@@ -162,7 +167,7 @@ struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func amendWithoutEditingMessage(at repositoryURL: URL) async throws -> RepositorySnapshot {
+	public func amendWithoutEditingMessage(at repositoryURL: URL) async throws -> RepositorySnapshot {
 		try await repository.requestAmendWithoutEditingMessage(at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}

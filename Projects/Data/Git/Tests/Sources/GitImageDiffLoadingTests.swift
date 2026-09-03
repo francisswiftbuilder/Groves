@@ -6,7 +6,7 @@ import XCTest
 
 final class GitImageDiffLoadingTests: XCTestCase {
 	func testRequestImageDiffRejectsOversizedWorkingTreeAndIndexData() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository(
+		let repositoryURL = try makeTemporaryRepository(
 			name: "GrovesImageDiffLoadingTests"
 		)
 		defer {

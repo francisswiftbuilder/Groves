@@ -1,11 +1,16 @@
 import DomainGitInterface
 import Foundation
 
-struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
-	let repository: any GitRepository
-	let content: any RepositoryContentUseCase
+public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
+	private let repository: any GitRepository
+	private let content: any RepositoryContentUseCase
 
-	func pushAction(
+	public init(repository: any GitRepository, content: any RepositoryContentUseCase) {
+		self.repository = repository
+		self.content = content
+	}
+
+	public func pushAction(
 		currentBranch: GitBranch?,
 		remotes: [GitRemote],
 		operationState: RepositoryOperationState
@@ -27,21 +32,22 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		}
 	}
 
-	func switchBranch(named name: String, at repositoryURL: URL) async throws
+	public func switchBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestSwitchBranch(named: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func createBranch(named name: String, at repositoryURL: URL) async throws
+	public func createBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestCreateBranch(named: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func createBranch(named name: String, from commitHash: String, at repositoryURL: URL) async throws
+	public func createBranch(named name: String, from commitHash: String, at repositoryURL: URL)
+		async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestCreateBranch(
@@ -52,14 +58,14 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func checkoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
+	public func checkoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestCheckoutCommit(commitHash, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func createTrackingBranch(
+	public func createTrackingBranch(
 		named name: String,
 		tracking remoteBranch: String,
 		at repositoryURL: URL
@@ -72,14 +78,14 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func deleteBranch(named name: String, at repositoryURL: URL) async throws
+	public func deleteBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestDeleteBranch(named: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func renameBranch(
+	public func renameBranch(
 		named name: String,
 		to newName: String,
 		at repositoryURL: URL
@@ -88,14 +94,14 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func mergeBranch(named name: String, at repositoryURL: URL) async throws
+	public func mergeBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestMergeBranch(named: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func createTag(
+	public func createTag(
 		named name: String,
 		message: String,
 		commitHash: String,
@@ -110,30 +116,30 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func deleteTag(named name: String, at repositoryURL: URL) async throws
+	public func deleteTag(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestDeleteTag(named: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func fetch(remote name: String, at repositoryURL: URL) async throws -> RepositorySnapshot {
+	public func fetch(remote name: String, at repositoryURL: URL) async throws -> RepositorySnapshot {
 		try await repository.requestFetch(remote: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot {
+	public func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot {
 		try await repository.requestFetchAll(at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func preparePull(at repositoryURL: URL) async throws -> RepositoryPullPreparation {
+	public func preparePull(at repositoryURL: URL) async throws -> RepositoryPullPreparation {
 		let outcome = try await repository.requestPreparePull(at: repositoryURL)
 		let snapshot = try await content.loadSnapshot(at: repositoryURL)
 		return RepositoryPullPreparation(outcome: outcome, snapshot: snapshot)
 	}
 
-	func resolvePull(
+	public func resolvePull(
 		_ divergence: RepositoryPullDivergence,
 		using resolution: RepositoryPullResolution,
 		at repositoryURL: URL
@@ -146,7 +152,7 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func push(
+	public func push(
 		currentBranch: GitBranch?,
 		remotes: [GitRemote],
 		operationState: RepositoryOperationState,
@@ -163,7 +169,7 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func forcePush(
+	public func forcePush(
 		currentBranch: GitBranch?,
 		remotes: [GitRemote],
 		operationState: RepositoryOperationState,
@@ -180,14 +186,14 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func pushTags(remote name: String, at repositoryURL: URL) async throws
+	public func pushTags(remote name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestPushTags(remote: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func addRemote(
+	public func addRemote(
 		named name: String,
 		fetchURL: String,
 		pushURL: String?,
@@ -202,7 +208,7 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func renameRemote(
+	public func renameRemote(
 		named name: String,
 		to newName: String,
 		at repositoryURL: URL
@@ -211,7 +217,7 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func updateRemote(
+	public func updateRemote(
 		named name: String,
 		fetchURL: String,
 		pushURL: String?,
@@ -226,14 +232,14 @@ struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func deleteRemote(named name: String, at repositoryURL: URL) async throws
+	public func deleteRemote(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestDeleteRemote(named: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
+	public func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestDeleteRemoteBranch(branch, at: repositoryURL)

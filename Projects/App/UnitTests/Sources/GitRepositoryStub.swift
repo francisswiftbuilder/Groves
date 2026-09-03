@@ -325,9 +325,9 @@ func makeRepositoryTabsUseCase(
 	repository: any GitRepository = GitRepositoryStub(),
 	savedRepositoryStore: any SavedRepositoryStore = SavedRepositoryStoreSpy(repositories: [])
 ) -> any RepositoryTabsUseCase {
-	RepositoryUseCaseFactory.makeTabsUseCase(
+	DefaultRepositoryTabsUseCase(
 		repository: repository,
-		savedRepositoryStore: savedRepositoryStore
+		store: savedRepositoryStore
 	)
 }
 
@@ -336,13 +336,26 @@ func makeRepositoryWorkspace(
 	repository: any GitRepository = GitRepositoryStub(),
 	externalEditorOpener: (any RepositoryExternalEditorOpening)? = nil
 ) -> RepositoryWorkspace {
-	RepositoryWorkspaceAssembly(
+	let contentUseCase = DefaultRepositoryContentUseCase(repository: repository)
+	return RepositoryWorkspaceAssembly(
 		dependencies: .init(
-			contentUseCase: RepositoryUseCaseFactory.makeContentUseCase(repository: repository),
-			changesUseCase: RepositoryUseCaseFactory.makeChangesUseCase(repository: repository),
-			referencesUseCase: RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository),
-			stashesUseCase: RepositoryUseCaseFactory.makeStashesUseCase(repository: repository),
-			operationsUseCase: RepositoryUseCaseFactory.makeOperationsUseCase(repository: repository),
+			contentUseCase: contentUseCase,
+			changesUseCase: DefaultRepositoryChangesUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
+			referencesUseCase: DefaultRepositoryReferencesUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
+			stashesUseCase: DefaultRepositoryStashesUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
+			operationsUseCase: DefaultRepositoryOperationsUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
 			externalEditorOpener: externalEditorOpener
 		)
 	)
@@ -354,17 +367,26 @@ func makeRepositoryTabsViewModel(
 	repository: any GitRepository = GitRepositoryStub(),
 	savedRepositoryStore: any SavedRepositoryStore = SavedRepositoryStoreSpy(repositories: [])
 ) -> RepositoryTabsViewModel {
-	let contentUseCase = RepositoryUseCaseFactory.makeContentUseCase(repository: repository)
-	let changesUseCase = RepositoryUseCaseFactory.makeChangesUseCase(repository: repository)
-	let referencesUseCase = RepositoryUseCaseFactory.makeReferencesUseCase(repository: repository)
-	let stashesUseCase = RepositoryUseCaseFactory.makeStashesUseCase(repository: repository)
+	let contentUseCase = DefaultRepositoryContentUseCase(repository: repository)
 	let workspaceAssembly = RepositoryWorkspaceAssembly(
 		dependencies: .init(
 			contentUseCase: contentUseCase,
-			changesUseCase: changesUseCase,
-			referencesUseCase: referencesUseCase,
-			stashesUseCase: stashesUseCase,
-			operationsUseCase: RepositoryUseCaseFactory.makeOperationsUseCase(repository: repository),
+			changesUseCase: DefaultRepositoryChangesUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
+			referencesUseCase: DefaultRepositoryReferencesUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
+			stashesUseCase: DefaultRepositoryStashesUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
+			operationsUseCase: DefaultRepositoryOperationsUseCase(
+				repository: repository,
+				content: contentUseCase
+			),
 			externalEditorOpener: nil
 		)
 	)

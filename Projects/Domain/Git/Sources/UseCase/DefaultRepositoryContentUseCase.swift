@@ -1,10 +1,14 @@
 import DomainGitInterface
 import Foundation
 
-struct DefaultRepositoryContentUseCase: RepositoryContentUseCase {
-	let repository: any GitRepository
+public struct DefaultRepositoryContentUseCase: RepositoryContentUseCase {
+	private let repository: any GitRepository
 
-	func loadSnapshot(at repositoryURL: URL) async throws -> RepositorySnapshot {
+	public init(repository: any GitRepository) {
+		self.repository = repository
+	}
+
+	public func loadSnapshot(at repositoryURL: URL) async throws -> RepositorySnapshot {
 		async let changes = repository.requestWorkingTreeChanges(at: repositoryURL)
 		async let amendChanges = repository.requestAmendChanges(at: repositoryURL)
 		async let commits = repository.requestCommitHistory(at: repositoryURL)
@@ -28,7 +32,7 @@ struct DefaultRepositoryContentUseCase: RepositoryContentUseCase {
 		)
 	}
 
-	func loadFileContents(at path: String, in repositoryURL: URL) async throws -> Data {
+	public func loadFileContents(at path: String, in repositoryURL: URL) async throws -> Data {
 		try await repository.requestFileContents(at: path, in: repositoryURL)
 	}
 }

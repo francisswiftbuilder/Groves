@@ -1,18 +1,23 @@
 import DomainGitInterface
 import Foundation
 
-struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
-	let repository: any GitRepository
-	let content: any RepositoryContentUseCase
+public struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
+	private let repository: any GitRepository
+	private let content: any RepositoryContentUseCase
 
-	func rebase(onto branchName: String, at repositoryURL: URL) async throws
+	public init(repository: any GitRepository, content: any RepositoryContentUseCase) {
+		self.repository = repository
+		self.content = content
+	}
+
+	public func rebase(onto branchName: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestRebase(onto: branchName, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func cherryPick(
+	public func cherryPick(
 		commitHash: String,
 		mainline: Int?,
 		at repositoryURL: URL
@@ -25,7 +30,7 @@ struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func revert(
+	public func revert(
 		commitHash: String,
 		mainline: Int?,
 		at repositoryURL: URL
@@ -38,7 +43,7 @@ struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func resolve(
+	public func resolve(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
 		at repositoryURL: URL
@@ -47,14 +52,14 @@ struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func loadConflictContent(
+	public func loadConflictContent(
 		for conflict: GitConflict,
 		at repositoryURL: URL
 	) async throws -> GitConflictContent {
 		try await repository.requestConflictContent(for: conflict, at: repositoryURL)
 	}
 
-	func resolveHunk(
+	public func resolveHunk(
 		_ hunk: GitConflictHunk,
 		in conflict: GitConflict,
 		using resolution: GitConflictHunkResolution,
@@ -69,12 +74,12 @@ struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func markResolved(path: String, at repositoryURL: URL) async throws -> RepositorySnapshot {
+	public func markResolved(path: String, at repositoryURL: URL) async throws -> RepositorySnapshot {
 		try await repository.requestMarkConflictResolved(path: path, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func perform(
+	public func perform(
 		_ action: RepositoryOperationAction,
 		for operation: RepositoryOperationKind,
 		at repositoryURL: URL
@@ -83,7 +88,7 @@ struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	func reset(
+	public func reset(
 		to commitHash: String,
 		mode: GitResetMode,
 		at repositoryURL: URL

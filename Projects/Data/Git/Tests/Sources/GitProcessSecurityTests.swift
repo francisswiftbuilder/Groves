@@ -6,7 +6,7 @@ import XCTest
 
 final class GitProcessSecurityTests: XCTestCase {
 	func testPreCancelledTaskDoesNotStartProcess() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let markerURL = repositoryURL.appending(path: "started.marker")
 		let runner = GitProcessRunner(
@@ -38,7 +38,7 @@ final class GitProcessSecurityTests: XCTestCase {
 	}
 
 	func testLowSpeedFailureIsClassifiedAsTimeout() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let runner = GitProcessRunner()
 		let message =
@@ -59,7 +59,7 @@ final class GitProcessSecurityTests: XCTestCase {
 	}
 
 	func testLargeStandardOutputIsCollectedWithoutDeadlock() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let lines = (0..<200_000).map { "line \($0) of a very large staged file" }
 		try lines.joined(separator: "\n").write(
@@ -80,7 +80,7 @@ final class GitProcessSecurityTests: XCTestCase {
 	}
 
 	func testUnusableKnownHostsFileStopsTheNetworkOperation() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let unusableKnownHostsURL = repositoryURL.appending(
 			path: "known_hosts",
@@ -115,7 +115,7 @@ final class GitProcessSecurityTests: XCTestCase {
 	}
 
 	func testHTTPSNetworkOperationRunsWithoutAnSSHTrustScope() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let unusableKnownHostsURL = repositoryURL.appending(
 			path: "known_hosts",
@@ -139,7 +139,7 @@ final class GitProcessSecurityTests: XCTestCase {
 	}
 
 	func testLocalOperationsRunWithoutATrustScope() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let unusableKnownHostsURL = repositoryURL.appending(
 			path: "known_hosts",
@@ -162,7 +162,7 @@ final class GitProcessSecurityTests: XCTestCase {
 	}
 
 	func testEmbeddedCredentialRemoteURLIsRejected() async throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let repository = LocalGitRepository()
 

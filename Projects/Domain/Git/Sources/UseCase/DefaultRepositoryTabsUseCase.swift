@@ -2,16 +2,16 @@ import DomainGitInterface
 import Foundation
 
 @MainActor
-final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
+public final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
 	private let repository: any GitRepository
 	private let store: any SavedRepositoryStore
 
-	init(repository: any GitRepository, store: any SavedRepositoryStore) {
+	public init(repository: any GitRepository, store: any SavedRepositoryStore) {
 		self.repository = repository
 		self.store = store
 	}
 
-	func loadTabs() throws -> RepositoryTabsSnapshot {
+	public func loadTabs() throws -> RepositoryTabsSnapshot {
 		var repositories = try store.requestRepositories()
 		let selectedRepositoryID =
 			repositories.first(where: { $0.isSelected })?.id ?? repositories.first?.id
@@ -25,14 +25,14 @@ final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
 		)
 	}
 
-	func openRepository(at url: URL) async throws -> SavedRepository {
+	public func openRepository(at url: URL) async throws -> SavedRepository {
 		try await withSecurityScopedAccess(to: url) {
 			let rootURL = try await repository.requestRepositoryRoot(at: url)
 			return try saveAndSelectRepository(at: rootURL)
 		}
 	}
 
-	func cloneRepository(from remoteURL: String, into directoryURL: URL) async throws
+	public func cloneRepository(from remoteURL: String, into directoryURL: URL) async throws
 		-> SavedRepository
 	{
 		try await withSecurityScopedAccess(to: directoryURL) {
@@ -44,12 +44,12 @@ final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
 		}
 	}
 
-	func selectRepository(id: SavedRepository.ID) throws {
+	public func selectRepository(id: SavedRepository.ID) throws {
 		guard try store.requestRepositories().contains(where: { $0.id == id }) else { return }
 		try store.requestSelectRepository(id: id)
 	}
 
-	func removeRepository(id: SavedRepository.ID) throws -> RepositoryTabsSnapshot {
+	public func removeRepository(id: SavedRepository.ID) throws -> RepositoryTabsSnapshot {
 		let repositories = try store.requestRepositories()
 		guard let removedIndex = repositories.firstIndex(where: { $0.id == id }) else {
 			return try loadTabs()
