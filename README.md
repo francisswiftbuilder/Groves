@@ -1,81 +1,214 @@
 # Groves
 
-A fast, lightweight native Git GUI for macOS, built with Swift, SwiftUI, and AppKit.
+[![Platform](https://img.shields.io/badge/platform-macOS-black.svg)](https://www.apple.com/macos/)
+[![Swift](https://img.shields.io/badge/language-Swift-orange.svg)](https://www.swift.org/)
+[![Xcode](https://img.shields.io/badge/IDE-Xcode-blue.svg)](https://developer.apple.com/xcode/)
+[![Tuist](https://img.shields.io/badge/project-Tuist-5c4ee5.svg)](https://tuist.dev/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
----
+**A native Git client, built for macOS.**
 
-## Key Features
+Groves is a Git client designed to feel at home on the Mac. Built with Swift, SwiftUI, and AppKit, it brings repository management, commit history, diffs, branches, stashes, and everyday Git operations into a focused native interface.
 
-- **Native Window Tabbing**: Seamless macOS window tabbing with `⌘T` and the title bar `+` button, providing an authentic Safari/Finder-like tabbed experience.
-- **Multiple Repository Management**: Easily open, import, and manage multiple Git repositories across native tabs.
-- **Interactive Commit Graph & History**: Visual commit lanes, branch topology, and full commit inspection.
-- **Side-by-Side & Inline Diff**: High-performance line-by-line staging, discarding, and syntax-aware diff presentation.
-- **Comprehensive Git Operations**: Branch creation, switching, merging, rebasing, cherry-picking, stashing, and remote synchronization.
-- **macOS System Integration**: Secure credential management via Keychain, bundled `GrovesAskPass` authentication helper, and SwiftData persistence with security-scoped bookmarks.
+> Groves is currently under active development.
 
----
+## Features
+
+### Native macOS Experience
+
+Groves is built as a native Mac application rather than a cross-platform wrapper.
+
+- Native window tabbing with `⌘T`
+- Multiple repositories across macOS tabs
+- System menus, keyboard shortcuts, and window behaviors
+- SwiftUI and AppKit integration
+- Persistent repository access through security-scoped bookmarks
+
+### Changes & Diff
+
+Inspect and manage your working tree without leaving the app.
+
+- Staged and unstaged changes
+- Inline and side-by-side diffs
+- Line-level staging and unstaging
+- Discard individual changes
+- Syntax-aware diff presentation
+- Conflict inspection and resolution workflows
+
+### History
+
+Explore repository history through an interactive commit graph.
+
+- Commit graph with branch topology
+- Commit inspection
+- Per-commit file changes and diffs
+- Branch and tag references
+- Commit search and navigation
+
+### Branches & Git Operations
+
+Perform common Git operations directly from Groves.
+
+- Create and switch branches
+- Merge
+- Rebase
+- Cherry-pick
+- Fetch
+- Pull
+- Push
+- Remote management
+
+### Stashes
+
+Manage temporary work without dropping into the terminal.
+
+- Create stashes
+- Browse stash history
+- Inspect stash diffs
+- Apply and pop stashes
+- Delete stashes
+
+### Repository Browser
+
+Browse the contents of your repository from inside Groves.
+
+- Hierarchical file tree
+- File preview
+- Repository-aware navigation
+
+### Authentication
+
+Groves integrates with the macOS security system for Git authentication.
+
+- Credentials stored in Keychain
+- `GrovesAskPass` authentication helper
+- Secure credential prompts for remote Git operations
 
 ## Requirements
 
-- **macOS**: 15.0 or later
-- **Swift**: Swift 6 toolchain
-- **Xcode**: 16.0 or later
-- **Tuist**: 4.166 or later
+- macOS 26.0 or later
+- Xcode 26 or later
+- Swift 6
+- Tuist 4.166.0
 
----
+## Development
 
-## Project Structure
-
-Groves follows a modular Clean Architecture divided into discrete targets:
-
-- `Projects/App`: Application entry point, window management, and composition root (`AppDIContainer`).
-- `Projects/Feature`:
-  - `RepositoryChanges`: Working tree status, staging, and conflict resolution.
-  - `RepositoryHistory`: Commit graph visualization, log browsing, and revision inspection.
-  - `RepositoryOperations`: Branch, tag, remote, and synchronization workflows.
-  - `RepositoryStashes`: Stash management and inspectable diffs.
-  - `RepositoryTree`: File browser and preview pane.
-- `Projects/Core`:
-  - `CoreRepositoryUI`: Shared design system components, typography, and layout helpers.
-  - `CoreRepositoryDiff`: Parsing, alignment, and metrics for side-by-side diffs.
-  - `CoreGitCredential`: Keychain access, credential prompt coordinator, and transaction stores.
-- `Projects/Domain/Git`: Pure domain models, value objects, and repository use case interfaces.
-- `Projects/Data/Git`: Git process execution, output parsing, and SwiftData persistence.
-- `Tuist`: Project generation scripts, plugins, and module dependency graphs.
-
----
-
-## Development Workflow
+Groves uses Tuist to manage its modular project structure.
 
 ### Commands
 
 ```bash
-make generate    # Install dependencies, sync modules/schemes, and generate Groves.xcworkspace
-make sync        # Synchronize module manifests and build schemes
-make module      # Scaffold a new feature, domain, or core module
-make clean       # Clean Tuist cache and remove generated Xcode projects/workspaces
-make format      # Run swift-format in-place according to .swift-format
-make lint        # Run structural, architectural, and formatting lint checks
+make generate
+make sync
+make module
+make clean
+make format
+make lint
 ```
 
-> **Note**: Files starting with `// AUTO-GENERATED. DO NOT EDIT.` are managed by the synchronization scripts in `Tuist/Scripts` and are excluded from format/lint checks.
+| Command | Description |
+| --- | --- |
+| `make generate` | Install dependencies, synchronize modules, and generate `Groves.xcworkspace` |
+| `make sync` | Synchronize module manifests, targets, and workspace schemes |
+| `make module` | Scaffold a new module |
+| `make clean` | Remove generated projects, workspaces, and Tuist caches |
+| `make format` | Format Swift sources using `swift-format` |
+| `make lint` | Run formatting, structural, and architectural checks |
 
-### Building and Running
+Files beginning with `// AUTO-GENERATED. DO NOT EDIT.` are generated by scripts under `Tuist/Scripts` and should not be edited manually.
 
-1. Run `make generate` to produce `Groves.xcworkspace`.
-2. Open `Groves.xcworkspace` in Xcode.
-3. Select the **`App`** scheme and choose **My Mac** as the destination.
-4. Press `⌘R` to build and run the application.
+## Architecture
 
-### Testing
+Groves follows a modular architecture with dependencies separated across application, feature, domain, data, and shared infrastructure layers.
 
-- Run tests for individual modules using their respective schemes (e.g., `AppTests`, `CoreRepositoryDiffTests`).
-- Run the entire test suite across all modules using the **`Groves-Workspace`** scheme.
+```text
+Projects
+├── App
+├── Feature
+│   ├── RepositoryChanges
+│   ├── RepositoryHistory
+│   ├── RepositoryOperations
+│   ├── RepositoryStashes
+│   └── RepositoryTree
+├── Domain
+│   └── Git
+├── Data
+│   └── Git
+└── Core
+    ├── GitCredential
+    ├── RepositoryDiff
+    └── RepositoryUI
+```
 
----
+### App
 
-## Persistence & Security
+`Projects/App`
 
-- Added repositories and navigation states are persisted using **SwiftData**.
-- Persistent repository access is preserved across application launches via **Security-Scoped Bookmarks**.
-- Git authentication credentials are securely stored and retrieved using the **macOS Keychain** via the companion `GrovesAskPass` helper.
+Application entry point, dependency composition, repository lifecycle, and macOS window management.
+
+### Feature
+
+`Projects/Feature`
+
+User-facing repository workflows are separated into independent feature modules.
+
+- `RepositoryChanges`
+- `RepositoryHistory`
+- `RepositoryOperations`
+- `RepositoryStashes`
+- `RepositoryTree`
+
+### Domain
+
+`Projects/Domain/Git`
+
+Git domain models, value objects, repository interfaces, and application use cases.
+
+### Data
+
+`Projects/Data/Git`
+
+Git process execution, command output parsing, persistence, and implementations of domain interfaces.
+
+### Core
+
+`Projects/Core`
+
+Shared infrastructure and reusable UI components.
+
+- `CoreGitCredential`
+- `CoreRepositoryDiff`
+- `CoreRepositoryUI`
+
+## Persistence
+
+Groves uses SwiftData for local application state.
+
+Repository access is restored between launches using macOS security-scoped bookmarks, allowing previously opened repositories to remain accessible without requesting the directory again.
+
+## Testing
+
+Individual modules expose their own test schemes. Run the complete test suite with the `Groves-Workspace` scheme:
+
+```bash
+xcodebuild test \
+  -workspace Groves.xcworkspace \
+  -scheme Groves-Workspace \
+  -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+## Roadmap
+
+Groves is still evolving. Planned areas include:
+
+- Public release builds
+- Signed and notarized distribution
+- Homebrew Cask installation
+- Automatic application updates
+- Additional Git workflows
+- Performance and large-repository improvements
+
+## License
+
+Groves is available under the [MIT License](LICENSE).
