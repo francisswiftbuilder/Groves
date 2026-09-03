@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct RepositoryTabsView: View {
-	@Environment(\.openWindow) private var openWindow
+	@Environment(\.windowTabCoordinator) private var coordinator
 	@ObservedObject var viewModel: RepositoryTabsViewModel
 	@ObservedObject var windowViewModel: RepositoryWindowViewModel
 	@Binding var repositoryID: RepositoryTab.ID?
@@ -146,7 +146,7 @@ struct RepositoryTabsView: View {
 		repositoryID = restoration.primaryRepositoryID
 		activateRepository(repositoryID)
 		for id in restoration.additionalRepositoryIDs {
-			openWindow(id: "repository", value: id)
+			coordinator?.openNewTab(repositoryID: id, from: nil)
 		}
 	}
 
@@ -180,7 +180,7 @@ struct RepositoryTabsView: View {
 			activateRepository(id)
 			return
 		}
-		openWindow(id: "repository", value: id)
+		coordinator?.openNewTab(repositoryID: id, from: nil)
 	}
 
 	private func showRepository(_ id: RepositoryTab.ID) {

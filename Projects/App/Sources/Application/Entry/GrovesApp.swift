@@ -14,6 +14,10 @@ struct GrovesApp: App {
 				.background {
 					NativeWindowTabConfigurator()
 				}
+				.environment(
+					\.windowTabCoordinator,
+					AppDIContainer.shared.windowTabCoordinator
+				)
 		}
 		.defaultSize(width: 1_280, height: 800)
 		.restorationBehavior(.disabled)
@@ -21,7 +25,9 @@ struct GrovesApp: App {
 		.windowStyle(.titleBar)
 		.windowToolbarStyle(.unified)
 		.commands {
-			RepositoryWindowCommands()
+			RepositoryWindowCommands(
+				coordinator: AppDIContainer.shared.windowTabCoordinator
+			)
 			RepositoryCommands()
 			SidebarCommands()
 			ToolbarCommands()
