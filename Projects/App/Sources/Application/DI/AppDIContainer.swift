@@ -7,6 +7,7 @@ import SwiftUI
 @MainActor
 final class AppDIContainer {
 	static let shared = AppDIContainer()
+	let windowTabCoordinator: any RepositoryWindowTabCoordinating
 	private let noticeCenter: RepositoryNoticeCenter
 	private let viewModelResult: Result<RepositoryTabsViewModel, Error>
 
@@ -19,7 +20,7 @@ final class AppDIContainer {
 				noticeHandler: { notice in noticeCenter.post(notice) }
 			)
 		)
-		viewModelResult = Result {
+		let result: Result<RepositoryTabsViewModel, Error> = Result {
 			let workspaceAssembly = RepositoryWorkspaceAssembly(
 				dependencies: .init(
 					contentUseCase: RepositoryUseCaseFactory.makeContentUseCase(
@@ -52,9 +53,34 @@ final class AppDIContainer {
 				)
 			)
 		}
+		viewModelResult = result
+		var coordinator: NativeWindowTabCoordinator?
+		coordinator = NativeWindowTabCoordinator { [weak coordinator] repositoryID in
+			AppDIContainer.makeRepositoryRootView(
+				viewModelResult: result,
+				noticeCenter: noticeCenter,
+				windowTabCoordinator: coordinator,
+				repositoryID: repositoryID
+			)
+		}
+		windowTabCoordinator = coordinator!
 	}
 
 	func makeRepositoryRootView(repositoryID: Binding<UUID?>) -> AnyView {
+		Self.makeRepositoryRootView(
+			viewModelResult: viewModelResult,
+			noticeCenter: noticeCenter,
+			windowTabCoordinator: windowTabCoordinator,
+			repositoryID: repositoryID
+		)
+	}
+
+	private static func makeRepositoryRootView(
+		viewModelResult: Result<RepositoryTabsViewModel, Error>,
+		noticeCenter: RepositoryNoticeCenter,
+		windowTabCoordinator: (any RepositoryWindowTabCoordinating)?,
+		repositoryID: Binding<UUID?>
+	) -> AnyView {
 		switch viewModelResult {
 		case .success(let viewModel):
 			return AnyView(
@@ -63,6 +89,7 @@ final class AppDIContainer {
 					noticeCenter: noticeCenter,
 					repositoryID: repositoryID
 				)
+				.environment(\.windowTabCoordinator, windowTabCoordinator)
 			)
 		case .failure(let error):
 			return AnyView(
