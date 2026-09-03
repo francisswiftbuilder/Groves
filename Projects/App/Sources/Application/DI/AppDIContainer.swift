@@ -21,31 +21,34 @@ final class AppDIContainer {
 			)
 		)
 		let result: Result<RepositoryTabsViewModel, Error> = Result {
+			let contentUseCase = DefaultRepositoryContentUseCase(repository: repository)
 			let workspaceAssembly = RepositoryWorkspaceAssembly(
 				dependencies: .init(
-					contentUseCase: RepositoryUseCaseFactory.makeContentUseCase(
-						repository: repository
+					contentUseCase: contentUseCase,
+					changesUseCase: DefaultRepositoryChangesUseCase(
+						repository: repository,
+						content: contentUseCase
 					),
-					changesUseCase: RepositoryUseCaseFactory.makeChangesUseCase(
-						repository: repository
+					referencesUseCase: DefaultRepositoryReferencesUseCase(
+						repository: repository,
+						content: contentUseCase
 					),
-					referencesUseCase: RepositoryUseCaseFactory.makeReferencesUseCase(
-						repository: repository
+					stashesUseCase: DefaultRepositoryStashesUseCase(
+						repository: repository,
+						content: contentUseCase
 					),
-					stashesUseCase: RepositoryUseCaseFactory.makeStashesUseCase(
-						repository: repository
-					),
-					operationsUseCase: RepositoryUseCaseFactory.makeOperationsUseCase(
-						repository: repository
+					operationsUseCase: DefaultRepositoryOperationsUseCase(
+						repository: repository,
+						content: contentUseCase
 					),
 					externalEditorOpener: WorkspaceExternalEditorOpener()
 				)
 			)
 			return RepositoryTabsViewModel(
 				dependencies: .init(
-					useCase: RepositoryUseCaseFactory.makeTabsUseCase(
+					useCase: DefaultRepositoryTabsUseCase(
 						repository: repository,
-						savedRepositoryStore: try SwiftDataSavedRepositoryStore()
+						store: try SwiftDataSavedRepositoryStore()
 					),
 					makeWorkspace: { repositoryURL in
 						workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)

@@ -9,9 +9,9 @@ final class RepositoryUseCaseTests: XCTestCase {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let store = SavedRepositoryStoreSpy(repositories: [])
-		let useCase = RepositoryUseCaseFactory.makeTabsUseCase(
+		let useCase = DefaultRepositoryTabsUseCase(
 			repository: GitRepositoryStub(recorder: recorder),
-			savedRepositoryStore: store
+			store: store
 		)
 
 		let savedRepository = try await useCase.openRepository(at: repositoryURL)
@@ -31,8 +31,10 @@ final class RepositoryUseCaseTests: XCTestCase {
 			indexState: .unchanged,
 			workingTreeState: .modified
 		)
-		let useCase = RepositoryUseCaseFactory.makeChangesUseCase(
-			repository: GitRepositoryStub(recorder: recorder, changes: [change])
+		let stub = GitRepositoryStub(recorder: recorder, changes: [change])
+		let useCase = DefaultRepositoryChangesUseCase(
+			repository: stub,
+			content: DefaultRepositoryContentUseCase(repository: stub)
 		)
 
 		let snapshot = try await useCase.stage([change], at: repositoryURL)
@@ -55,12 +57,14 @@ final class RepositoryUseCaseTests: XCTestCase {
 			GitRemote(name: "origin", fetchURL: nil, pushURL: nil),
 			GitRemote(name: "upstream", fetchURL: nil, pushURL: nil),
 		]
-		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
-			repository: GitRepositoryStub(
-				recorder: recorder,
-				branches: [branch],
-				remotes: remotes
-			)
+		let stub = GitRepositoryStub(
+			recorder: recorder,
+			branches: [branch],
+			remotes: remotes
+		)
+		let useCase = DefaultRepositoryReferencesUseCase(
+			repository: stub,
+			content: DefaultRepositoryContentUseCase(repository: stub)
 		)
 
 		let snapshot = try await useCase.push(
@@ -92,12 +96,14 @@ final class RepositoryUseCaseTests: XCTestCase {
 			GitRemote(name: "origin", fetchURL: nil, pushURL: nil),
 			GitRemote(name: "upstream", fetchURL: nil, pushURL: nil),
 		]
-		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
-			repository: GitRepositoryStub(
-				recorder: recorder,
-				branches: [branch],
-				remotes: remotes
-			)
+		let stub = GitRepositoryStub(
+			recorder: recorder,
+			branches: [branch],
+			remotes: remotes
+		)
+		let useCase = DefaultRepositoryReferencesUseCase(
+			repository: stub,
+			content: DefaultRepositoryContentUseCase(repository: stub)
 		)
 
 		let snapshot = try await useCase.forcePush(
@@ -126,8 +132,10 @@ final class RepositoryUseCaseTests: XCTestCase {
 			date: nil,
 			subject: "Release 1.0.0"
 		)
-		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
-			repository: GitRepositoryStub(recorder: recorder, tags: [tag])
+		let stub = GitRepositoryStub(recorder: recorder, tags: [tag])
+		let useCase = DefaultRepositoryReferencesUseCase(
+			repository: stub,
+			content: DefaultRepositoryContentUseCase(repository: stub)
 		)
 
 		let snapshot = try await useCase.pushTags(
@@ -155,11 +163,13 @@ final class RepositoryUseCaseTests: XCTestCase {
 			upstream: nil,
 			isCurrent: false
 		)
-		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
-			repository: GitRepositoryStub(
-				recorder: recorder,
-				branches: [currentBranch, mergeBranch]
-			)
+		let stub = GitRepositoryStub(
+			recorder: recorder,
+			branches: [currentBranch, mergeBranch]
+		)
+		let useCase = DefaultRepositoryReferencesUseCase(
+			repository: stub,
+			content: DefaultRepositoryContentUseCase(repository: stub)
 		)
 
 		let snapshot = try await useCase.mergeBranch(
@@ -185,8 +195,10 @@ final class RepositoryUseCaseTests: XCTestCase {
 			subject: "Tagged commit",
 			body: ""
 		)
-		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
-			repository: GitRepositoryStub(recorder: recorder, commits: [commit])
+		let stub = GitRepositoryStub(recorder: recorder, commits: [commit])
+		let useCase = DefaultRepositoryReferencesUseCase(
+			repository: stub,
+			content: DefaultRepositoryContentUseCase(repository: stub)
 		)
 
 		let snapshot = try await useCase.createTag(
@@ -219,8 +231,10 @@ final class RepositoryUseCaseTests: XCTestCase {
 			upstream: nil,
 			isCurrent: true
 		)
-		let useCase = RepositoryUseCaseFactory.makeReferencesUseCase(
-			repository: GitRepositoryStub(recorder: recorder, branches: [branch])
+		let stub = GitRepositoryStub(recorder: recorder, branches: [branch])
+		let useCase = DefaultRepositoryReferencesUseCase(
+			repository: stub,
+			content: DefaultRepositoryContentUseCase(repository: stub)
 		)
 
 		let snapshot = try await useCase.deleteTag(

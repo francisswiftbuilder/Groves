@@ -6,9 +6,9 @@ import XCTest
 
 final class GitCloneCleanupTests: XCTestCase {
 	func testCancelledCloneLeavesNoDestinationBehind() async throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
-		let sourceURL = try GitTestRepositoryFactory.makeRepository(name: "GrovesCloneSource")
+		let sourceURL = try makeTemporaryRepository(name: "GrovesCloneSource")
 		defer { try? FileManager.default.removeItem(at: sourceURL) }
 		let repository = LocalGitRepository(
 			configuration: GitProcessConfiguration(terminationGracePeriod: 0.01)
@@ -34,7 +34,7 @@ final class GitCloneCleanupTests: XCTestCase {
 	}
 
 	func testExistingDestinationIsReportedWithoutBeingRemoved() async throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let destinationURL = directoryURL.appending(path: "Existing", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
@@ -60,7 +60,7 @@ final class GitCloneCleanupTests: XCTestCase {
 	}
 
 	func testChangedHostKeyIsClassifiedAsHostVerification() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let runner = GitProcessRunner()
 		let message = "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!"
@@ -79,7 +79,7 @@ final class GitCloneCleanupTests: XCTestCase {
 	}
 
 	func testEmbeddedCredentialRemoteURLIsRejectedWhenConfiguringRemotes() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let repository = LocalGitRepository()
 
@@ -101,7 +101,7 @@ final class GitCloneCleanupTests: XCTestCase {
 	}
 
 	func testEmbeddedCredentialRemoteURLIsRejectedWhenUpdatingRemotes() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let repository = LocalGitRepository()
 		try await repository.requestAddRemote(

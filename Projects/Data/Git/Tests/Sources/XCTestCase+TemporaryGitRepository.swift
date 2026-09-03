@@ -1,8 +1,9 @@
 import DomainGitInterface
 import Foundation
+import XCTest
 
-enum GitTestRepositoryFactory {
-	static func makeRepository(name: String = "GrovesProcessTests") throws -> URL {
+extension XCTestCase {
+	func makeTemporaryRepository(name: String = "GrovesProcessTests") throws -> URL {
 		let url = FileManager.default.temporaryDirectory
 			.appending(path: "\(name)-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -10,14 +11,14 @@ enum GitTestRepositoryFactory {
 		return url
 	}
 
-	static func makeDirectory(name: String = "GrovesProcessTestsDirectory") throws -> URL {
+	func makeTemporaryDirectory(name: String = "GrovesProcessTestsDirectory") throws -> URL {
 		let url = FileManager.default.temporaryDirectory
 			.appending(path: "\(name)-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 		return url
 	}
 
-	private static func runGit(arguments: [String]) throws {
+	private func runGit(arguments: [String]) throws {
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
 		process.arguments = ["git"] + arguments

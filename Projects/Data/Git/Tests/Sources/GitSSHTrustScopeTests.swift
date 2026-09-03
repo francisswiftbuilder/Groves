@@ -5,7 +5,7 @@ import XCTest
 
 final class GitSSHTrustScopeTests: XCTestCase {
 	func testTrustScopeCopiesKnownHostsWithoutMutatingTheUserFile() throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let userKnownHostsURL = directoryURL.appending(path: "known_hosts")
 		let existingEntry = "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAexisting\n"
@@ -32,7 +32,7 @@ final class GitSSHTrustScopeTests: XCTestCase {
 	}
 
 	func testTrustScopeIsRemovedAfterTheOperation() throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let scope = try GitSSHTrustScope(
 			userKnownHostsURL: directoryURL.appending(path: "missing_known_hosts")
@@ -48,7 +48,7 @@ final class GitSSHTrustScopeTests: XCTestCase {
 	}
 
 	func testUnreadableKnownHostsFileFailsWithoutLeavingATemporaryCopy() throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let userKnownHostsURL = directoryURL.appending(path: "known_hosts")
 		try Data("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAexisting\n".utf8)
@@ -75,7 +75,7 @@ final class GitSSHTrustScopeTests: XCTestCase {
 	}
 
 	func testUnusableKnownHostsPathFails() throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let userKnownHostsURL = directoryURL.appending(
 			path: "known_hosts",
@@ -96,7 +96,7 @@ final class GitSSHTrustScopeTests: XCTestCase {
 	}
 
 	func testTrustScopeKeepsHostKeyCheckingInteractive() throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let scope = try GitSSHTrustScope(
 			userKnownHostsURL: directoryURL.appending(path: "known_hosts")
