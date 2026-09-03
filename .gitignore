@@ -4,6 +4,7 @@
 Tuist/.build/
 Tuist/Plugins/**/.build/
 Tuist/Derived/
+Projects/**/Derived/
 Tuist/Cache/
 Tuist/Dependencies/
 Tuist/Graph/
@@ -15,6 +16,7 @@ xcuserdata/
 *.xcuserdatad/
 *.xcuserstate
 DerivedData/
+dist/
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint

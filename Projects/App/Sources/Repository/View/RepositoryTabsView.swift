@@ -1,0 +1,194 @@
+import Foundation
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct RepositoryTabsView: View {
+	@Environment(\.windowTabCoordinator) private var coordinator
+	@ObservedObject var viewModel: RepositoryTabsViewModel
+	@ObservedObject var windowViewModel: RepositoryWindowViewModel
+	@Binding var repositoryID: RepositoryTab.ID?
+
+	var body: some View {
+		Group {
+			if let repositoryTab {
+				WorkspaceView(
+					workspace: repositoryTab.workspace,
+					windowViewModel: windowViewModel,
+					repositoryID: repositoryTab.id
+				)
+			} else {
+				RepositoryWelcomeContainerView(
+					viewModel: windowViewModel,
+					isWorking: viewModel.isAddingRepository,
+					onOpenRepository: presentRepositoryImporter,
+					onCloneRepository: presentCloneDestinationImporter,
+					onCancel: viewModel.didRequestCancelAddingRepository
+				)
+			}
+		}
+		.navigationTitle(repositoryTab?.repository.name ?? "New Tab")
+		.task {
+			restoreRepositoryWindows()
+		}
+		.onChange(of: repositoryID) { _, id in
+			activateRepository(id)
+		}
+		.onChange(of: windowViewModel.sidebarSelection) { _, selection in
+			activateSidebarSelection(selection)
+		}
+		.toolbar {
+			if let repositoryTab {
+				RepositoryWorkspaceToolbar(
+					viewModel: repositoryTab.workspace.viewModel,
+					operationViewModel: repositoryTab.workspace.operationViewModel,
+					referencesViewModel: repositoryTab.workspace.referencesViewModel,
+					syncViewModel: repositoryTab.workspace.syncViewModel,
+					remotesViewModel: repositoryTab.workspace.remotesViewModel,
+					onCreateBranch: presentNewBranch
+				)
+			}
+		}
+		.toolbarRole(.editor)
+		.fileImporter(
+			isPresented: folderImporterPresentation,
+			allowedContentTypes: [.folder],
+			allowsMultipleSelection:
+				windowViewModel.folderImportRequest?.allowsMultipleSelection ?? false
+		) { handleFolderImport($0) }
+		.alert(
+			"Repository Error",
+			isPresented: Binding(
+				get: { viewModel.alertMessage != nil },
+				set: { isPresented in
+					if !isPresented {
+						viewModel.alertMessage = nil
+					}
+				}
+			),
+			actions: {
+				Button("OK") {
+					viewModel.alertMessage = nil
+				}
+			},
+			message: {
+				Text(viewModel.alertMessage ?? "")
+			}
+		)
+	}
+
+	private func presentNewBranch() {
+		repositoryTab?.workspace.referencesViewModel.didPresentNewBranch()
+	}
+
+	private func presentRepositoryImporter() {
+		windowViewModel.didPresentRepositoryImporter()
+	}
+
+	private func presentCloneDestinationImporter() {
+		windowViewModel.didPresentCloneDestinationImporter()
+	}
+
+	private func handleFolderImport(_ result: Result<[URL], any Error>) {
+		guard let request = windowViewModel.consumeFolderImportRequest() else { return }
+
+		switch result {
+		case .success(let urls):
+			switch request {
+			case .openRepository:
+				viewModel.didChooseRepositories(
+					urls,
+					actions: .init(didOpenRepository: showRepository)
+				)
+			case .clone(let remoteURL):
+				guard let url = urls.first else { return }
+				viewModel.didRequestCloneRepository(
+					from: remoteURL,
+					into: url,
+					actions: .init(didOpenRepository: showRepository)
+				)
+			}
+		case .failure(let error):
+			guard isUserCancellation(error) == false else { return }
+			viewModel.alertMessage = error.localizedDescription
+		}
+	}
+
+	private func isUserCancellation(_ error: any Error) -> Bool {
+		let error = error as NSError
+		return error.domain == NSCocoaErrorDomain && error.code == NSUserCancelledError
+	}
+
+	private var repositoryTab: RepositoryTab? {
+		viewModel.tab(id: repositoryID)
+	}
+
+	private var folderImporterPresentation: Binding<Bool> {
+		Binding(
+			get: { windowViewModel.isFolderImporterPresented },
+			set: { isPresented in
+				if !isPresented {
+					windowViewModel.didDismissFolderImporter()
+				}
+			}
+		)
+	}
+
+	private func restoreRepositoryWindows() {
+		guard
+			let restoration = viewModel.requestWindowRestoration(
+				currentRepositoryID: repositoryID
+			)
+		else {
+			activateRepository(repositoryID)
+			return
+		}
+
+		repositoryID = restoration.primaryRepositoryID
+		activateRepository(repositoryID)
+		for id in restoration.additionalRepositoryIDs {
+			coordinator?.openNewTab(repositoryID: id, from: nil)
+		}
+	}
+
+	private func activateRepository(_ id: RepositoryTab.ID?) {
+		Task { @MainActor in
+			await Task.yield()
+			guard let id, viewModel.tab(id: id) != nil else {
+				await windowViewModel.didSelectSidebarItem(nil)
+				return
+			}
+
+			viewModel.didSelectTab(id)
+			if windowViewModel.sidebarSelection?.repositoryID != id {
+				await windowViewModel.didSelectSidebarItem(
+					viewModel.defaultSidebarSelection(repositoryID: id)
+				)
+			}
+		}
+	}
+
+	private func activateSidebarSelection(_ selection: RepositorySidebarSelection?) {
+		guard let selection else { return }
+		viewModel.didActivateSidebarSelection(selection)
+		if selection.repositoryID != repositoryID {
+			openRepository(selection.repositoryID)
+		}
+	}
+
+	private func openRepository(_ id: RepositoryTab.ID) {
+		guard id != repositoryID else {
+			activateRepository(id)
+			return
+		}
+		coordinator?.openNewTab(repositoryID: id, from: nil)
+	}
+
+	private func showRepository(_ id: RepositoryTab.ID) {
+		if repositoryID == nil {
+			repositoryID = id
+		} else {
+			openRepository(id)
+		}
+	}
+
+}

@@ -41,6 +41,31 @@ enum GitOutputParser {
 		return mergeWorkingTreeChanges(changes)
 	}
 
+	static func parseConflicts(_ output: String) -> [GitConflict] {
+		output
+			.split(separator: "\0", omittingEmptySubsequences: true)
+			.compactMap { record in
+				guard record.hasPrefix("u ") else { return nil }
+				let fields = record.split(
+					maxSplits: 10,
+					omittingEmptySubsequences: true,
+					whereSeparator: \.isWhitespace
+				).map(String.init)
+				guard
+					fields.count == 11,
+					let kind = GitConflictKind(rawValue: fields[1])
+				else { return nil }
+				return GitConflict(
+					path: fields[10],
+					kind: kind,
+					hasBase: hasStageObject(fields[7]),
+					hasOurs: hasStageObject(fields[8]),
+					hasTheirs: hasStageObject(fields[9])
+				)
+			}
+			.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+	}
+
 	static func parseAmendChanges(_ output: String) -> [GitAmendChange] {
 		let records = output.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
 		var changes: [GitAmendChange] = []
@@ -85,16 +110,19 @@ enum GitOutputParser {
 			.compactMap { record in
 				let fields = record.split(
 					separator: "\u{1f}",
-					maxSplits: 7,
+					maxSplits: 11,
 					omittingEmptySubsequences: false
 				).map(String.init)
-				guard fields.count >= 8 else { return nil }
-				guard let date = formatter.date(from: fields[4]) ?? fallbackFormatter.date(from: fields[4])
+				guard fields.count >= 12 else { return nil }
+				guard
+					let date = formatter.date(from: fields[5]) ?? fallbackFormatter.date(from: fields[5]),
+					let committedDate = formatter.date(from: fields[8])
+						?? fallbackFormatter.date(from: fields[8])
 				else {
 					return nil
 				}
 
-				let references = fields[5]
+				let references = fields[9]
 					.split(separator: ",")
 					.map { $0.trimmingCharacters(in: .whitespaces) }
 					.filter { !$0.isEmpty }
@@ -104,10 +132,14 @@ enum GitOutputParser {
 					shortHash: fields[1],
 					parentHashes: fields[2].split(separator: " ").map(String.init),
 					author: fields[3],
+					authorEmail: fields[4],
 					date: date,
+					committer: fields[6],
+					committerEmail: fields[7],
+					committedDate: committedDate,
 					references: references,
-					subject: fields[6].trimmingCharacters(in: .newlines),
-					body: fields[7].trimmingCharacters(in: .newlines)
+					subject: fields[10].trimmingCharacters(in: .newlines),
+					body: fields[11].trimmingCharacters(in: .newlines)
 				)
 			}
 	}
@@ -115,12 +147,85 @@ enum GitOutputParser {
 	static func parseBranches(_ output: String) -> [GitBranch] {
 		output.split(whereSeparator: \.isNewline).compactMap { line in
 			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-			guard fields.count >= 4 else { return nil }
+			guard fields.count >= 5 else { return nil }
+			let trackingCounts = parseTrackingCounts(fields[4])
 			return GitBranch(
 				name: fields[0],
 				shortHash: fields[1],
 				upstream: fields[3].isEmpty ? nil : fields[3],
+				aheadCount: trackingCounts.ahead,
+				behindCount: trackingCounts.behind,
 				isCurrent: fields[2] == "*"
+			)
+		}
+	}
+
+	private static func parseTrackingCounts(_ value: String) -> (ahead: Int, behind: Int) {
+		var ahead = 0
+		var behind = 0
+
+		for component in value.split(separator: ",") {
+			let fields = component.split(whereSeparator: \.isWhitespace)
+			guard fields.count == 2, let count = Int(fields[1]) else { continue }
+			switch fields[0] {
+			case "ahead":
+				ahead = count
+			case "behind":
+				behind = count
+			default:
+				continue
+			}
+		}
+
+		return (ahead, behind)
+	}
+
+	static func parseRemotes(_ output: String) -> [GitRemote] {
+		var remoteOrder: [String] = []
+		var remoteURLs: [String: (fetch: String?, push: String?)] = [:]
+
+		for line in output.split(whereSeparator: \.isNewline) {
+			let fields = line.split(separator: "\t", maxSplits: 1).map(String.init)
+			guard fields.count == 2 else { continue }
+			let name = fields[0]
+			let value = fields[1]
+			guard let markerRange = value.range(of: " (", options: .backwards) else { continue }
+			let url = String(value[..<markerRange.lowerBound])
+			let kind = String(value[markerRange.lowerBound...])
+
+			if remoteURLs[name] == nil {
+				remoteOrder.append(name)
+				remoteURLs[name] = (nil, nil)
+			}
+			if kind == " (fetch)" {
+				remoteURLs[name]?.fetch = url
+			} else if kind == " (push)" {
+				remoteURLs[name]?.push = url
+			}
+		}
+
+		return remoteOrder.compactMap { name in
+			guard let urls = remoteURLs[name] else { return nil }
+			return GitRemote(name: name, fetchURL: urls.fetch, pushURL: urls.push)
+		}
+	}
+
+	static func parseRemoteBranches(_ output: String) -> [GitRemoteBranch] {
+		output.split(whereSeparator: \.isNewline).compactMap { line in
+			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+			guard fields.count >= 4, fields[3].isEmpty else { return nil }
+			let fullName = fields[0]
+			guard let separatorIndex = fullName.firstIndex(of: "/") else { return nil }
+			let remoteName = String(fullName[..<separatorIndex])
+			let branchName = String(fullName[fullName.index(after: separatorIndex)...])
+			guard !remoteName.isEmpty, !branchName.isEmpty else { return nil }
+
+			return GitRemoteBranch(
+				name: branchName,
+				fullName: fullName,
+				remoteName: remoteName,
+				shortHash: fields[1],
+				hash: fields[2]
 			)
 		}
 	}
@@ -132,14 +237,40 @@ enum GitOutputParser {
 
 		return output.split(whereSeparator: \.isNewline).compactMap { line in
 			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-			guard fields.count >= 4 else { return nil }
+			guard fields.count >= 6 else { return nil }
+			let targetHash = fields[2].isEmpty ? fields[3] : fields[2]
 			return GitTag(
 				name: fields[0],
 				shortHash: fields[1],
-				date: formatter.date(from: fields[2]),
-				subject: fields[3]
+				targetHash: targetHash,
+				date: formatter.date(from: fields[4]),
+				subject: fields[5]
 			)
 		}
+	}
+
+	static func parseStashes(_ output: String) -> [GitStash] {
+		let formatter = DateFormatter()
+		formatter.locale = Locale(identifier: "en_US_POSIX")
+		formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+
+		return
+			output
+			.split(separator: "\u{1e}", omittingEmptySubsequences: true)
+			.compactMap { record in
+				let fields = record.split(
+					separator: "\u{1f}",
+					maxSplits: 3,
+					omittingEmptySubsequences: false
+				).map(String.init)
+				guard fields.count == 4 else { return nil }
+				return GitStash(
+					reference: fields[0].trimmingCharacters(in: .whitespacesAndNewlines),
+					hash: fields[1],
+					subject: fields[2],
+					date: formatter.date(from: fields[3].trimmingCharacters(in: .newlines))
+				)
+			}
 	}
 
 	static func buildFileTree(paths: [String]) -> [RepositoryTreeNode] {
@@ -178,6 +309,10 @@ enum GitOutputParser {
 		default:
 			return .unchanged
 		}
+	}
+
+	private static func hasStageObject(_ hash: String) -> Bool {
+		hash.contains(where: { $0 != "0" })
 	}
 
 	private static func mergeWorkingTreeChanges(
@@ -225,33 +360,5 @@ enum GitOutputParser {
 			return lhs.isDirectory ? .orderedAscending : .orderedDescending
 		}
 		return lhs.name.localizedStandardCompare(rhs.name)
-	}
-}
-
-private struct MutableTreeNode {
-	let name: String
-	let path: String
-	var children: [String: MutableTreeNode] = [:]
-
-	mutating func insert(components: ArraySlice<String>, parentPath: String) {
-		guard let name = components.first else { return }
-		let path = parentPath.isEmpty ? name : "\(parentPath)/\(name)"
-		var child = children[name] ?? MutableTreeNode(name: name, path: path)
-		child.insert(components: components.dropFirst(), parentPath: path)
-		children[name] = child
-	}
-}
-
-extension RepositoryTreeNode {
-	fileprivate init(_ node: MutableTreeNode) {
-		let children = node.children.values
-			.map(RepositoryTreeNode.init)
-			.sorted {
-				if $0.isDirectory != $1.isDirectory {
-					return $0.isDirectory
-				}
-				return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-			}
-		self.init(name: node.name, path: node.path, children: children)
 	}
 }
