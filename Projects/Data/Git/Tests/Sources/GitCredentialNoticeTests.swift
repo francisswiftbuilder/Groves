@@ -7,7 +7,7 @@ import XCTest
 
 final class GitCredentialNoticeTests: XCTestCase {
 	func testCredentialPersistenceFailureKeepsTheCommandResult() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let commitError = GitCredentialStoreError(
 			operation: .copySecret,
@@ -40,7 +40,7 @@ final class GitCredentialNoticeTests: XCTestCase {
 	}
 
 	func testSuccessfulCredentialPersistenceSendsNoNotice() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let store = GitCredentialPersistingStub()
 		let recorder = GitProcessNoticeRecorder()
@@ -61,7 +61,7 @@ final class GitCredentialNoticeTests: XCTestCase {
 	}
 
 	func testUnrecoverableDiscardPreservesBothDiagnosticsInASingleNotice() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let commitError = GitCredentialStoreError(operation: .copySecret, status: -25308)
 		let discardError = GitCredentialStoreError(operation: .delete, status: -25300)
@@ -94,7 +94,7 @@ final class GitCredentialNoticeTests: XCTestCase {
 	}
 
 	func testFailedCommandSendsNoCredentialNotice() async throws {
-		let repositoryURL = try GitTestRepositoryFactory.makeRepository()
+		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let store = GitCredentialPersistingStub(
 			commitError: GitCredentialStoreError(operation: .copySecret, status: -25308)
@@ -120,9 +120,9 @@ final class GitCredentialNoticeTests: XCTestCase {
 	}
 
 	func testCredentialPersistenceFailureKeepsTheClonedRepository() async throws {
-		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
+		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
-		let sourceURL = try GitTestRepositoryFactory.makeRepository(name: "GrovesNoticeSource")
+		let sourceURL = try makeTemporaryRepository(name: "GrovesNoticeSource")
 		defer { try? FileManager.default.removeItem(at: sourceURL) }
 		let recorder = GitProcessNoticeRecorder()
 		let commitError = GitCredentialStoreError(operation: .copySecret, status: -25308)
