@@ -5,7 +5,6 @@ export TUIST_DEVELOPMENT_TEAM
 
 generate:
 	tuist install
-	make sync
 	tuist generate
 
 clean:
@@ -15,15 +14,6 @@ clean:
 	rm -rf **/*.xcodeproj
 	rm -rf *.xcworkspace
 
-module:
-	swift Tuist/Scripts/GenerateModule.swift
-	make sync
-
-sync:
-	swift Tuist/Scripts/SyncModules.swift
-	swift Tuist/Scripts/SyncTargets.swift
-	swift Tuist/Scripts/SyncSchemes.swift
-
 # Recursively expanded on purpose: only format and lint need this list, and walking every
 # tracked Swift file costs over a second on targets that never reference it.
 SWIFT_SOURCES = $(shell git ls-files --cached --others --exclude-standard '*.swift' | while read -r file; do test -f "$$file" && grep -L '^// AUTO-GENERATED' "$$file"; done)
@@ -32,12 +22,12 @@ format:
 	xcrun swift-format --in-place --parallel --configuration .swift-format $(SWIFT_SOURCES)
 
 structure-lint:
-	swift Tuist/Scripts/ValidateSingleTypeFiles.swift
+	swift script/ValidateSingleTypeFiles.swift
 
 architecture-lint:
-	swift Tuist/Scripts/ValidateArchitecture.swift
+	swift script/ValidateArchitecture.swift
 
 lint: structure-lint architecture-lint
 	xcrun swift-format lint --strict --parallel --configuration .swift-format $(SWIFT_SOURCES)
 
-.PHONY: generate clean module sync format structure-lint architecture-lint lint
+.PHONY: generate clean format structure-lint architecture-lint lint
