@@ -14,7 +14,7 @@ struct GitSSHTrustScope: Sendable {
 			?? fileManager.homeDirectoryForCurrentUser
 			.appending(path: ".ssh/known_hosts", directoryHint: .notDirectory)
 		knownHostsURL = fileManager.temporaryDirectory
-			.appending(path: "TreesKnownHosts-\(UUID().uuidString)", directoryHint: .notDirectory)
+			.appending(path: "GrovesKnownHosts-\(UUID().uuidString)", directoryHint: .notDirectory)
 		let contents = try Self.contents(of: userKnownHostsURL)
 		try contents.write(to: knownHostsURL, options: .atomic)
 		do {

@@ -178,7 +178,7 @@ final class StashesViewModelTests: XCTestCase {
 			dependencies: StashesViewModel.Dependencies(
 				useCase: useCase,
 				preferences: WorkspaceDiffPreferences(),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: StashesViewModel.Actions(
 				didProduceSnapshot: { _ in },

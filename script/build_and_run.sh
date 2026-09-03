@@ -2,12 +2,12 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="Trees"
-BUNDLE_ID="io.github.francisswiftbuilder.Trees"
-ACCESS_GROUP_SUFFIX="io.github.francisswiftbuilder.Trees.GitCredential"
+APP_NAME="Groves"
+BUNDLE_ID="io.github.francisswiftbuilder.Groves"
+ACCESS_GROUP_SUFFIX="io.github.francisswiftbuilder.Groves.GitCredential"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKSPACE="$ROOT_DIR/Trees.xcworkspace"
+WORKSPACE="$ROOT_DIR/Groves.xcworkspace"
 
 BUILD_SETTINGS="$(
 	xcodebuild \
@@ -28,7 +28,7 @@ DEVELOPMENT_TEAM="$(
 
 if [[ -z "$CODE_SIGN_IDENTITY" || "$CODE_SIGN_IDENTITY" == "-" || -z "$DEVELOPMENT_TEAM" ]]; then
 	printf '%s\n' \
-		'Trees requires a development-signed app and helper for shared Keychain access.' \
+		'Groves requires a development-signed app and helper for shared Keychain access.' \
 		'Set TUIST_CODE_SIGN_IDENTITY and TUIST_DEVELOPMENT_TEAM in .env.local,' \
 		'then run make generate before using this script.' >&2
 	exit 1
@@ -47,7 +47,7 @@ TARGET_BUILD_DIR="$(
 )"
 APP_BUNDLE="$TARGET_BUILD_DIR/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/TreesAskPass"
+HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/GrovesAskPass"
 
 team_identifier() {
 	/usr/bin/codesign -dv "$1" 2>&1 \
@@ -57,7 +57,7 @@ team_identifier() {
 access_group() {
 	local binary="$1"
 	local entitlements
-	entitlements="$(/usr/bin/mktemp -t trees-entitlements)"
+	entitlements="$(/usr/bin/mktemp -t groves-entitlements)"
 	/usr/bin/codesign -d --entitlements :- "$binary" > "$entitlements" 2>/dev/null
 	/usr/libexec/PlistBuddy -c 'Print :keychain-access-groups:0' "$entitlements"
 	/bin/rm -f "$entitlements"

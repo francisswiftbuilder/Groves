@@ -16,6 +16,7 @@ xcuserdata/
 *.xcuserdatad/
 *.xcuserstate
 DerivedData/
+dist/
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint

@@ -8,7 +8,7 @@ import Testing
 struct GitCredentialStoreTests {
 	@Test
 	func pendingCredentialCommitsOnlyAfterSuccess() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let store = makeTestCredentialStore(service: service)
 		let descriptor = GitCredentialDescriptor(kind: .ssh, host: "SSH Key", account: "id_ed25519")
 
@@ -40,7 +40,7 @@ struct GitCredentialStoreTests {
 
 	@Test
 	func pendingCredentialIsDiscardedAfterFailure() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let store = makeTestCredentialStore(service: service)
 		let descriptor = GitCredentialDescriptor(kind: .ssh, host: "SSH Key", account: "id_rsa")
 
@@ -68,7 +68,7 @@ struct GitCredentialStoreTests {
 	func currentQueriesUseSharedDataProtectionAccessGroup() throws {
 		let client = GitCredentialSecurityClientStub()
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 
 		try store.save(secret: "secret", for: descriptor)
 
@@ -92,7 +92,7 @@ struct GitCredentialStoreTests {
 	func secretFallsBackToLegacyWithoutCurrentStorageSelectors() throws {
 		let client = GitCredentialSecurityClientStub()
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 
 		#expect(try store.secret(for: descriptor) == nil)
 
@@ -108,6 +108,27 @@ struct GitCredentialStoreTests {
 		}
 	}
 
+	@Test
+	func missingAccessGroupUsesUnscopedKeychainStorage() throws {
+		let client = GitCredentialSecurityClientStub()
+		let store = GitCredentialStore(
+			service: "Groves.Tests.\(UUID().uuidString)",
+			securityClient: client,
+			accessGroupResolver: { throw GitCredentialStoreError.missingAccessGroup }
+		)
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+
+		try store.save(secret: "secret", for: descriptor)
+
+		guard case .update(let query, _) = client.recordedCalls.first else {
+			Issue.record("save must query the unscoped store first")
+			return
+		}
+		#expect(query[kSecUseDataProtectionKeychain as String] == nil)
+		#expect(query[kSecAttrAccessGroup as String] == nil)
+		#expect(try store.secret(for: descriptor) == "secret")
+	}
+
 	@Test(arguments: [
 		(errSecAuthFailed, GitCredentialStoreOperation.update),
 		(errSecInteractionNotAllowed, GitCredentialStoreOperation.update),
@@ -119,7 +140,7 @@ struct GitCredentialStoreTests {
 		let client = GitCredentialSecurityClientStub()
 		client.nextUpdateStatus = status
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 
 		assertKeychainError(operation: operation, status: status) {
 			try store.save(secret: "secret", for: descriptor)
@@ -132,7 +153,7 @@ struct GitCredentialStoreTests {
 		client.nextUpdateStatus = errSecItemNotFound
 		client.nextAddStatus = errSecAuthFailed
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 
 		assertKeychainError(operation: .add, status: errSecAuthFailed) {
 			try store.save(secret: "secret", for: descriptor)
@@ -141,7 +162,7 @@ struct GitCredentialStoreTests {
 
 	@Test
 	func copyAndDeleteErrorsPreserveStageAndStatus() {
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		let copyClient = GitCredentialSecurityClientStub()
 		copyClient.nextCopyStatus = errSecInteractionNotAllowed
 		let copyStore = makeTestCredentialStore(securityClient: copyClient)
@@ -159,7 +180,7 @@ struct GitCredentialStoreTests {
 
 	@Test
 	func saveDecisionDefaultsToEnabledAndIsConsumed() {
-		let suiteName = "Trees.Tests.\(UUID().uuidString)"
+		let suiteName = "Groves.Tests.\(UUID().uuidString)"
 		let store = GitCredentialSaveDecisionStore(suiteName: suiteName)
 
 		#expect(store.consumeShouldSave(operationID: "default"))
@@ -173,7 +194,7 @@ private func assertCurrentStorage(_ query: [String: Any]) {
 	#expect(query[kSecUseDataProtectionKeychain as String] as? Bool == true)
 	#expect(
 		query[kSecAttrAccessGroup as String] as? String
-			== "TESTTEAM.io.github.francisswiftbuilder.Trees.GitCredential"
+			== "TESTTEAM.io.github.francisswiftbuilder.Groves.GitCredential"
 	)
 }
 

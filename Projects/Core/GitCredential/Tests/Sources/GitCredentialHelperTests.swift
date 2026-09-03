@@ -9,15 +9,15 @@ struct GitCredentialHelperTests {
 	func storeKeepsSecretPendingUntilTheOperationSucceeds() throws {
 		let store = makeTestCredentialStore()
 		let decisionStore = GitCredentialSaveDecisionStore(
-			suiteName: "Trees.Tests.\(UUID().uuidString)")
+			suiteName: "Groves.Tests.\(UUID().uuidString)")
 		let helper = GitCredentialHelper(store: store, decisionStore: decisionStore)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		defer { try? store.deleteAll() }
 
 		decisionStore.setShouldSave(true, operationID: "operation")
 		_ = try helper.handle(
 			operation: .store,
-			input: "protocol=https\nhost=github.com\nusername=trees\npassword=token\n",
+			input: "protocol=https\nhost=github.com\nusername=groves\npassword=token\n",
 			operationID: "operation"
 		)
 
@@ -32,10 +32,10 @@ struct GitCredentialHelperTests {
 	func storeIsSkippedWhenSavingIsDeclinedOrUnattributed() throws {
 		let store = makeTestCredentialStore()
 		let decisionStore = GitCredentialSaveDecisionStore(
-			suiteName: "Trees.Tests.\(UUID().uuidString)")
+			suiteName: "Groves.Tests.\(UUID().uuidString)")
 		let helper = GitCredentialHelper(store: store, decisionStore: decisionStore)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
-		let input = "protocol=https\nhost=github.com\nusername=trees\npassword=token\n"
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let input = "protocol=https\nhost=github.com\nusername=groves\npassword=token\n"
 		defer { try? store.deleteAll() }
 
 		decisionStore.setShouldSave(false, operationID: "declined")
@@ -55,9 +55,9 @@ struct GitCredentialHelperTests {
 		let store = makeTestCredentialStore()
 		let helper = GitCredentialHelper(
 			store: store,
-			decisionStore: GitCredentialSaveDecisionStore(suiteName: "Trees.Tests.\(UUID().uuidString)")
+			decisionStore: GitCredentialSaveDecisionStore(suiteName: "Groves.Tests.\(UUID().uuidString)")
 		)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		defer { try? store.deleteAll() }
 		try store.save(secret: "token", for: descriptor)
 
@@ -67,7 +67,7 @@ struct GitCredentialHelperTests {
 			operationID: "operation"
 		)
 
-		#expect(response == "password=token\nusername=trees\n\n")
+		#expect(response == "password=token\nusername=groves\n\n")
 
 		_ = try helper.handle(
 			operation: .erase,
@@ -81,8 +81,8 @@ struct GitCredentialHelperTests {
 	@Test
 	func sshKeysWithTheSameNameAreDistinctCredentials() throws {
 		let store = makeTestCredentialStore()
-		let personal = GitCredentialDescriptor.sshKey(at: "/Users/trees/.ssh/id_ed25519")
-		let work = GitCredentialDescriptor.sshKey(at: "/Users/trees/work/.ssh/id_ed25519")
+		let personal = GitCredentialDescriptor.sshKey(at: "/Users/groves/.ssh/id_ed25519")
+		let work = GitCredentialDescriptor.sshKey(at: "/Users/groves/work/.ssh/id_ed25519")
 		defer { try? store.deleteAll() }
 
 		#expect(personal.account == "id_ed25519")
@@ -99,7 +99,7 @@ struct GitCredentialHelperTests {
 	@Test
 	func legacySSHCredentialIsNotAssignedToAnAmbiguousPath() throws {
 		let store = makeTestCredentialStore()
-		let descriptor = GitCredentialDescriptor.sshKey(at: "/Users/trees/.ssh/id_rsa")
+		let descriptor = GitCredentialDescriptor.sshKey(at: "/Users/groves/.ssh/id_rsa")
 		let legacy = GitCredentialDescriptor(kind: .ssh, host: "SSH Key", account: "id_rsa")
 		defer { try? store.deleteAll() }
 		try store.save(secret: "legacy-passphrase", for: legacy)

@@ -36,7 +36,7 @@ public enum GitCredentialStoreError: LocalizedError, Sendable {
 		case .keychain:
 			return "Keychain operation failed (\(diagnosticDescription))."
 		case .missingAccessGroup:
-			return "The signed application does not contain the Trees Keychain access group."
+			return "The signed application does not contain the Groves Keychain access group."
 		case .invalidDescriptor:
 			return "The stored credential descriptor is invalid."
 		case .missingPendingSecret:

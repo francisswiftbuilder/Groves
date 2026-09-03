@@ -122,7 +122,7 @@ final class GitCredentialNoticeTests: XCTestCase {
 	func testCredentialPersistenceFailureKeepsTheClonedRepository() async throws {
 		let directoryURL = try GitTestRepositoryFactory.makeDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
-		let sourceURL = try GitTestRepositoryFactory.makeRepository(name: "TreesNoticeSource")
+		let sourceURL = try GitTestRepositoryFactory.makeRepository(name: "GrovesNoticeSource")
 		defer { try? FileManager.default.removeItem(at: sourceURL) }
 		let recorder = GitProcessNoticeRecorder()
 		let commitError = GitCredentialStoreError(operation: .copySecret, status: -25308)

@@ -7,7 +7,7 @@ import XCTest
 final class GitImageDiffLoadingTests: XCTestCase {
 	func testRequestImageDiffRejectsOversizedWorkingTreeAndIndexData() async throws {
 		let repositoryURL = try GitTestRepositoryFactory.makeRepository(
-			name: "TreesImageDiffLoadingTests"
+			name: "GrovesImageDiffLoadingTests"
 		)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)

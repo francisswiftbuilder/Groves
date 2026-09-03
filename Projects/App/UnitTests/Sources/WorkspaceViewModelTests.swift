@@ -7,13 +7,13 @@ import XCTest
 @testable import FeatureRepositoryHistory
 @testable import FeatureRepositoryOperations
 @testable import FeatureRepositoryTree
-@testable import Trees
+@testable import Groves
 
 @MainActor
 final class WorkspaceViewModelTests: XCTestCase {
 	func testRefreshKeepsLoadedWorkspaceContentVisible() async throws {
 		let workspace = makeRepositoryWorkspace()
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { !workspace.viewModel.isLoading }
 
 		workspace.viewModel.didRequestRefresh()
@@ -25,7 +25,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 	func testRepositoryMonitorDoesNotRetainWorkspaceViewModel() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory.appending(
-			path: "TreesMonitorLifetime-\(UUID().uuidString)",
+			path: "GrovesMonitorLifetime-\(UUID().uuidString)",
 			directoryHint: .isDirectory
 		)
 		try FileManager.default.createDirectory(
@@ -50,7 +50,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(contentGate: contentGate)
 		)
-		let repositoryURL = URL(fileURLWithPath: "/tmp/TreesMonitorResume")
+		let repositoryURL = URL(fileURLWithPath: "/tmp/GrovesMonitorResume")
 		workspace.viewModel.didChooseRepository(repositoryURL)
 		try await waitUntilCallCount(
 			1,
@@ -85,7 +85,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 
 		workspace.changesViewModel.selectedChangeIDs = [.staged(change.id)]
@@ -173,7 +173,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.referencesViewModel.currentBranch == branch }
 		workspace.syncViewModel.didPresentForcePushConfirmation(remoteName: "upstream")
 
@@ -201,7 +201,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			repository: GitRepositoryStub(recorder: recorder, remotes: [origin])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.remotesViewModel.remotes == [origin] }
 		workspace.syncViewModel.didRequestPushTags(remoteName: origin.name)
 
@@ -260,7 +260,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 	func testExternalEditorUsesConfiguredApplicationAndIgnoresDeletedConflict() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesExternalEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesExternalEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -292,7 +292,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 	func testUnavailableExternalEditorShowsSettingsRecovery() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesMissingEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesMissingEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let conflict = GitConflict(
@@ -338,7 +338,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.referencesViewModel.currentBranch == currentBranch }
 		XCTAssertTrue(workspace.operationViewModel.canMergeBranch(mergeBranch))
 		XCTAssertFalse(workspace.operationViewModel.canMergeBranch(currentBranch))
@@ -356,7 +356,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			hash: "selected-commit-hash",
 			shortHash: "selected",
 			parentHashes: [],
-			author: "Trees Tests",
+			author: "Groves Tests",
 			date: Date(timeIntervalSince1970: 1),
 			references: [],
 			subject: "Selected commit",
@@ -366,7 +366,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			hash: "context-commit-hash",
 			shortHash: "context",
 			parentHashes: [],
-			author: "Trees Tests",
+			author: "Groves Tests",
 			date: Date(timeIntervalSince1970: 0),
 			references: [],
 			subject: "Context commit",
@@ -379,7 +379,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == 2 }
 		workspace.historyViewModel.selectedCommitID = selectedCommit.id
 		workspace.referencesViewModel.didPresentNewTag(for: contextCommit)
@@ -414,7 +414,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			repository: GitRepositoryStub(recorder: recorder, tags: [tag])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.referencesViewModel.tags == [tag] }
 		workspace.referencesViewModel.didPresentTagDeletion(tag)
 
@@ -440,7 +440,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 				hash: "commit-\(index)",
 				shortHash: "short-\(index)",
 				parentHashes: index < 10 ? ["commit-\(index + 1)"] : [],
-				author: "Trees Tests",
+				author: "Groves Tests",
 				date: Date(timeIntervalSince1970: TimeInterval(10 - index)),
 				references: [],
 				subject: "Commit \(index)",
@@ -457,7 +457,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			repository: GitRepositoryStub(commits: commits)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == commits.count }
 
 		workspace.historyViewModel.didOpenBranch(branch)
@@ -473,7 +473,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			hash: "remote-commit",
 			shortHash: "remote",
 			parentHashes: [],
-			author: "Trees Tests",
+			author: "Groves Tests",
 			date: Date(timeIntervalSince1970: 0),
 			references: [],
 			subject: "Remote commit",
@@ -488,15 +488,15 @@ final class WorkspaceViewModelTests: XCTestCase {
 		)
 		let remote = GitRemote(
 			name: "origin",
-			fetchURL: "https://example.com/Trees.git",
-			pushURL: "https://example.com/Trees.git",
+			fetchURL: "https://example.com/Groves.git",
+			pushURL: "https://example.com/Groves.git",
 			branches: [branch]
 		)
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(commits: [commit], remotes: [remote])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == 1 }
 
 		workspace.historyViewModel.didOpenRemoteBranch(branch)
@@ -513,7 +513,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 				hash: "commit-\(index)",
 				shortHash: "short-\(index)",
 				parentHashes: index < lastIndex ? ["commit-\(index + 1)"] : [],
-				author: "Trees Tests",
+				author: "Groves Tests",
 				date: Date(timeIntervalSince1970: TimeInterval(lastIndex - index)),
 				references: [],
 				subject: "Commit \(index)",
@@ -531,7 +531,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			repository: GitRepositoryStub(commits: commits, tags: [tag])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == commits.count }
 
 		workspace.historyViewModel.didOpenTag(tag)
@@ -559,7 +559,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			repository: GitRepositoryStub(changes: [swiftChange, markdownChange])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.changesViewModel.changes.count == 2 }
 		workspace.changesViewModel.filterText = "gallery"
 
@@ -624,7 +624,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			repository: GitRepositoryStub(changes: [change])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 		await workspace.changesViewModel.didSelectChanges([.unstaged(change.id)])
 
@@ -641,7 +641,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(changes: [change], unstagedDiff: "diff")
 		)
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 		workspace.changesViewModel.selectedChangeIDs = [.unstaged(change.id)]
 
@@ -671,7 +671,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 				unstagedDiff: "diff"
 			)
 		)
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.changesDiffViewModel.diff == "diff" }
 
 		workspace.changesDiffViewModel.didRequestApplyDiffLine(
@@ -735,7 +735,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			hash: "1234567890abcdef1234567890abcdef12345678",
 			shortHash: "1234567",
 			parentHashes: [],
-			author: "Trees",
+			author: "Groves",
 			date: Date(),
 			references: [],
 			subject: "Historical commit",
@@ -772,7 +772,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 			hash: "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
 			shortHash: "abcdefa",
 			parentHashes: [],
-			author: "Trees",
+			author: "Groves",
 			date: Date(),
 			references: ["HEAD"],
 			subject: "Detached",

@@ -12,7 +12,7 @@ final class NativeWindowTabCoordinator {
 	func register(_ window: NSWindow) {
 		guard registeredWindows.contains(window) == false else { return }
 
-		window.tabbingIdentifier = "com.francisswiftbuilder.Trees.Repository"
+		window.tabbingIdentifier = "com.francisswiftbuilder.Groves.Repository"
 		window.tabbingMode = .preferred
 		if window.tabGroup?.isTabBarVisible == false {
 			window.toggleTabBar(nil)

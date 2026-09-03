@@ -4,7 +4,7 @@
 <dict>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)io.github.francisswiftbuilder.Trees.GitCredential</string>
+		<string>$(AppIdentifierPrefix)io.github.francisswiftbuilder.Groves.GitCredential</string>
 	</array>
 </dict>
 </plist>

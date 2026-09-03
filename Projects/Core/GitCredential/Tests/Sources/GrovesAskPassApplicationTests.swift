@@ -5,17 +5,17 @@ import Testing
 
 @MainActor
 @Suite(.serialized)
-struct TreesAskPassApplicationTests {
+struct GrovesAskPassApplicationTests {
 	@Test
 	func acceptedPromptWritesTheAnswerToStandardOutput() throws {
 		let store = makeStore()
 		let presenter = GitCredentialPromptPresenterStub(
-			answer: GitCredentialPromptAnswer(value: "trees", shouldSave: false)
+			answer: GitCredentialPromptAnswer(value: "groves", shouldSave: false)
 		)
 		var standardOutput = Data()
 		var standardError = Data()
 		defer { try? store.deleteAll() }
-		let application = TreesAskPassApplication(
+		let application = GrovesAskPassApplication(
 			credentialStore: store,
 			decisionStore: makeDecisionStore(),
 			makePresenter: { _ in presenter },
@@ -29,7 +29,7 @@ struct TreesAskPassApplicationTests {
 		)
 
 		#expect(status == EXIT_SUCCESS)
-		#expect(String(decoding: standardOutput, as: UTF8.self) == "trees\n")
+		#expect(String(decoding: standardOutput, as: UTF8.self) == "groves\n")
 		#expect(standardError.isEmpty)
 	}
 
@@ -39,7 +39,7 @@ struct TreesAskPassApplicationTests {
 		var standardOutput = Data()
 		var standardError = Data()
 		defer { try? store.deleteAll() }
-		let application = TreesAskPassApplication(
+		let application = GrovesAskPassApplication(
 			credentialStore: store,
 			decisionStore: makeDecisionStore(),
 			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
@@ -49,12 +49,12 @@ struct TreesAskPassApplicationTests {
 
 		let status = application.run(
 			arguments: ["Password for 'https://github.com':"],
-			environment: ["TREES_OPERATION_IDENTIFIER": "operation"]
+			environment: ["GROVES_OPERATION_IDENTIFIER": "operation"]
 		)
 
 		#expect(status == EXIT_FAILURE)
 		#expect(standardOutput.isEmpty)
-		#expect(String(decoding: standardError, as: UTF8.self) == "TREES_ASKPASS_CANCELLED\n")
+		#expect(String(decoding: standardError, as: UTF8.self) == "GROVES_ASKPASS_CANCELLED\n")
 		#expect(try store.descriptors().isEmpty)
 	}
 
@@ -64,12 +64,12 @@ struct TreesAskPassApplicationTests {
 		let descriptor = GitCredentialDescriptor(
 			kind: .https,
 			host: "github.com",
-			account: "trees"
+			account: "groves"
 		)
 		var standardOutput = Data()
 		defer { try? store.deleteAll() }
 		try store.save(secret: "token", for: descriptor)
-		let application = TreesAskPassApplication(
+		let application = GrovesAskPassApplication(
 			credentialStore: store,
 			decisionStore: makeDecisionStore(),
 			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
@@ -84,19 +84,24 @@ struct TreesAskPassApplicationTests {
 		#expect(status == EXIT_SUCCESS)
 		#expect(
 			String(decoding: standardOutput, as: UTF8.self)
-				== "password=token\nusername=trees\n\n"
+				== "password=token\nusername=groves\n\n"
 		)
 	}
 
 	@Test
 	func keychainFailureWritesOnlySanitizedDiagnostic() {
 		let store = GitCredentialStore(
-			service: "Trees.Tests.private-account",
+			service: "Groves.Tests.private-account",
 			securityClient: GitCredentialSecurityClientStub(),
-			accessGroupResolver: { throw GitCredentialStoreError.missingAccessGroup }
+			accessGroupResolver: {
+				throw GitCredentialStoreError(
+					operation: .resolveAccessGroup,
+					status: errSecAuthFailed
+				)
+			}
 		)
 		var standardError = Data()
-		let application = TreesAskPassApplication(
+		let application = GrovesAskPassApplication(
 			credentialStore: store,
 			decisionStore: makeDecisionStore(),
 			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
@@ -120,6 +125,6 @@ struct TreesAskPassApplicationTests {
 	}
 
 	private func makeDecisionStore() -> GitCredentialSaveDecisionStore {
-		GitCredentialSaveDecisionStore(suiteName: "Trees.Tests.\(UUID().uuidString)")
+		GitCredentialSaveDecisionStore(suiteName: "Groves.Tests.\(UUID().uuidString)")
 	}
 }

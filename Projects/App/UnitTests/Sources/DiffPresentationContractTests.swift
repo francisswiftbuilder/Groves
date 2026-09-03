@@ -3,7 +3,7 @@ import XCTest
 
 @testable import CoreRepositoryDiff
 @testable import FeatureRepositoryChanges
-@testable import Trees
+@testable import Groves
 
 @MainActor
 final class DiffPresentationContractTests: XCTestCase {
@@ -24,7 +24,7 @@ final class DiffPresentationContractTests: XCTestCase {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { await gate.callCount(of: label) == 1 }
 		let searchModel = workspace.changesDiffSearchViewModel
 		searchModel.update(
@@ -145,7 +145,7 @@ final class DiffPresentationContractTests: XCTestCase {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { await gate.callCount(of: label) == 1 }
 		await gate.resumeCall(0)
 		try await waitUntil { workspace.changesDiffViewModel.diff == diff }
@@ -266,7 +266,7 @@ final class DiffPresentationContractTests: XCTestCase {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil(timeout: .seconds(10)) {
 			workspace.changesDiffViewModel.diff == diff
 		}
