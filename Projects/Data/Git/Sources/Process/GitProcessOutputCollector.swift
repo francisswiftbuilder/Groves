@@ -7,7 +7,7 @@ final class GitProcessOutputCollector: @unchecked Sendable {
 
 	init(pipe: Pipe, label: String) {
 		handle = pipe.fileHandleForReading
-		let queue = DispatchQueue(label: "io.github.francisswiftbuilder.Trees.\(label)")
+		let queue = DispatchQueue(label: "io.github.francisswiftbuilder.Groves.\(label)")
 		group.enter()
 		queue.async { [self] in
 			defer { group.leave() }

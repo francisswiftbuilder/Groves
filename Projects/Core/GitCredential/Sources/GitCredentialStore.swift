@@ -14,7 +14,7 @@ public final class GitCredentialStore: GitCredentialPersisting, Sendable {
 		let updatedAt: Date?
 	}
 
-	private static let accessGroupSuffix = "io.github.francisswiftbuilder.Trees.GitCredential"
+	private static let accessGroupSuffix = "io.github.francisswiftbuilder.Groves.GitCredential"
 	private static let stalePendingAge: TimeInterval = 24 * 60 * 60
 
 	private let service: String
@@ -24,7 +24,7 @@ public final class GitCredentialStore: GitCredentialPersisting, Sendable {
 	private let now: @Sendable () -> Date
 	private let diagnosticHandler: @Sendable (GitCredentialStoreError) -> Void
 
-	public convenience init(service: String = "io.github.francisswiftbuilder.Trees.GitCredential") {
+	public convenience init(service: String = "io.github.francisswiftbuilder.Groves.GitCredential") {
 		self.init(
 			service: service,
 			securityClient: SystemGitCredentialSecurityClient(),
@@ -263,11 +263,19 @@ public final class GitCredentialStore: GitCredentialPersisting, Sendable {
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
 		]
-		if storage == .current {
+		if storage == .current, let accessGroup = try currentAccessGroup() {
 			query[kSecUseDataProtectionKeychain as String] = true
-			query[kSecAttrAccessGroup as String] = try accessGroupResolver()
+			query[kSecAttrAccessGroup as String] = accessGroup
 		}
 		return query
+	}
+
+	private func currentAccessGroup() throws -> String? {
+		do {
+			return try accessGroupResolver()
+		} catch GitCredentialStoreError.missingAccessGroup {
+			return nil
+		}
 	}
 
 	private func pruneStalePending(excluding operationID: String) {

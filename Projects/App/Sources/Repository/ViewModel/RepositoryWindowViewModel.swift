@@ -3,12 +3,9 @@ import Foundation
 @MainActor
 final class RepositoryWindowViewModel: ObservableObject {
 	@Published private(set) var folderImportRequest: RepositoryFolderImportRequest?
+	@Published private(set) var isFolderImporterPresented = false
 	@Published var sidebarSelection: RepositorySidebarSelection?
 	@Published var cloneRemoteURL = ""
-
-	var isFolderImporterPresented: Bool {
-		folderImportRequest != nil
-	}
 
 	var trimmedCloneRemoteURL: String {
 		cloneRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -16,19 +13,24 @@ final class RepositoryWindowViewModel: ObservableObject {
 
 	func didPresentRepositoryImporter() {
 		folderImportRequest = .openRepository
+		isFolderImporterPresented = true
 	}
 
 	func didPresentCloneDestinationImporter() {
 		guard !trimmedCloneRemoteURL.isEmpty else { return }
 		folderImportRequest = .clone(remoteURL: trimmedCloneRemoteURL)
+		isFolderImporterPresented = true
 	}
 
 	func didDismissFolderImporter() {
-		folderImportRequest = nil
+		isFolderImporterPresented = false
 	}
 
 	func consumeFolderImportRequest() -> RepositoryFolderImportRequest? {
-		defer { folderImportRequest = nil }
+		defer {
+			folderImportRequest = nil
+			isFolderImporterPresented = false
+		}
 		return folderImportRequest
 	}
 

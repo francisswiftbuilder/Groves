@@ -2,12 +2,12 @@ import DomainGitInterface
 import Foundation
 import XCTest
 
-@testable import Trees
+@testable import Groves
 
 final class RepositoryFileSystemMonitorTests: XCTestCase {
 	func testEventsReturnsWhileStartupQueueIsSuspended() async throws {
 		let directoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: directoryURL,
 			withIntermediateDirectories: true
@@ -16,7 +16,7 @@ final class RepositoryFileSystemMonitorTests: XCTestCase {
 			try? FileManager.default.removeItem(at: directoryURL)
 		}
 
-		let startupQueue = DispatchQueue(label: "dev.trees.repository-monitor-tests")
+		let startupQueue = DispatchQueue(label: "dev.groves.repository-monitor-tests")
 		startupQueue.suspend()
 		let start = ContinuousClock.now
 		let events = RepositoryFileSystemMonitor.events(
@@ -38,7 +38,7 @@ final class RepositoryFileSystemMonitorTests: XCTestCase {
 
 	func testEventsEmitsWhenNestedFileChanges() async throws {
 		let directoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		let nestedDirectoryURL = directoryURL.appending(path: "Nested", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: nestedDirectoryURL,
@@ -49,7 +49,7 @@ final class RepositoryFileSystemMonitorTests: XCTestCase {
 		}
 
 		let eventExpectation = expectation(description: "Receives a recursive file system event")
-		let monitorQueue = DispatchQueue(label: "dev.trees.repository-monitor-event-tests")
+		let monitorQueue = DispatchQueue(label: "dev.groves.repository-monitor-event-tests")
 		let events = RepositoryFileSystemMonitor.events(
 			at: directoryURL,
 			queue: monitorQueue

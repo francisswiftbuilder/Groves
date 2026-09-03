@@ -83,7 +83,7 @@ final class SwiftDataSavedRepositoryStoreTests: XCTestCase {
 		XCTAssertEqual(repository.url.standardizedFileURL, repositoryURL.standardizedFileURL)
 	}
 
-	func testInaccessibleRepositoryDoesNotBlockOtherRepositories() throws {
+	func testInaccessibleRepositoryRemainsInSavedRepositories() throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		try FileManager.default.createDirectory(
@@ -96,13 +96,14 @@ final class SwiftDataSavedRepositoryStoreTests: XCTestCase {
 
 		let container = try requestContainer()
 		let context = ModelContext(container)
+		let unavailableRepositoryID = UUID()
+		let unavailableRepositoryURL = repositoryURL.deletingLastPathComponent()
+			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		let repositoryID = UUID()
 		context.insert(
 			SavedRepositoryRecord(
-				id: UUID(),
-				path: repositoryURL.deletingLastPathComponent()
-					.appendingPathComponent(UUID().uuidString)
-					.path,
+				id: unavailableRepositoryID,
+				path: unavailableRepositoryURL.path,
 				name: "Unavailable",
 				bookmarkData: Data([0, 1, 2]),
 				position: 0,
@@ -124,7 +125,12 @@ final class SwiftDataSavedRepositoryStoreTests: XCTestCase {
 		let store = SwiftDataSavedRepositoryStore(container: container)
 		let repositories = try store.requestRepositories()
 
-		XCTAssertEqual(repositories.map(\.id), [repositoryID])
+		XCTAssertEqual(repositories.map(\.id), [unavailableRepositoryID, repositoryID])
+		XCTAssertEqual(
+			repositories.first?.url.standardizedFileURL,
+			unavailableRepositoryURL.standardizedFileURL
+		)
+		XCTAssertTrue(repositories.first?.isSelected == true)
 		XCTAssertEqual(try context.fetchCount(FetchDescriptor<SavedRepositoryRecord>()), 2)
 	}
 
@@ -132,7 +138,7 @@ final class SwiftDataSavedRepositoryStoreTests: XCTestCase {
 		try ModelContainer(
 			for: SavedRepositoryRecord.self,
 			configurations: ModelConfiguration(
-				"TreesTests-\(UUID().uuidString)",
+				"GrovesTests-\(UUID().uuidString)",
 				isStoredInMemoryOnly: true
 			)
 		)

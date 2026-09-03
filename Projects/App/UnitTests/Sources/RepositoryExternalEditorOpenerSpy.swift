@@ -1,6 +1,6 @@
 import Foundation
 
-@testable import Trees
+@testable import Groves
 
 @MainActor
 final class RepositoryExternalEditorOpenerSpy: RepositoryExternalEditorOpening {

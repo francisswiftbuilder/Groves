@@ -92,7 +92,7 @@ final class GitSSHTrustScopeTests: XCTestCase {
 			(try? FileManager.default.contentsOfDirectory(
 				atPath: FileManager.default.temporaryDirectory.path
 			)) ?? []
-		return contents.filter { $0.hasPrefix("TreesKnownHosts-") }.count
+		return contents.filter { $0.hasPrefix("GrovesKnownHosts-") }.count
 	}
 
 	func testTrustScopeKeepsHostKeyCheckingInteractive() throws {

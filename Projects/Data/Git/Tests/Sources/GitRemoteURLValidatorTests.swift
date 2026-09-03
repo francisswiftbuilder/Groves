@@ -116,9 +116,9 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 
 	func testLocalPathsAreAccepted() {
 		let remoteURLs = [
-			"/Users/trees/repo",
-			"/Users/trees@work/repo",
-			"file:///Users/trees/repo",
+			"/Users/groves/repo",
+			"/Users/groves@work/repo",
+			"file:///Users/groves/repo",
 			"../sibling/repo",
 		]
 
@@ -153,8 +153,8 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		let nonSSHRemoteURLs = [
 			"https://github.com/owner/repo.git",
 			"git://github.com/owner/repo.git",
-			"file:///Users/trees/repo",
-			"/Users/trees/repo",
+			"file:///Users/groves/repo",
+			"/Users/groves/repo",
 			"../sibling/repo",
 		]
 

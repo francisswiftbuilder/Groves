@@ -3,7 +3,7 @@ import XCTest
 
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryStashes
-@testable import Trees
+@testable import Groves
 
 @MainActor
 final class WorkspaceStaleRequestTests: XCTestCase {
@@ -25,7 +25,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntilCallCount(1, of: label, in: gate)
 		await gate.resumeCall(0)
 		try await waitUntil { workspace.changesDiffViewModel.diff == "first read" }
@@ -59,7 +59,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntilCallCount(1, of: label, in: gate)
 
 		workspace.viewModel.didProduceSnapshot(makeSnapshot(changes: [refreshedChange]))
@@ -95,7 +95,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		)
 		let label = GitDiffGateLabel.conflictContent(path: conflict.path)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntilCallCount(1, of: label, in: gate)
 		await gate.resumeCall(0)
 		try await waitUntil { workspace.conflictViewModel.content == firstContent }
@@ -128,7 +128,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		)
 		let label = GitDiffGateLabel.conflictContent(path: conflict.path)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntilCallCount(1, of: label, in: gate)
 
 		workspace.viewModel.didProduceSnapshot(
@@ -146,7 +146,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.conflictViewModel.content != nil }
 
 		workspace.viewModel.didProduceSnapshot(makeSnapshot())
@@ -225,7 +225,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		)
 		let newerOptions = GitDiffOptions(ignoresWhitespace: true)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.stashesViewModel.stashes == [stash] }
 		try await waitUntilTotalCallCount(1, in: gate)
 
@@ -259,7 +259,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 			repository: GitRepositoryStub(changes: [change], diffGate: gate)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntilTotalCallCount(1, in: gate)
 		XCTAssertTrue(workspace.changesDiffViewModel.isLoading)
 
@@ -290,7 +290,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 			repository: GitRepositoryStub(changes: [change], mutationGate: gate)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 		workspace.changesViewModel.didRequestStage([change])
 		try await waitUntilTotalCallCount(1, in: gate)
@@ -323,7 +323,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		)
 		let line = GitDiffLineSelection(oldLineNumber: 1, newLineNumber: 1)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.changesDiffViewModel.diff == "diff" }
 		workspace.changesDiffViewModel.didRequestApplyDiffLine(line, action: .stage)
 		try await waitUntilTotalCallCount(1, in: gate)
@@ -350,7 +350,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Trees"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.conflictViewModel.content != nil }
 		workspace.conflictViewModel.didResolve(hunk, in: conflict, using: .current)
 		try await waitUntilTotalCallCount(1, in: gate)

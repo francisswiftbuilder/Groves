@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct RepositoryTabsView: View {
-	@Environment(\.openWindow) private var openWindow
+	@Environment(\.windowTabCoordinator) private var coordinator
 	@ObservedObject var viewModel: RepositoryTabsViewModel
 	@ObservedObject var windowViewModel: RepositoryWindowViewModel
 	@Binding var repositoryID: RepositoryTab.ID?
@@ -52,7 +52,8 @@ struct RepositoryTabsView: View {
 		.fileImporter(
 			isPresented: folderImporterPresentation,
 			allowedContentTypes: [.folder],
-			allowsMultipleSelection: false
+			allowsMultipleSelection:
+				windowViewModel.folderImportRequest?.allowsMultipleSelection ?? false
 		) { handleFolderImport($0) }
 		.alert(
 			"Repository Error",
@@ -92,14 +93,14 @@ struct RepositoryTabsView: View {
 
 		switch result {
 		case .success(let urls):
-			guard let url = urls.first else { return }
 			switch request {
 			case .openRepository:
-				viewModel.didChooseRepository(
-					url,
+				viewModel.didChooseRepositories(
+					urls,
 					actions: .init(didOpenRepository: showRepository)
 				)
 			case .clone(let remoteURL):
+				guard let url = urls.first else { return }
 				viewModel.didRequestCloneRepository(
 					from: remoteURL,
 					into: url,
@@ -124,7 +125,11 @@ struct RepositoryTabsView: View {
 	private var folderImporterPresentation: Binding<Bool> {
 		Binding(
 			get: { windowViewModel.isFolderImporterPresented },
-			set: { _ in }
+			set: { isPresented in
+				if !isPresented {
+					windowViewModel.didDismissFolderImporter()
+				}
+			}
 		)
 	}
 
@@ -141,7 +146,7 @@ struct RepositoryTabsView: View {
 		repositoryID = restoration.primaryRepositoryID
 		activateRepository(repositoryID)
 		for id in restoration.additionalRepositoryIDs {
-			openWindow(id: "repository", value: id)
+			coordinator?.openNewTab(repositoryID: id, from: nil)
 		}
 	}
 
@@ -175,7 +180,7 @@ struct RepositoryTabsView: View {
 			activateRepository(id)
 			return
 		}
-		openWindow(id: "repository", value: id)
+		coordinator?.openNewTab(repositoryID: id, from: nil)
 	}
 
 	private func showRepository(_ id: RepositoryTab.ID) {

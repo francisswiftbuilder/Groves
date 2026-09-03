@@ -2,7 +2,7 @@ import DomainGitInterface
 import Foundation
 import XCTest
 
-@testable import Trees
+@testable import Groves
 
 @MainActor
 final class RepositoryTabsViewModelTests: XCTestCase {
@@ -47,7 +47,7 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 	}
 
 	func testChoosingRepositorySavesAndOpensRepository() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/ExistingTrees", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/ExistingGroves", isDirectory: true)
 		let store = SavedRepositoryStoreSpy(repositories: [])
 		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
 		var openedRepositoryID: UUID?
@@ -66,8 +66,31 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 		XCTAssertEqual(store.selectedRepositoryID, viewModel.tabs.first?.id)
 	}
 
+	func testChoosingMultipleRepositoriesSavesAndOpensEveryRepository() async throws {
+		let repositoryURLs = [
+			URL(fileURLWithPath: "/tmp/FirstGroves", isDirectory: true),
+			URL(fileURLWithPath: "/tmp/SecondGroves", isDirectory: true),
+		]
+		let store = SavedRepositoryStoreSpy(repositories: [])
+		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
+		var openedRepositoryIDs: [UUID] = []
+
+		viewModel.didChooseRepositories(
+			repositoryURLs,
+			actions: .init { repositoryID in
+				openedRepositoryIDs.append(repositoryID)
+			}
+		)
+
+		try await waitUntil { viewModel.tabs.count == repositoryURLs.count }
+
+		XCTAssertEqual(viewModel.tabs.map(\.repository.url), repositoryURLs)
+		XCTAssertEqual(openedRepositoryIDs, viewModel.tabs.map(\.id))
+		XCTAssertEqual(store.selectedRepositoryID, viewModel.tabs.last?.id)
+	}
+
 	func testCloningRepositorySavesAndOpensClonedRepository() async throws {
-		let clonedRepositoryURL = URL(fileURLWithPath: "/tmp/ClonedTrees", isDirectory: true)
+		let clonedRepositoryURL = URL(fileURLWithPath: "/tmp/ClonedGroves", isDirectory: true)
 		let store = SavedRepositoryStoreSpy(repositories: [])
 		let viewModel = makeRepositoryTabsViewModel(
 			repository: GitRepositoryStub(clonedRepositoryURL: clonedRepositoryURL),
@@ -76,7 +99,7 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 		var openedRepositoryID: UUID?
 
 		viewModel.didRequestCloneRepository(
-			from: "https://github.com/owner/ClonedTrees.git",
+			from: "https://github.com/owner/ClonedGroves.git",
 			into: URL(fileURLWithPath: "/tmp", isDirectory: true),
 			actions: .init { repositoryID in
 				openedRepositoryID = repositoryID
@@ -115,12 +138,12 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 			section: .history
 		)
 
-		viewModel.cloneRemoteURL = "  https://github.com/owner/Trees.git  "
+		viewModel.cloneRemoteURL = "  https://github.com/owner/Groves.git  "
 		viewModel.didPresentCloneDestinationImporter()
 
 		XCTAssertTrue(viewModel.isFolderImporterPresented)
 		if case .clone(let remoteURL) = viewModel.consumeFolderImportRequest() {
-			XCTAssertEqual(remoteURL, "https://github.com/owner/Trees.git")
+			XCTAssertEqual(remoteURL, "https://github.com/owner/Groves.git")
 		} else {
 			XCTFail("Expected a clone folder import request")
 		}
@@ -129,6 +152,35 @@ final class RepositoryTabsViewModelTests: XCTestCase {
 		await viewModel.didSelectSidebarItem(selection)
 
 		XCTAssertEqual(viewModel.sidebarSelection, selection)
+	}
+
+	func testDismissingRepositoryImporterAllowsItToBePresentedAgain() {
+		let viewModel = RepositoryWindowViewModel()
+
+		viewModel.didPresentRepositoryImporter()
+
+		XCTAssertTrue(viewModel.isFolderImporterPresented)
+		XCTAssertEqual(viewModel.folderImportRequest?.allowsMultipleSelection, true)
+
+		viewModel.didDismissFolderImporter()
+
+		XCTAssertFalse(viewModel.isFolderImporterPresented)
+		XCTAssertEqual(viewModel.folderImportRequest?.allowsMultipleSelection, true)
+
+		viewModel.didPresentRepositoryImporter()
+
+		XCTAssertTrue(viewModel.isFolderImporterPresented)
+		XCTAssertEqual(viewModel.folderImportRequest?.allowsMultipleSelection, true)
+	}
+
+	func testCloneDestinationImporterOnlyAllowsOneSelection() {
+		let viewModel = RepositoryWindowViewModel()
+		viewModel.cloneRemoteURL = "https://github.com/owner/Groves.git"
+
+		viewModel.didPresentCloneDestinationImporter()
+
+		XCTAssertTrue(viewModel.isFolderImporterPresented)
+		XCTAssertEqual(viewModel.folderImportRequest?.allowsMultipleSelection, false)
 	}
 
 	func testClosingSelectedRepositorySelectsNeighborAndPersistsSelection() {

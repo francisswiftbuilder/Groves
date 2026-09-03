@@ -2,18 +2,22 @@ import AppKit
 import SwiftUI
 
 @main
-struct TreesApp: App {
+struct GrovesApp: App {
 	init() {
 		NSWindow.allowsAutomaticWindowTabbing = true
 	}
 
 	var body: some Scene {
-		WindowGroup("Trees", id: "repository", for: UUID.self) { $repositoryID in
+		WindowGroup("Groves", id: "repository", for: UUID.self) { $repositoryID in
 			AppDIContainer.shared.makeRepositoryRootView(repositoryID: $repositoryID)
 				.frame(minWidth: 760, minHeight: 520)
 				.background {
 					NativeWindowTabConfigurator()
 				}
+				.environment(
+					\.windowTabCoordinator,
+					AppDIContainer.shared.windowTabCoordinator
+				)
 		}
 		.defaultSize(width: 1_280, height: 800)
 		.restorationBehavior(.disabled)
@@ -21,7 +25,9 @@ struct TreesApp: App {
 		.windowStyle(.titleBar)
 		.windowToolbarStyle(.unified)
 		.commands {
-			RepositoryWindowCommands()
+			RepositoryWindowCommands(
+				coordinator: AppDIContainer.shared.windowTabCoordinator
+			)
 			RepositoryCommands()
 			SidebarCommands()
 			ToolbarCommands()
@@ -29,7 +35,7 @@ struct TreesApp: App {
 		}
 
 		Settings {
-			TreesSettingsView()
+			GrovesSettingsView()
 		}
 	}
 }

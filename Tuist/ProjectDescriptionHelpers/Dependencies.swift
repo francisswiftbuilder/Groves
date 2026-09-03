@@ -14,7 +14,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 			.domain(interface: .git),
 			.domain(implements: .git),
 			.data(implements: .git),
-			.target(name: TreesProduct.askPassTargetName),
+			.target(name: GrovesProduct.askPassTargetName),
 		]
 	}
 

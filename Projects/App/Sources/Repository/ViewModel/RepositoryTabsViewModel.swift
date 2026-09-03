@@ -47,19 +47,35 @@ final class RepositoryTabsViewModel: ObservableObject {
 		_ url: URL,
 		actions: Actions
 	) {
+		didChooseRepositories([url], actions: actions)
+	}
+
+	func didChooseRepositories(
+		_ urls: [URL],
+		actions: Actions
+	) {
+		guard !urls.isEmpty else { return }
 		addRepositoryTask?.cancel()
 		addRepositoryTask = Task {
 			isAddingRepository = true
 			defer { isAddingRepository = false }
 
-			do {
-				let repository = try await dependencies.useCase.openRepository(at: url)
-				try Task.checkCancellation()
-				openRepository(repository, actions: actions)
-			} catch is CancellationError {
-				return
-			} catch {
-				alertMessage = error.localizedDescription
+			var failures: [String] = []
+			for url in urls {
+				do {
+					try Task.checkCancellation()
+					let repository = try await dependencies.useCase.openRepository(at: url)
+					try Task.checkCancellation()
+					openRepository(repository, actions: actions)
+				} catch is CancellationError {
+					return
+				} catch {
+					failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+				}
+			}
+
+			if !failures.isEmpty {
+				alertMessage = failures.joined(separator: "\n")
 			}
 		}
 	}

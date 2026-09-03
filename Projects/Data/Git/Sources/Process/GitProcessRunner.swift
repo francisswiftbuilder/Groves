@@ -46,8 +46,8 @@ actor GitProcessRunner {
 		process.arguments =
 			[
 				"-c",
-				"export TREES_PARENT_PROCESS_IDENTIFIER=$$; exec /usr/bin/env \"$@\"",
-				"TreesGit",
+				"export GROVES_PARENT_PROCESS_IDENTIFIER=$$; exec /usr/bin/env \"$@\"",
+				"GrovesGit",
 			]
 			+ gitArguments(
 				arguments,
@@ -85,7 +85,7 @@ actor GitProcessRunner {
 		let standardOutput = String(decoding: standardOutputData, as: UTF8.self)
 
 		guard acceptedTerminationStatuses.contains(terminationStatus) else {
-			if Task.isCancelled || standardError.contains("TREES_ASKPASS_CANCELLED") {
+			if Task.isCancelled || standardError.contains("GROVES_ASKPASS_CANCELLED") {
 				throw CancellationError()
 			}
 			throw repositoryError(for: standardError)
@@ -151,7 +151,7 @@ actor GitProcessRunner {
 				result["GIT_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS_REQUIRE"] = "force"
-				result["TREES_OPERATION_IDENTIFIER"] = operationID
+				result["GROVES_OPERATION_IDENTIFIER"] = operationID
 			}
 		}
 		if let trustScope {

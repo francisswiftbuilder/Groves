@@ -8,7 +8,7 @@ struct GitCredentialTransactionTests {
 	@Test
 	func retryReplacesPendingSecretForSameDescriptor() throws {
 		let store = makeTestCredentialStore()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		defer { try? store.deleteAll() }
 
 		try store.savePending(secret: "first-attempt", for: descriptor, operationID: "retry")
@@ -21,7 +21,7 @@ struct GitCredentialTransactionTests {
 	@Test
 	func pendingCredentialsAreScopedToTheirOperation() throws {
 		let store = makeTestCredentialStore()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		defer { try? store.deleteAll() }
 
 		try store.savePending(secret: "other-operation", for: descriptor, operationID: "other")
@@ -38,7 +38,7 @@ struct GitCredentialTransactionTests {
 	@Test
 	func deletingAllCredentialsAlsoRemovesPendingSecrets() throws {
 		let store = makeTestCredentialStore()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		defer { try? store.deleteAll() }
 
 		try store.savePending(secret: "leaked-secret", for: descriptor, operationID: "abandoned")
@@ -53,9 +53,9 @@ struct GitCredentialTransactionTests {
 
 	@Test
 	func legacyHTTPSCredentialMigratesBeforeTheLegacyItemIsDeleted() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let client = GitCredentialSecurityClientStub()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		try client.insert(
 			secret: "legacy-token",
 			descriptor: descriptor,
@@ -86,9 +86,9 @@ struct GitCredentialTransactionTests {
 
 	@Test
 	func failedMigrationPreservesTheLegacyCredential() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let client = GitCredentialSecurityClientStub()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		try client.insert(
 			secret: "legacy-token",
 			descriptor: descriptor,
@@ -109,10 +109,10 @@ struct GitCredentialTransactionTests {
 
 	@Test
 	func malformedItemDoesNotBlockValidCredentials() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let client = GitCredentialSecurityClientStub()
 		let diagnostics = DiagnosticRecorder()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		try client.insert(
 			secret: "token",
 			descriptor: descriptor,
@@ -136,7 +136,7 @@ struct GitCredentialTransactionTests {
 
 	@Test
 	func commitResolvesEveryPendingSecretBeforeWritingPermanentCredentials() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let pendingService = service + ".pending"
 		let client = GitCredentialSecurityClientStub()
 		let first = GitCredentialDescriptor(kind: .https, host: "github.com", account: "first")
@@ -168,13 +168,13 @@ struct GitCredentialTransactionTests {
 
 	@Test
 	func staleCleanupUsesUpdatedTimestampAndPreservesCurrentOperation() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let pendingService = service + ".pending"
 		let now = Date(timeIntervalSince1970: 2_000_000)
 		let old = now.addingTimeInterval(-(25 * 60 * 60))
 		let recent = now.addingTimeInterval(-(60 * 60))
 		let client = GitCredentialSecurityClientStub()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		try client.insert(
 			secret: "recent",
 			descriptor: descriptor,
@@ -235,10 +235,10 @@ struct GitCredentialTransactionTests {
 
 	@Test
 	func legacyPendingCredentialIsDiscardedWithoutBeingCommitted() throws {
-		let service = "Trees.Tests.\(UUID().uuidString)"
+		let service = "Groves.Tests.\(UUID().uuidString)"
 		let pendingService = service + ".pending"
 		let client = GitCredentialSecurityClientStub()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "trees")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
 		let account = "legacy|\(descriptor.id)"
 		try client.insert(
 			secret: "legacy-pending",

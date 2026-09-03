@@ -34,12 +34,12 @@ register(
 )
 register(
 	ProjectTarget(
-		name: "TreesAskPass",
+		name: "GrovesAskPass",
 		layer: "App",
-		module: "TreesAskPass",
+		module: "GrovesAskPass",
 		isInterface: false
 	),
-	at: rootURL.appending(path: "App/Helpers/TreesAskPass/Sources").path
+	at: rootURL.appending(path: "App/Helpers/GrovesAskPass/Sources").path
 )
 
 for layer in layers {

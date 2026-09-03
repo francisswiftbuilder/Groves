@@ -5,7 +5,7 @@ import XCTest
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryHistory
 @testable import FeatureRepositoryStashes
-@testable import Trees
+@testable import Groves
 
 @MainActor
 final class WorkspaceChildViewModelTests: XCTestCase {
@@ -61,7 +61,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 			hash: "abcdef123456",
 			shortHash: "abcdef1",
 			parentHashes: [],
-			author: "Trees",
+			author: "Groves",
 			date: .distantPast,
 			references: ["HEAD"],
 			subject: "Initial",
@@ -102,7 +102,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 				hash: "111111111111",
 				shortHash: "1111111",
 				parentHashes: [],
-				author: "Trees",
+				author: "Groves",
 				date: .distantPast,
 				references: ["HEAD"],
 				subject: "First",
@@ -112,7 +112,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 				hash: "222222222222",
 				shortHash: "2222222",
 				parentHashes: [],
-				author: "Trees",
+				author: "Groves",
 				date: .distantPast,
 				references: [],
 				subject: "Second",
@@ -149,7 +149,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 				hash: String(format: "%040d", index),
 				shortHash: String(format: "%07d", index),
 				parentHashes: index == 0 ? [] : [String(format: "%040d", index - 1)],
-				author: "Trees",
+				author: "Groves",
 				date: .distantPast,
 				references: index == 999 ? ["HEAD"] : [],
 				subject: "Commit \(index)",

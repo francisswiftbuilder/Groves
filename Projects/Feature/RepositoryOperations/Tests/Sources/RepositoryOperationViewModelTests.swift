@@ -97,7 +97,7 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 			dependencies: RepositorySyncViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: referencesUseCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: RepositorySyncViewModel.Actions(
 				didProduceSnapshot: { _ in },
@@ -143,7 +143,7 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 			dependencies: RepositorySyncViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: referencesUseCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: RepositorySyncViewModel.Actions(
 				didProduceSnapshot: { _ in },
@@ -189,7 +189,7 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 			dependencies: RepositorySyncViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: referencesUseCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: RepositorySyncViewModel.Actions(
 				didProduceSnapshot: { _ in completed.fulfill() },
@@ -235,7 +235,7 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 			dependencies: RepositorySyncViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: useCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: RepositorySyncViewModel.Actions(
 				didProduceSnapshot: { _ in },
@@ -262,7 +262,7 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: OperationsReferencesUseCaseStub(),
 				operationsUseCase: nil,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: RepositoryOperationViewModel.Actions(
 				didProduceSnapshot: { _ in },
@@ -304,7 +304,7 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 			hash: "abc123456789",
 			shortHash: "abc1234",
 			parentHashes: [],
-			author: "Trees",
+			author: "Groves",
 			date: .distantPast,
 			references: [],
 			subject: "Commit",

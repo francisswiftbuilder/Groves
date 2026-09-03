@@ -47,7 +47,7 @@ final class CommitViewModelTests: XCTestCase {
 			dependencies: CommitViewModel.Dependencies(
 				contentUseCase: ChangesContentUseCaseStub(),
 				changesUseCase: ChangesUseCaseStub(),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Trees") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: CommitViewModel.Actions(
 				didProduceSnapshot: { _ in },
@@ -80,7 +80,7 @@ final class CommitViewModelTests: XCTestCase {
 			hash: "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
 			shortHash: "abcdefa",
 			parentHashes: [],
-			author: "Trees",
+			author: "Groves",
 			date: .distantPast,
 			references: ["HEAD"],
 			subject: "Current commit",

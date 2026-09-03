@@ -8,7 +8,7 @@ final class GitOutputParserTests: XCTestCase {
 	func testCloneRepositoryCreatesRepositoryInSelectedDirectory() async throws {
 		let sourceRepositoryURL = try makeRepository()
 		let destinationDirectoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesCloneTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesCloneTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: destinationDirectoryURL,
 			withIntermediateDirectories: true
@@ -91,14 +91,14 @@ final class GitOutputParserTests: XCTestCase {
 
 	func testParseRemotesCombinesFetchAndPushURLs() {
 		let output =
-			"origin\thttps://example.com/Trees.git (fetch)\norigin\tgit@example.com:Trees.git (push)\n"
+			"origin\thttps://example.com/Groves.git (fetch)\norigin\tgit@example.com:Groves.git (push)\n"
 
 		let remotes = GitOutputParser.parseRemotes(output)
 
 		XCTAssertEqual(remotes.count, 1)
 		XCTAssertEqual(remotes.first?.name, "origin")
-		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Trees.git")
-		XCTAssertEqual(remotes.first?.pushURL, "git@example.com:Trees.git")
+		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Groves.git")
+		XCTAssertEqual(remotes.first?.pushURL, "git@example.com:Groves.git")
 	}
 
 	func testParseRemoteBranchesSeparatesRemoteAndBranchNames() {
@@ -682,7 +682,7 @@ final class GitOutputParserTests: XCTestCase {
 			try? FileManager.default.removeItem(at: repositoryURL)
 		}
 		try requestRunGit(
-			["remote", "add", "origin", "https://example.com/Trees.git"],
+			["remote", "add", "origin", "https://example.com/Groves.git"],
 			at: repositoryURL
 		)
 		let head = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
@@ -692,8 +692,8 @@ final class GitOutputParserTests: XCTestCase {
 		let remotes = try await LocalGitRepository().requestRemotes(at: repositoryURL)
 
 		XCTAssertEqual(remotes.first?.name, "origin")
-		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Trees.git")
-		XCTAssertEqual(remotes.first?.pushURL, "https://example.com/Trees.git")
+		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Groves.git")
+		XCTAssertEqual(remotes.first?.pushURL, "https://example.com/Groves.git")
 		XCTAssertEqual(remotes.first?.branches.map(\.fullName), ["origin/main"])
 	}
 
@@ -765,7 +765,7 @@ final class GitOutputParserTests: XCTestCase {
 			try? FileManager.default.removeItem(at: repositoryURL)
 		}
 		try requestRunGit(
-			["remote", "add", "origin", "https://example.com/Trees.git"],
+			["remote", "add", "origin", "https://example.com/Groves.git"],
 			at: repositoryURL
 		)
 		let head = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
@@ -826,9 +826,9 @@ final class GitOutputParserTests: XCTestCase {
 	func testSetUpstreamPushAndFetchReportAheadAndBehindCounts() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesRemoteTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(path: "GrovesRemoteTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		let peerURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesPeerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesPeerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -845,7 +845,7 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Trees Peer"], at: peerURL)
+		try requestRunGit(["config", "user.name", "Groves Peer"], at: peerURL)
 		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
 		try Data("remote".utf8).write(to: peerURL.appending(path: "remote.txt"))
 		try requestRunGit(["add", "remote.txt"], at: peerURL)
@@ -867,9 +867,9 @@ final class GitOutputParserTests: XCTestCase {
 	func testPreparePullHandlesUpToDateAheadFastForwardAndDivergence() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesPullTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(path: "GrovesPullTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		let peerURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesPullPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesPullPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -895,7 +895,7 @@ final class GitOutputParserTests: XCTestCase {
 		try await repository.requestPush(.upstream, at: repositoryURL)
 
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Trees Peer"], at: peerURL)
+		try requestRunGit(["config", "user.name", "Groves Peer"], at: peerURL)
 		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
 		try Data("remote-behind".utf8).write(to: peerURL.appending(path: "remote-behind.txt"))
 		try requestRunGit(["add", "remote-behind.txt"], at: peerURL)
@@ -948,7 +948,7 @@ final class GitOutputParserTests: XCTestCase {
 	func testForcePushWithLeaseReplacesKnownRemoteHistory() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesForcePushTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(path: "GrovesForcePushTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -986,7 +986,7 @@ final class GitOutputParserTests: XCTestCase {
 	func testPushTagsPublishesLocalTagsToRemote() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesPushTagsTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(path: "GrovesPushTagsTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -1009,9 +1009,9 @@ final class GitOutputParserTests: XCTestCase {
 	func testFetchAllUpdatesRemoteTrackingReferences() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesFetchAllTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(path: "GrovesFetchAllTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		let peerURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesFetchAllPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesFetchAllPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -1027,7 +1027,7 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Trees Peer"], at: peerURL)
+		try requestRunGit(["config", "user.name", "Groves Peer"], at: peerURL)
 		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
 		try Data("remote".utf8).write(to: peerURL.appending(path: "remote.txt"))
 		try requestRunGit(["add", "remote.txt"], at: peerURL)
@@ -1376,7 +1376,7 @@ final class GitOutputParserTests: XCTestCase {
 	func testRemoteBranchDeleteRemovesBranchFromRemote() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesRemoteDelete-\(UUID().uuidString).git")
+			.appending(path: "GrovesRemoteDelete-\(UUID().uuidString).git")
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -1737,14 +1737,14 @@ final class GitOutputParserTests: XCTestCase {
 
 	private func makeRepository() throws -> URL {
 		let repositoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "TreesDiscardTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "GrovesDiscardTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: repositoryURL,
 			withIntermediateDirectories: true
 		)
 		try requestRunGit(["init", "--quiet"], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Trees Tests"], at: repositoryURL)
-		try requestRunGit(["config", "user.email", "trees@example.com"], at: repositoryURL)
+		try requestRunGit(["config", "user.name", "Groves Tests"], at: repositoryURL)
+		try requestRunGit(["config", "user.email", "groves@example.com"], at: repositoryURL)
 		try Data("original".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
 		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Initial commit"], at: repositoryURL)
