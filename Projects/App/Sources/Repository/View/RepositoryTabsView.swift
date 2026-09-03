@@ -52,7 +52,8 @@ struct RepositoryTabsView: View {
 		.fileImporter(
 			isPresented: folderImporterPresentation,
 			allowedContentTypes: [.folder],
-			allowsMultipleSelection: false
+			allowsMultipleSelection:
+				windowViewModel.folderImportRequest?.allowsMultipleSelection ?? false
 		) { handleFolderImport($0) }
 		.alert(
 			"Repository Error",
@@ -92,14 +93,14 @@ struct RepositoryTabsView: View {
 
 		switch result {
 		case .success(let urls):
-			guard let url = urls.first else { return }
 			switch request {
 			case .openRepository:
-				viewModel.didChooseRepository(
-					url,
+				viewModel.didChooseRepositories(
+					urls,
 					actions: .init(didOpenRepository: showRepository)
 				)
 			case .clone(let remoteURL):
+				guard let url = urls.first else { return }
 				viewModel.didRequestCloneRepository(
 					from: remoteURL,
 					into: url,
@@ -124,7 +125,11 @@ struct RepositoryTabsView: View {
 	private var folderImporterPresentation: Binding<Bool> {
 		Binding(
 			get: { windowViewModel.isFolderImporterPresented },
-			set: { _ in }
+			set: { isPresented in
+				if !isPresented {
+					windowViewModel.didDismissFolderImporter()
+				}
+			}
 		)
 	}
 
