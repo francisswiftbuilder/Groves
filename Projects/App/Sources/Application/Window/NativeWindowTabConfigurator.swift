@@ -25,6 +25,7 @@ struct NativeWindowTabConfigurator: NSViewRepresentable {
 		func register(_ window: NSWindow?) {
 			guard let window, self.window !== window else { return }
 			self.window = window
+			NativeWindowTabCoordinator.shared.configure(window)
 			Task { @MainActor [weak self, weak window] in
 				guard let self, let window, self.window === window else { return }
 				NativeWindowTabCoordinator.shared.register(window)
