@@ -1,11 +1,12 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import CoreRepositoryDiff
 
 @MainActor
-final class ImageDiffViewModelTests: XCTestCase {
+struct ImageDiffViewModelTests {
+	@Test
 	func testOnAppearLoadsBothImagesAndPublishesPresentation() async throws {
 		let viewModel = ImageDiffViewModel(
 			dependencies: .init { _ in
@@ -21,12 +22,14 @@ final class ImageDiffViewModelTests: XCTestCase {
 		}
 
 		guard case .loaded(let presentation) = viewModel.state else {
-			return XCTFail("Expected loaded image presentation")
+			Issue.record("Expected loaded image presentation")
+			return
 		}
-		XCTAssertTrue(presentation.beforeDecodingFailed)
-		XCTAssertTrue(presentation.afterDecodingFailed)
+		#expect(presentation.beforeDecodingFailed)
+		#expect(presentation.afterDecodingFailed)
 	}
 
+	@Test
 	func testOnDisappearCancelsLoadingAndResetsTransientState() async {
 		let viewModel = ImageDiffViewModel(
 			dependencies: .init { _ in
@@ -39,10 +42,9 @@ final class ImageDiffViewModelTests: XCTestCase {
 		viewModel.onAppear(diff: diff)
 		viewModel.onDisappear()
 
-		if case .idle = viewModel.state {
-			XCTAssertTrue(true)
-		} else {
-			XCTFail("Expected idle state after disappearance")
+		guard case .idle = viewModel.state else {
+			Issue.record("Expected idle state after disappearance")
+			return
 		}
 	}
 
@@ -54,7 +56,7 @@ final class ImageDiffViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

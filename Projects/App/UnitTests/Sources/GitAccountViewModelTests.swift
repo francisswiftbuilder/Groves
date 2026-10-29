@@ -1,17 +1,37 @@
 import Foundation
 import Security
-import XCTest
+import Testing
 
 @testable import CoreGitCredential
 @testable import Groves
 
 @MainActor
-final class GitAccountViewModelTests: XCTestCase {
-	private struct Context {
+struct GitAccountViewModelTests {
+	private final class Context {
 		let viewModel: GitAccountViewModel
 		let store: GitCredentialStore
 		let defaults: UserDefaults
 		let configurationURL: URL
+		private let identifier: String
+
+		init(
+			viewModel: GitAccountViewModel,
+			store: GitCredentialStore,
+			defaults: UserDefaults,
+			configurationURL: URL,
+			identifier: String
+		) {
+			self.viewModel = viewModel
+			self.store = store
+			self.defaults = defaults
+			self.configurationURL = configurationURL
+			self.identifier = identifier
+		}
+
+		deinit {
+			UserDefaults(suiteName: identifier)?.removePersistentDomain(forName: identifier)
+			try? FileManager.default.removeItem(at: configurationURL.deletingLastPathComponent())
+		}
 	}
 
 	private final class AuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
@@ -87,61 +107,65 @@ final class GitAccountViewModelTests: XCTestCase {
 		}
 	}
 
+	@Test
 	func testVerifiedAccountIsSavedWithoutPersistingTheTokenInDefaults() async throws {
 		let context = try makeContext()
 		let viewModel = context.viewModel
 		viewModel.token = " valid-test-token "
 
 		viewModel.connect()
-		XCTAssertEqual(viewModel.token, "")
+		#expect(viewModel.token == "")
 		try await waitUntil { !viewModel.isConnecting }
 
-		let account = try XCTUnwrap(viewModel.account)
-		XCTAssertEqual(account.account, "octocat")
-		XCTAssertEqual(try context.store.secret(for: account), "valid-test-token")
-		XCTAssertEqual(viewModel.identity.email, "42+octocat@users.noreply.github.com")
-		XCTAssertNil(viewModel.errorMessage)
-		XCTAssertFalse(
-			context.defaults.dictionaryRepresentation().values.contains {
+		let account = try #require(viewModel.account)
+		#expect(account.account == "octocat")
+		#expect(try context.store.secret(for: account) == "valid-test-token")
+		#expect(viewModel.identity.email == "42+octocat@users.noreply.github.com")
+		#expect(viewModel.errorMessage == nil)
+		#expect(
+			!(context.defaults.dictionaryRepresentation().values.contains {
 				($0 as? String) == "valid-test-token"
-			})
+			}))
 	}
 
+	@Test
 	func testFailedTokenReplacementKeepsTheVerifiedAccountAndToken() async throws {
 		let context = try makeContext()
 		let viewModel = context.viewModel
 		viewModel.token = "valid-test-token"
 		viewModel.connect()
 		try await waitUntil { !viewModel.isConnecting }
-		let account = try XCTUnwrap(viewModel.account)
+		let account = try #require(viewModel.account)
 
 		viewModel.token = "invalid-test-token"
 		viewModel.connect()
 		try await waitUntil { !viewModel.isConnecting }
 
-		XCTAssertEqual(viewModel.account, account)
-		XCTAssertEqual(try context.store.secret(for: account), "valid-test-token")
-		XCTAssertNotNil(viewModel.errorMessage)
-		XCTAssertNil(viewModel.statusMessage)
+		#expect(viewModel.account == account)
+		#expect(try context.store.secret(for: account) == "valid-test-token")
+		#expect(viewModel.errorMessage != nil)
+		#expect(viewModel.statusMessage == nil)
 	}
 
+	@Test
 	func testDifferentAccountRequiresSigningOutBeforeReplacingTheToken() async throws {
 		let context = try makeContext()
 		let viewModel = context.viewModel
 		viewModel.token = "valid-test-token"
 		viewModel.connect()
 		try await waitUntil { !viewModel.isConnecting }
-		let account = try XCTUnwrap(viewModel.account)
+		let account = try #require(viewModel.account)
 
 		viewModel.token = "different-test-token"
 		viewModel.connect()
 		try await waitUntil { !viewModel.isConnecting }
 
-		XCTAssertEqual(try context.store.descriptors(), [account])
-		XCTAssertEqual(try context.store.secret(for: account), "valid-test-token")
-		XCTAssertNotNil(viewModel.errorMessage)
+		#expect(try context.store.descriptors() == [account])
+		#expect(try context.store.secret(for: account) == "valid-test-token")
+		#expect(viewModel.errorMessage != nil)
 	}
 
+	@Test
 	func testCancellationAllowsImmediateRetryWithoutPublishingAnOldError() async throws {
 		let context = try makeContext()
 		let viewModel = context.viewModel
@@ -150,16 +174,17 @@ final class GitAccountViewModelTests: XCTestCase {
 		try await Task.sleep(for: .milliseconds(30))
 
 		viewModel.cancelConnection()
-		XCTAssertFalse(viewModel.isConnecting)
+		#expect(!(viewModel.isConnecting))
 		viewModel.token = "valid-test-token"
 		viewModel.connect()
 		try await waitUntil { !viewModel.isConnecting }
 
-		XCTAssertEqual(viewModel.account?.account, "octocat")
-		XCTAssertNil(viewModel.errorMessage)
-		XCTAssertTrue(viewModel.statusMessage?.contains("verified") == true)
+		#expect(viewModel.account?.account == "octocat")
+		#expect(viewModel.errorMessage == nil)
+		#expect(viewModel.statusMessage?.contains("verified") == true)
 	}
 
+	@Test
 	func testReleasingTheViewModelCancelsItsConnection() async throws {
 		var context: Context? = try makeContext()
 		context?.viewModel.token = "slow-test-token"
@@ -169,9 +194,10 @@ final class GitAccountViewModelTests: XCTestCase {
 
 		context = nil
 
-		XCTAssertNil(viewModel)
+		#expect(viewModel == nil)
 	}
 
+	@Test
 	func testIdentitySaveNormalizesValuesAndSignOutKeepsTheIdentity() async throws {
 		let context = try makeContext()
 		let viewModel = context.viewModel
@@ -184,14 +210,15 @@ final class GitAccountViewModelTests: XCTestCase {
 		let configuration = try String(contentsOf: context.configurationURL, encoding: .utf8)
 		viewModel.signOut()
 
-		XCTAssertEqual(viewModel.identity.name, "Author")
-		XCTAssertEqual(context.defaults.string(forKey: "isolatedGitAuthorEmail"), "author@example.com")
-		XCTAssertTrue(viewModel.hasCompletedSetup)
-		XCTAssertNil(viewModel.account)
-		XCTAssertTrue(try context.store.descriptors().isEmpty)
-		XCTAssertEqual(try String(contentsOf: context.configurationURL, encoding: .utf8), configuration)
+		#expect(viewModel.identity.name == "Author")
+		#expect(context.defaults.string(forKey: "isolatedGitAuthorEmail") == "author@example.com")
+		#expect(viewModel.hasCompletedSetup)
+		#expect(viewModel.account == nil)
+		#expect(try context.store.descriptors().isEmpty)
+		#expect(try String(contentsOf: context.configurationURL, encoding: .utf8) == configuration)
 	}
 
+	@Test
 	func testFailedIdentitySaveDoesNotCompleteOnboarding() throws {
 		let context = try makeContext()
 		try FileManager.default.createDirectory(
@@ -201,21 +228,17 @@ final class GitAccountViewModelTests: XCTestCase {
 
 		context.viewModel.saveIdentity()
 
-		XCTAssertFalse(context.viewModel.hasCompletedSetup)
-		XCTAssertFalse(context.defaults.bool(forKey: "isolatedGitSetupCompleted"))
-		XCTAssertNotNil(context.viewModel.errorMessage)
-		XCTAssertNil(context.viewModel.statusMessage)
+		#expect(!(context.viewModel.hasCompletedSetup))
+		#expect(!(context.defaults.bool(forKey: "isolatedGitSetupCompleted")))
+		#expect(context.viewModel.errorMessage != nil)
+		#expect(context.viewModel.statusMessage == nil)
 	}
 
 	private func makeContext() throws -> Context {
 		let identifier = "Groves.Account.Tests.\(UUID().uuidString)"
 		let directoryURL = FileManager.default.temporaryDirectory.appending(path: identifier)
 		let configurationURL = directoryURL.appending(path: "config")
-		let defaults = try XCTUnwrap(UserDefaults(suiteName: identifier))
-		addTeardownBlock {
-			defaults.removePersistentDomain(forName: identifier)
-			try? FileManager.default.removeItem(at: directoryURL)
-		}
+		let defaults = try #require(UserDefaults(suiteName: identifier))
 		let store = GitCredentialStore(
 			service: identifier,
 			securityClient: SecurityClientStub(),
@@ -230,7 +253,8 @@ final class GitAccountViewModelTests: XCTestCase {
 				store: store, client: client, defaults: defaults, configurationURL: configurationURL),
 			store: store,
 			defaults: defaults,
-			configurationURL: configurationURL
+			configurationURL: configurationURL,
+			identifier: identifier
 		)
 	}
 
@@ -239,7 +263,7 @@ final class GitAccountViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: .seconds(2))
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for account verification")
+				Issue.record("Timed out waiting for account verification")
 				throw CancellationError()
 			}
 			try await Task.sleep(for: .milliseconds(10))

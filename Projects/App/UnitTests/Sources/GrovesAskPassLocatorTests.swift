@@ -1,8 +1,10 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import Groves
 
-final class GrovesAskPassLocatorTests: XCTestCase {
+struct GrovesAskPassLocatorTests {
+	@Test
 	func testTheLocatorResolvesTheHelperEmbeddedInTheHostBundle() throws {
 		let expected = Bundle.main.bundleURL
 			.appending(path: "Contents", directoryHint: .isDirectory)
@@ -12,16 +14,16 @@ final class GrovesAskPassLocatorTests: XCTestCase {
 			.appending(path: "MacOS", directoryHint: .isDirectory)
 			.appending(path: "GrovesAskPass")
 
-		XCTAssertTrue(
+		#expect(
 			FileManager.default.isExecutableFile(atPath: expected.path),
-			"The app bundle must embed an executable AskPass helper"
-		)
-		XCTAssertEqual(GrovesAskPassLocator.bundledHelperURL, expected)
+			"The app bundle must embed an executable AskPass helper")
+		#expect(GrovesAskPassLocator.bundledHelperURL == expected)
 	}
 
+	@Test
 	func testTheEmbeddedHelperCanExecuteWithoutAccessingCredentials() throws {
 		let process = Process()
-		process.executableURL = try XCTUnwrap(GrovesAskPassLocator.bundledHelperURL)
+		process.executableURL = try #require(GrovesAskPassLocator.bundledHelperURL)
 		process.arguments = ["credential", "get"]
 		let input = Pipe()
 		process.standardInput = input
@@ -29,7 +31,7 @@ final class GrovesAskPassLocatorTests: XCTestCase {
 		try input.fileHandleForWriting.close()
 		try process.run()
 		process.waitUntilExit()
-		XCTAssertEqual(process.terminationReason, .exit)
-		XCTAssertEqual(process.terminationStatus, 0)
+		#expect(process.terminationReason == .exit)
+		#expect(process.terminationStatus == 0)
 	}
 }

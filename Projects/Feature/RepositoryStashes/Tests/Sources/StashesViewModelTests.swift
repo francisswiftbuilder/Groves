@@ -1,11 +1,13 @@
 import CoreRepositoryDiff
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import FeatureRepositoryStashes
 
 @MainActor
-final class StashesViewModelTests: XCTestCase {
+struct StashesViewModelTests {
+	@Test
 	func testFirstSnapshotSelectsTheFirstStashAndLoadsItsDiff() async throws {
 		let stashes = [makeStash(index: 0), makeStash(index: 1)]
 		let viewModel = makeViewModel(
@@ -17,12 +19,13 @@ final class StashesViewModelTests: XCTestCase {
 		viewModel.apply(makeSnapshot(stashes: stashes))
 		try await waitUntil { viewModel.files.isEmpty == false }
 
-		XCTAssertEqual(viewModel.selectedStashID, stashes[0].id)
-		XCTAssertEqual(viewModel.files.map(\.path), ["README.md"])
-		XCTAssertEqual(viewModel.selectedFileID, viewModel.files.first?.id)
-		XCTAssertFalse(viewModel.isLoadingDiff)
+		#expect(viewModel.selectedStashID == stashes[0].id)
+		#expect(viewModel.files.map(\.path) == ["README.md"])
+		#expect(viewModel.selectedFileID == viewModel.files.first?.id)
+		#expect(!(viewModel.isLoadingDiff))
 	}
 
+	@Test
 	func testSelectingAnotherStashReplacesTheDiffAndTheFileSelection() async throws {
 		let stashes = [makeStash(index: 0), makeStash(index: 1)]
 		let viewModel = makeViewModel(
@@ -38,13 +41,14 @@ final class StashesViewModelTests: XCTestCase {
 		try await waitUntil { viewModel.files.map(\.path) == ["README.md"] }
 		viewModel.didSelectStash(stashes[1].id)
 
-		XCTAssertTrue(viewModel.files.isEmpty)
-		XCTAssertNil(viewModel.selectedFileID)
+		#expect(viewModel.files.isEmpty)
+		#expect(viewModel.selectedFileID == nil)
 		try await waitUntil { viewModel.files.map(\.path) == ["Sources/App.swift"] }
-		XCTAssertEqual(viewModel.selectedStashID, stashes[1].id)
-		XCTAssertEqual(viewModel.selectedFileID, viewModel.files.first?.id)
+		#expect(viewModel.selectedStashID == stashes[1].id)
+		#expect(viewModel.selectedFileID == viewModel.files.first?.id)
 	}
 
+	@Test
 	func testSnapshotSelectionChangeLoadsTheNextStash() async throws {
 		let stashes = [makeStash(index: 0), makeStash(index: 1)]
 		let viewModel = makeViewModel(
@@ -60,10 +64,11 @@ final class StashesViewModelTests: XCTestCase {
 		try await waitUntil { viewModel.files.map(\.path) == ["README.md"] }
 		viewModel.apply(makeSnapshot(stashes: [stashes[1]]))
 
-		XCTAssertEqual(viewModel.selectedStashID, stashes[1].id)
+		#expect(viewModel.selectedStashID == stashes[1].id)
 		try await waitUntil { viewModel.files.map(\.path) == ["Sources/App.swift"] }
 	}
 
+	@Test
 	func testEmptyingTheStashListClearsEveryDiffState() async throws {
 		let stash = makeStash(index: 0)
 		let viewModel = makeViewModel(
@@ -74,15 +79,16 @@ final class StashesViewModelTests: XCTestCase {
 		try await waitUntil { viewModel.files.isEmpty == false }
 		viewModel.apply(makeSnapshot(stashes: []))
 
-		XCTAssertNil(viewModel.selectedStashID)
-		XCTAssertNil(viewModel.selectedFileID)
-		XCTAssertTrue(viewModel.files.isEmpty)
-		XCTAssertEqual(viewModel.diff, "")
-		XCTAssertNil(viewModel.imageDiff)
-		XCTAssertFalse(viewModel.isLoadingDiff)
-		XCTAssertFalse(viewModel.isLoadingImageDiff)
+		#expect(viewModel.selectedStashID == nil)
+		#expect(viewModel.selectedFileID == nil)
+		#expect(viewModel.files.isEmpty)
+		#expect(viewModel.diff == "")
+		#expect(viewModel.imageDiff == nil)
+		#expect(!(viewModel.isLoadingDiff))
+		#expect(!(viewModel.isLoadingImageDiff))
 	}
 
+	@Test
 	func testStaleStashDiffDoesNotReplaceTheNewerStashSelection() async throws {
 		let stashes = [makeStash(index: 0), makeStash(index: 1)]
 		let gate = StashesUseCaseGate(suspendsRequests: true)
@@ -105,10 +111,11 @@ final class StashesViewModelTests: XCTestCase {
 		await gate.resumeCall(0)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertEqual(viewModel.files.map(\.path), ["Sources/App.swift"])
-		XCTAssertEqual(viewModel.selectedStashID, stashes[1].id)
+		#expect(viewModel.files.map(\.path) == ["Sources/App.swift"])
+		#expect(viewModel.selectedStashID == stashes[1].id)
 	}
 
+	@Test
 	func testStaleStashDiffDoesNotEndTheNewerLoadingState() async throws {
 		let stashes = [makeStash(index: 0), makeStash(index: 1)]
 		let gate = StashesUseCaseGate(suspendsRequests: true)
@@ -116,16 +123,17 @@ final class StashesViewModelTests: XCTestCase {
 
 		viewModel.apply(makeSnapshot(stashes: stashes))
 		try await waitUntilCallCount(1, in: gate)
-		XCTAssertTrue(viewModel.isLoadingDiff)
+		#expect(viewModel.isLoadingDiff)
 		viewModel.didSelectStash(stashes[1].id)
 		try await waitUntilCallCount(2, in: gate)
 		await gate.resumeCall(0)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertTrue(viewModel.isLoadingDiff)
+		#expect(viewModel.isLoadingDiff)
 		await gate.resumeCall(1)
 	}
 
+	@Test
 	func testSelectingAnotherFileDiscardsTheStaleImageDiff() async throws {
 		let stash = makeStash(index: 0)
 		let gate = StashesUseCaseGate(suspendsRequests: true)
@@ -141,19 +149,20 @@ final class StashesViewModelTests: XCTestCase {
 		await gate.resumeCall(0)
 		try await waitUntil { viewModel.files.count == 2 }
 		try await waitUntilCallCount(2, in: gate)
-		let laterFileID = try XCTUnwrap(viewModel.files.last?.id)
+		let laterFileID = try #require(viewModel.files.last?.id)
 		viewModel.didSelectFile(laterFileID)
 		try await waitUntilCallCount(3, in: gate)
 		await gate.resumeCall(1)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertNil(viewModel.imageDiff)
-		XCTAssertTrue(viewModel.isLoadingImageDiff)
+		#expect(viewModel.imageDiff == nil)
+		#expect(viewModel.isLoadingImageDiff)
 		await gate.resumeCall(2)
 		try await waitUntil { viewModel.isLoadingImageDiff == false }
-		XCTAssertEqual(viewModel.imageDiff?.after, Data("assets/after.png".utf8))
+		#expect(viewModel.imageDiff?.after == Data("assets/after.png".utf8))
 	}
 
+	@Test
 	func testResetClearsEveryStashSelectionAndDiffState() async throws {
 		let stash = makeStash(index: 0)
 		let viewModel = makeViewModel(
@@ -164,13 +173,13 @@ final class StashesViewModelTests: XCTestCase {
 		try await waitUntil { viewModel.files.isEmpty == false }
 		viewModel.reset()
 
-		XCTAssertTrue(viewModel.stashes.isEmpty)
-		XCTAssertNil(viewModel.selectedStashID)
-		XCTAssertNil(viewModel.selectedFileID)
-		XCTAssertTrue(viewModel.files.isEmpty)
-		XCTAssertEqual(viewModel.diff, "")
-		XCTAssertFalse(viewModel.isLoadingDiff)
-		XCTAssertFalse(viewModel.isLoadingImageDiff)
+		#expect(viewModel.stashes.isEmpty)
+		#expect(viewModel.selectedStashID == nil)
+		#expect(viewModel.selectedFileID == nil)
+		#expect(viewModel.files.isEmpty)
+		#expect(viewModel.diff == "")
+		#expect(!(viewModel.isLoadingDiff))
+		#expect(!(viewModel.isLoadingImageDiff))
 	}
 
 	private func makeViewModel(useCase: StashesUseCaseStub) -> StashesViewModel {
@@ -247,7 +256,7 @@ final class StashesViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while await gate.callCount() < count {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for gated requests")
+				Issue.record("Timed out waiting for gated requests")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
@@ -262,7 +271,7 @@ final class StashesViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

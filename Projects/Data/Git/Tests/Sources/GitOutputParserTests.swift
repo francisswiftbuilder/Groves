@@ -1,10 +1,11 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import DataGit
 
-final class GitOutputParserTests: XCTestCase {
+struct GitOutputParserTests {
+	@Test
 	func testCloneRepositoryCreatesRepositoryInSelectedDirectory() async throws {
 		let sourceRepositoryURL = try makeRepository()
 		let destinationDirectoryURL = FileManager.default.temporaryDirectory
@@ -23,37 +24,36 @@ final class GitOutputParserTests: XCTestCase {
 			into: destinationDirectoryURL
 		)
 
-		XCTAssertEqual(clonedRepositoryURL.lastPathComponent, sourceRepositoryURL.lastPathComponent)
-		XCTAssertTrue(
-			FileManager.default.fileExists(atPath: clonedRepositoryURL.appending(path: ".git").path)
-		)
+		#expect(clonedRepositoryURL.lastPathComponent == sourceRepositoryURL.lastPathComponent)
+		#expect(
+			FileManager.default.fileExists(atPath: clonedRepositoryURL.appending(path: ".git").path))
 	}
 
+	@Test
 	func testParseWorkingTreeChangesSeparatesIndexAndWorkingTreeStates() {
 		let output = "M  staged.swift\0 M unstaged.swift\0?? new.swift\0"
 
 		let changes = GitOutputParser.parseWorkingTreeChanges(output)
 
-		XCTAssertEqual(changes.count, 3)
-		XCTAssertEqual(changes.first(where: { $0.path == "staged.swift" })?.indexState, .modified)
-		XCTAssertEqual(
-			changes.first(where: { $0.path == "unstaged.swift" })?.workingTreeState,
-			.modified
-		)
-		XCTAssertEqual(changes.first(where: { $0.path == "new.swift" })?.workingTreeState, .untracked)
+		#expect(changes.count == 3)
+		#expect(changes.first(where: { $0.path == "staged.swift" })?.indexState == .modified)
+		#expect(changes.first(where: { $0.path == "unstaged.swift" })?.workingTreeState == .modified)
+		#expect(changes.first(where: { $0.path == "new.swift" })?.workingTreeState == .untracked)
 	}
 
+	@Test
 	func testParseWorkingTreeChangesMergesDuplicateDeletedAndUntrackedPath() {
 		let output = "D  tracked.txt\0?? tracked.txt\0"
 
 		let changes = GitOutputParser.parseWorkingTreeChanges(output)
 
-		XCTAssertEqual(changes.count, 1)
-		XCTAssertEqual(changes.first?.path, "tracked.txt")
-		XCTAssertEqual(changes.first?.indexState, .deleted)
-		XCTAssertEqual(changes.first?.workingTreeState, .untracked)
+		#expect(changes.count == 1)
+		#expect(changes.first?.path == "tracked.txt")
+		#expect(changes.first?.indexState == .deleted)
+		#expect(changes.first?.workingTreeState == .untracked)
 	}
 
+	@Test
 	func testParseConflictsPreservesKindsAndStageAvailability() {
 		let zeroHash = String(repeating: "0", count: 40)
 		let objectHash = String(repeating: "1", count: 40)
@@ -63,68 +63,74 @@ final class GitOutputParserTests: XCTestCase {
 
 		let conflicts = GitOutputParser.parseConflicts(records.joined(separator: "\0") + "\0")
 
-		XCTAssertEqual(Set(conflicts.map(\.kind)), Set(GitConflictKind.allCases))
-		XCTAssertEqual(conflicts.first(where: { $0.path == "conflict-0.txt" })?.hasBase, false)
-		XCTAssertEqual(conflicts.first(where: { $0.path == "conflict-1.txt" })?.hasTheirs, false)
-		XCTAssertTrue(conflicts.allSatisfy(\.hasOurs))
+		#expect(Set(conflicts.map(\.kind)) == Set(GitConflictKind.allCases))
+		#expect(conflicts.first(where: { $0.path == "conflict-0.txt" })?.hasBase == false)
+		#expect(conflicts.first(where: { $0.path == "conflict-1.txt" })?.hasTheirs == false)
+		#expect(conflicts.allSatisfy { $0.hasOurs })
 	}
 
+	@Test
 	func testParseAmendChangesPreservesRenamePaths() {
 		let output = "M\0Sources/App.swift\0R100\0Old.swift\0New.swift\0"
 
 		let changes = GitOutputParser.parseAmendChanges(output)
 
-		XCTAssertEqual(changes.count, 2)
-		XCTAssertEqual(changes.first(where: { $0.path == "Sources/App.swift" })?.state, .modified)
-		XCTAssertEqual(changes.first(where: { $0.path == "New.swift" })?.state, .renamed)
-		XCTAssertEqual(changes.first(where: { $0.path == "New.swift" })?.previousPath, "Old.swift")
+		#expect(changes.count == 2)
+		#expect(changes.first(where: { $0.path == "Sources/App.swift" })?.state == .modified)
+		#expect(changes.first(where: { $0.path == "New.swift" })?.state == .renamed)
+		#expect(changes.first(where: { $0.path == "New.swift" })?.previousPath == "Old.swift")
 	}
 
+	@Test
 	func testBuildFileTreeGroupsFilesByDirectory() {
 		let nodes = GitOutputParser.buildFileTree(
 			paths: ["Sources/App.swift", "Sources/Feature/View.swift", "README.md"]
 		)
 
-		XCTAssertEqual(nodes.map(\.name), ["Sources", "README.md"])
-		XCTAssertEqual(nodes.first?.children.map(\.name), ["Feature", "App.swift"])
+		#expect(nodes.map(\.name) == ["Sources", "README.md"])
+		#expect(nodes.first?.children.map(\.name) == ["Feature", "App.swift"])
 	}
 
+	@Test
 	func testParseBranchesIncludesUpstreamTrackingCounts() {
 		let output = "main\tabc1234\t*\torigin/main\tahead 2, behind 3\n"
 
 		let branches = GitOutputParser.parseBranches(output)
 
-		XCTAssertEqual(branches.count, 1)
-		XCTAssertEqual(branches.first?.upstream, "origin/main")
-		XCTAssertEqual(branches.first?.aheadCount, 2)
-		XCTAssertEqual(branches.first?.behindCount, 3)
-		XCTAssertEqual(branches.first?.isCurrent, true)
+		#expect(branches.count == 1)
+		#expect(branches.first?.upstream == "origin/main")
+		#expect(branches.first?.aheadCount == 2)
+		#expect(branches.first?.behindCount == 3)
+		#expect(branches.first?.isCurrent == true)
 	}
 
+	@Test
 	func testParseStashesPreservesReferenceAndMessage() {
 		let output =
 			"stash@{0}\u{1f}1234567890abcdef\u{1f}On main: Sidebar work\u{1f}2026-08-20 15:00:00 +0900\u{1e}"
 
 		let stashes = GitOutputParser.parseStashes(output)
 
-		XCTAssertEqual(stashes.count, 1)
-		XCTAssertEqual(stashes.first?.reference, "stash@{0}")
-		XCTAssertEqual(stashes.first?.hash, "1234567890abcdef")
-		XCTAssertEqual(stashes.first?.subject, "On main: Sidebar work")
-		XCTAssertNotNil(stashes.first?.date)
+		#expect(stashes.count == 1)
+		#expect(stashes.first?.reference == "stash@{0}")
+		#expect(stashes.first?.hash == "1234567890abcdef")
+		#expect(stashes.first?.subject == "On main: Sidebar work")
+		#expect(stashes.first?.date != nil)
 	}
 
+	@Test
 	func testParseTagsUsesPeeledCommitForAnnotatedTags() {
 		let output =
 			"1.0.0\ttag0001\tcommit0001\ttagobject0001\t2026-08-20 15:00:00 +0900\tRelease\nlightweight\tcommit0002\t\tcommit0002\t2026-08-19 15:00:00 +0900\tCommit\n"
 
 		let tags = GitOutputParser.parseTags(output)
 
-		XCTAssertEqual(tags.count, 2)
-		XCTAssertEqual(tags[0].targetHash, "commit0001")
-		XCTAssertEqual(tags[1].targetHash, "commit0002")
+		#expect(tags.count == 2)
+		#expect(tags[0].targetHash == "commit0001")
+		#expect(tags[1].targetHash == "commit0002")
 	}
 
+	@Test
 	func testRequestFileContentsReadsFileInsideRepository() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -145,9 +151,10 @@ final class GitOutputParserTests: XCTestCase {
 			in: repositoryURL
 		)
 
-		XCTAssertEqual(data, expectedData)
+		#expect(data == expectedData)
 	}
 
+	@Test
 	func testRequestFileContentsRejectsPathOutsideRepository() async throws {
 		let testURL = FileManager.default.temporaryDirectory
 			.appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -167,13 +174,14 @@ final class GitOutputParserTests: XCTestCase {
 				at: "../Outside.txt",
 				in: repositoryURL
 			)
-			XCTFail("Expected an invalid file path error")
+			Issue.record("Expected an invalid file path error")
 		} catch GitRepositoryError.invalidFilePath {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 
+	@Test
 	func testDiscardRestoresUnstagedContentWithoutChangingIndex() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -186,16 +194,17 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first)
+		let change = try #require(changes.first)
 		try await repository.requestDiscard(change: change, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let remainingChange = try XCTUnwrap(remainingChanges.first)
-		XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "staged")
-		XCTAssertTrue(remainingChange.isStaged)
-		XCTAssertFalse(remainingChange.hasWorkingTreeChange)
+		let remainingChange = try #require(remainingChanges.first)
+		#expect(try String(contentsOf: fileURL, encoding: .utf8) == "staged")
+		#expect(remainingChange.isStaged)
+		#expect(!(remainingChange.hasWorkingTreeChange))
 	}
 
+	@Test
 	func testDiscardDeletesUntrackedFile() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -206,14 +215,15 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first { $0.path == "untracked.txt" })
+		let change = try #require(changes.first { $0.path == "untracked.txt" })
 		try await repository.requestDiscard(change: change, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-		XCTAssertTrue(remainingChanges.isEmpty)
+		#expect(!(FileManager.default.fileExists(atPath: fileURL.path)))
+		#expect(remainingChanges.isEmpty)
 	}
 
+	@Test
 	func testRequestDiffReturnsAdditionForUntrackedFile() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -224,20 +234,21 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first { $0.path == "untracked.txt" })
+		let change = try #require(changes.first { $0.path == "untracked.txt" })
 		let diff = try await repository.requestDiff(
 			for: change,
 			source: .unstaged,
 			at: repositoryURL
 		)
 
-		XCTAssertTrue(diff.contains("new file mode"))
-		XCTAssertTrue(diff.contains("--- /dev/null"))
-		XCTAssertTrue(diff.contains("+++ b/untracked.txt"))
-		XCTAssertTrue(diff.contains("+first"))
-		XCTAssertTrue(diff.contains("+second"))
+		#expect(diff.contains("new file mode"))
+		#expect(diff.contains("--- /dev/null"))
+		#expect(diff.contains("+++ b/untracked.txt"))
+		#expect(diff.contains("+first"))
+		#expect(diff.contains("+second"))
 	}
 
+	@Test
 	func testRequestDiffReturnsMetadataForEmptyUntrackedFile() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -248,17 +259,18 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first { $0.path == "empty.txt" })
+		let change = try #require(changes.first { $0.path == "empty.txt" })
 		let diff = try await repository.requestDiff(
 			for: change,
 			source: .unstaged,
 			at: repositoryURL
 		)
 
-		XCTAssertTrue(diff.contains("new file mode"))
-		XCTAssertTrue(diff.contains("index 0000000..e69de29"))
+		#expect(diff.contains("new file mode"))
+		#expect(diff.contains("index 0000000..e69de29"))
 	}
 
+	@Test
 	func testRequestDiffSeparatesStagedAndUnstagedContentForSameFile() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -271,7 +283,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first)
+		let change = try #require(changes.first)
 		let stagedDiff = try await repository.requestDiff(
 			for: change,
 			source: .staged,
@@ -283,12 +295,13 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 
-		XCTAssertTrue(stagedDiff.contains("+staged"))
-		XCTAssertFalse(stagedDiff.contains("+unstaged"))
-		XCTAssertTrue(unstagedDiff.contains("-staged"))
-		XCTAssertTrue(unstagedDiff.contains("+unstaged"))
+		#expect(stagedDiff.contains("+staged"))
+		#expect(!(stagedDiff.contains("+unstaged")))
+		#expect(unstagedDiff.contains("-staged"))
+		#expect(unstagedDiff.contains("+unstaged"))
 	}
 
+	@Test
 	func testRequestImageDiffSeparatesHeadIndexAndWorkingTreeData() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -307,7 +320,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first { $0.path == "preview.png" })
+		let change = try #require(changes.first { $0.path == "preview.png" })
 		let stagedDiff = try await repository.requestImageDiff(
 			for: change,
 			source: .staged,
@@ -319,12 +332,13 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 
-		XCTAssertEqual(stagedDiff.before, originalData)
-		XCTAssertEqual(stagedDiff.after, stagedData)
-		XCTAssertEqual(unstagedDiff.before, stagedData)
-		XCTAssertEqual(unstagedDiff.after, workingTreeData)
+		#expect(stagedDiff.before == originalData)
+		#expect(stagedDiff.after == stagedData)
+		#expect(unstagedDiff.before == stagedData)
+		#expect(unstagedDiff.after == workingTreeData)
 	}
 
+	@Test
 	func testRequestCommitDiffReturnsCommittedFileChanges() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -336,14 +350,15 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let commits = try await repository.requestCommitHistory(at: repositoryURL)
-		let commit = try XCTUnwrap(commits.first)
+		let commit = try #require(commits.first)
 		let diff = try await repository.requestCommitDiff(for: commit, at: repositoryURL)
 
-		XCTAssertTrue(diff.contains("diff --git a/tracked.txt b/tracked.txt"))
-		XCTAssertTrue(diff.contains("-original"))
-		XCTAssertTrue(diff.contains("+updated"))
+		#expect(diff.contains("diff --git a/tracked.txt b/tracked.txt"))
+		#expect(diff.contains("-original"))
+		#expect(diff.contains("+updated"))
 	}
 
+	@Test
 	func testRequestCommitDiffDetectsMergeFromGitObject() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -367,7 +382,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let commits = try await repository.requestCommitHistory(at: repositoryURL)
-		let mergeCommit = try XCTUnwrap(commits.first { $0.parentHashes.count > 1 })
+		let mergeCommit = try #require(commits.first { $0.parentHashes.count > 1 })
 		let commitWithoutParentMetadata = GitCommit(
 			hash: mergeCommit.hash,
 			shortHash: mergeCommit.shortHash,
@@ -384,11 +399,12 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 
-		XCTAssertTrue(diff.contains("diff --git a/feature.txt b/feature.txt"))
-		XCTAssertTrue(diff.contains("+feature"))
-		XCTAssertFalse(diff.contains("base.txt"))
+		#expect(diff.contains("diff --git a/feature.txt b/feature.txt"))
+		#expect(diff.contains("+feature"))
+		#expect(!(diff.contains("base.txt")))
 	}
 
+	@Test
 	func testRequestCommitHistoryIncludesTagsAndExcludesInternalBackupRefs() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -419,10 +435,11 @@ final class GitOutputParserTests: XCTestCase {
 		let commits = try await LocalGitRepository().requestCommitHistory(at: repositoryURL)
 		let hashes = Set(commits.map(\.hash))
 
-		XCTAssertTrue(hashes.contains(taggedHash))
-		XCTAssertFalse(hashes.contains(internalBackupHash))
+		#expect(hashes.contains(taggedHash))
+		#expect(!(hashes.contains(internalBackupHash)))
 	}
 
+	@Test
 	func testDiscardPreservesStagedAddedFile() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -434,16 +451,17 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first { $0.path == "added.txt" })
+		let change = try #require(changes.first { $0.path == "added.txt" })
 		try await repository.requestDiscard(change: change, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let remainingChange = try XCTUnwrap(remainingChanges.first)
-		XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-		XCTAssertTrue(remainingChange.isStaged)
-		XCTAssertFalse(remainingChange.hasWorkingTreeChange)
+		let remainingChange = try #require(remainingChanges.first)
+		#expect(FileManager.default.fileExists(atPath: fileURL.path))
+		#expect(remainingChange.isStaged)
+		#expect(!(remainingChange.hasWorkingTreeChange))
 	}
 
+	@Test
 	func testDiscardPreservesStagedRename() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -456,17 +474,18 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first { $0.path == "renamed.txt" })
+		let change = try #require(changes.first { $0.path == "renamed.txt" })
 		try await repository.requestDiscard(change: change, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let remainingChange = try XCTUnwrap(remainingChanges.first)
-		XCTAssertFalse(FileManager.default.fileExists(atPath: originalFileURL.path))
-		XCTAssertTrue(FileManager.default.fileExists(atPath: renamedFileURL.path))
-		XCTAssertTrue(remainingChange.isStaged)
-		XCTAssertFalse(remainingChange.hasWorkingTreeChange)
+		let remainingChange = try #require(remainingChanges.first)
+		#expect(!(FileManager.default.fileExists(atPath: originalFileURL.path)))
+		#expect(FileManager.default.fileExists(atPath: renamedFileURL.path))
+		#expect(remainingChange.isStaged)
+		#expect(!(remainingChange.hasWorkingTreeChange))
 	}
 
+	@Test
 	func testApplyDiffLineStagesOnlySelectedReplacement() async throws {
 		let repositoryURL = try makeLineRepository()
 		defer {
@@ -477,7 +496,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first)
+		let change = try #require(changes.first)
 		try await repository.requestApplyDiffLine(
 			GitDiffLineSelection(oldLineNumber: 2, newLineNumber: 2),
 			action: .stage,
@@ -490,13 +509,14 @@ final class GitOutputParserTests: XCTestCase {
 			["diff", "--no-color", "--", "tracked.txt"],
 			at: repositoryURL
 		)
-		XCTAssertEqual(indexContents, "one\nTWO\nthree\nfour\n")
-		XCTAssertFalse(workingTreeDiff.contains("-two"))
-		XCTAssertFalse(workingTreeDiff.contains("+TWO"))
-		XCTAssertTrue(workingTreeDiff.contains("-four"))
-		XCTAssertTrue(workingTreeDiff.contains("+FOUR"))
+		#expect(indexContents == "one\nTWO\nthree\nfour\n")
+		#expect(!(workingTreeDiff.contains("-two")))
+		#expect(!(workingTreeDiff.contains("+TWO")))
+		#expect(workingTreeDiff.contains("-four"))
+		#expect(workingTreeDiff.contains("+FOUR"))
 	}
 
+	@Test
 	func testWorkingTreeChangesRelatedToChangeOnlyReadsSelectedPaths() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -512,15 +532,16 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let trackedChange = try XCTUnwrap(changes.first { $0.path == "tracked.txt" })
+		let trackedChange = try #require(changes.first { $0.path == "tracked.txt" })
 		let relatedChanges = try await repository.requestWorkingTreeChanges(
 			relatedTo: trackedChange,
 			at: repositoryURL
 		)
 
-		XCTAssertEqual(relatedChanges.map(\.path), ["tracked.txt"])
+		#expect(relatedChanges.map(\.path) == ["tracked.txt"])
 	}
 
+	@Test
 	func testApplyDiffLineUnstagesOnlySelectedReplacement() async throws {
 		let repositoryURL = try makeLineRepository()
 		defer {
@@ -532,7 +553,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first)
+		let change = try #require(changes.first)
 		try await repository.requestApplyDiffLine(
 			GitDiffLineSelection(oldLineNumber: 2, newLineNumber: 2),
 			action: .unstage,
@@ -545,13 +566,14 @@ final class GitOutputParserTests: XCTestCase {
 			["diff", "--no-color", "--", "tracked.txt"],
 			at: repositoryURL
 		)
-		XCTAssertEqual(indexContents, "one\ntwo\nthree\nFOUR\n")
-		XCTAssertTrue(workingTreeDiff.contains("-two"))
-		XCTAssertTrue(workingTreeDiff.contains("+TWO"))
-		XCTAssertFalse(workingTreeDiff.contains("-four"))
-		XCTAssertFalse(workingTreeDiff.contains("+FOUR"))
+		#expect(indexContents == "one\ntwo\nthree\nFOUR\n")
+		#expect(workingTreeDiff.contains("-two"))
+		#expect(workingTreeDiff.contains("+TWO"))
+		#expect(!(workingTreeDiff.contains("-four")))
+		#expect(!(workingTreeDiff.contains("+FOUR")))
 	}
 
+	@Test
 	func testAmendCommitUpdatesLastCommitWithoutCreatingAnotherCommit() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -567,14 +589,12 @@ final class GitOutputParserTests: XCTestCase {
 
 		let commits = try await LocalGitRepository().requestCommitHistory(at: repositoryURL)
 		let commitCount = try requestGitOutput(["rev-list", "--count", "HEAD"], at: repositoryURL)
-		XCTAssertEqual(commits.first?.subject, "Updated commit")
-		XCTAssertEqual(
-			commits.first?.body,
-			"Explain the change.\n\nInclude verification details."
-		)
-		XCTAssertEqual(commitCount, "1\n")
+		#expect(commits.first?.subject == "Updated commit")
+		#expect(commits.first?.body == "Explain the change.\n\nInclude verification details.")
+		#expect(commitCount == "1\n")
 	}
 
+	@Test
 	func testRequestAmendChangesAndDiffReturnsIndexedChangesFromParent() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -586,15 +606,16 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestAmendChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first)
+		let change = try #require(changes.first)
 		let diff = try await repository.requestAmendDiff(for: change, at: repositoryURL)
 
-		XCTAssertEqual(change.path, "tracked.txt")
-		XCTAssertEqual(change.state, .modified)
-		XCTAssertTrue(diff.contains("-original"))
-		XCTAssertTrue(diff.contains("+updated"))
+		#expect(change.path == "tracked.txt")
+		#expect(change.state == .modified)
+		#expect(diff.contains("-original"))
+		#expect(diff.contains("+updated"))
 	}
 
+	@Test
 	func testUnstageFromAmendMovesChangeToWorkingTreeAndStageRestoresIt() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -605,14 +626,14 @@ final class GitOutputParserTests: XCTestCase {
 		try requestRunGit(["commit", "--quiet", "-m", "Update tracked file"], at: repositoryURL)
 		let repository = LocalGitRepository()
 		let initialAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
-		let change = try XCTUnwrap(initialAmendChanges.first)
+		let change = try #require(initialAmendChanges.first)
 
 		try await repository.requestUnstageFromAmend(change: change, at: repositoryURL)
 
 		let unstagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
 		let workingTreeChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertTrue(unstagedAmendChanges.isEmpty)
-		XCTAssertEqual(workingTreeChanges.first?.workingTreeState, .modified)
+		#expect(unstagedAmendChanges.isEmpty)
+		#expect(workingTreeChanges.first?.workingTreeState == .modified)
 
 		try await repository.requestStage(path: change.path, at: repositoryURL)
 
@@ -620,10 +641,11 @@ final class GitOutputParserTests: XCTestCase {
 		let remainingWorkingTreeChanges = try await repository.requestWorkingTreeChanges(
 			at: repositoryURL
 		)
-		XCTAssertEqual(restagedAmendChanges.first?.path, "tracked.txt")
-		XCTAssertTrue(remainingWorkingTreeChanges.isEmpty)
+		#expect(restagedAmendChanges.first?.path == "tracked.txt")
+		#expect(remainingWorkingTreeChanges.isEmpty)
 	}
 
+	@Test
 	func testRootCommitCanBeUnstagedAndRestagedForAmend() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -631,23 +653,24 @@ final class GitOutputParserTests: XCTestCase {
 		}
 		let repository = LocalGitRepository()
 		let initialAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
-		let change = try XCTUnwrap(initialAmendChanges.first)
+		let change = try #require(initialAmendChanges.first)
 
 		try await repository.requestUnstageFromAmend(change: change, at: repositoryURL)
 
 		let unstagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
 		let workingTreeChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertTrue(unstagedAmendChanges.isEmpty)
-		XCTAssertEqual(workingTreeChanges.count, 1)
-		XCTAssertEqual(workingTreeChanges.first?.indexState, .deleted)
-		XCTAssertEqual(workingTreeChanges.first?.workingTreeState, .untracked)
+		#expect(unstagedAmendChanges.isEmpty)
+		#expect(workingTreeChanges.count == 1)
+		#expect(workingTreeChanges.first?.indexState == .deleted)
+		#expect(workingTreeChanges.first?.workingTreeState == .untracked)
 
 		try await repository.requestStage(path: change.path, at: repositoryURL)
 
 		let restagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
-		XCTAssertEqual(restagedAmendChanges.first?.state, .added)
+		#expect(restagedAmendChanges.first?.state == .added)
 	}
 
+	@Test
 	func testCreateAndDeleteLocalBranch() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -672,15 +695,16 @@ final class GitOutputParserTests: XCTestCase {
 			["rev-parse", "HEAD"],
 			at: repositoryURL
 		).trimmingCharacters(in: .whitespacesAndNewlines)
-		XCTAssertEqual(createdBranch, "feature/local")
-		XCTAssertEqual(createdHead, originalHead)
+		#expect(createdBranch == "feature/local")
+		#expect(createdHead == originalHead)
 
 		try await repository.requestSwitchBranch(named: originalBranch, at: repositoryURL)
 		try await repository.requestDeleteBranch(named: "feature/local", at: repositoryURL)
 		let branches = try await repository.requestBranches(at: repositoryURL)
-		XCTAssertFalse(branches.contains(where: { $0.name == "feature/local" }))
+		#expect(!(branches.contains(where: { $0.name == "feature/local" })))
 	}
 
+	@Test
 	func testCreateBranchFromCommitAndCheckoutDetachedCommit() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -697,19 +721,18 @@ final class GitOutputParserTests: XCTestCase {
 			from: originalCommit,
 			at: repositoryURL
 		)
-		XCTAssertEqual(try currentBranch(at: repositoryURL), "release/initial")
-		XCTAssertEqual(
+		#expect(try currentBranch(at: repositoryURL) == "release/initial")
+		#expect(
 			try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
-				.trimmingCharacters(in: .whitespacesAndNewlines),
-			originalCommit
-		)
+				.trimmingCharacters(in: .whitespacesAndNewlines) == originalCommit)
 
 		try await repository.requestSwitchBranch(named: originalBranch, at: repositoryURL)
 		try await repository.requestCheckoutCommit(originalCommit, at: repositoryURL)
 		let operationState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertTrue(operationState.isDetached)
+		#expect(operationState.isDetached)
 	}
 
+	@Test
 	func testCreateTrackingBranchFromRemoteBranch() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -734,11 +757,12 @@ final class GitOutputParserTests: XCTestCase {
 		)
 
 		let branches = try await repository.requestBranches(at: repositoryURL)
-		let branch = try XCTUnwrap(branches.first(where: { $0.name == "feature/remote" }))
-		XCTAssertTrue(branch.isCurrent)
-		XCTAssertEqual(branch.upstream, "origin/feature/remote")
+		let branch = try #require(branches.first(where: { $0.name == "feature/remote" }))
+		#expect(branch.isCurrent)
+		#expect(branch.upstream == "origin/feature/remote")
 	}
 
+	@Test
 	func testMergeBranchCreatesMergeCommitAndPreservesBothHistories() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -770,10 +794,11 @@ final class GitOutputParserTests: XCTestCase {
 			["rev-list", "--parents", "-n", "1", "HEAD"],
 			at: repositoryURL
 		).split(whereSeparator: \.isWhitespace)
-		XCTAssertEqual(headParents.count, 3)
-		XCTAssertTrue(headParents.contains(Substring(featureHead)))
+		#expect(headParents.count == 3)
+		#expect(headParents.contains(Substring(featureHead)))
 	}
 
+	@Test
 	func testSetUpstreamPushAndFetchReportAheadAndBehindCounts() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -808,13 +833,14 @@ final class GitOutputParserTests: XCTestCase {
 
 		try await repository.requestFetch(remote: "origin", at: repositoryURL)
 		let branches = try await repository.requestBranches(at: repositoryURL)
-		let currentBranch = try XCTUnwrap(branches.first(where: \.isCurrent))
+		let currentBranch = try #require(branches.first { $0.isCurrent })
 
-		XCTAssertEqual(currentBranch.upstream, "origin/\(branchName)")
-		XCTAssertEqual(currentBranch.aheadCount, 1)
-		XCTAssertEqual(currentBranch.behindCount, 1)
+		#expect(currentBranch.upstream == "origin/\(branchName)")
+		#expect(currentBranch.aheadCount == 1)
+		#expect(currentBranch.behindCount == 1)
 	}
 
+	@Test
 	func testPreparePullHandlesUpToDateAheadFastForwardAndDivergence() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -836,13 +862,13 @@ final class GitOutputParserTests: XCTestCase {
 		)
 
 		let upToDateOutcome = try await repository.requestPreparePull(at: repositoryURL)
-		XCTAssertEqual(upToDateOutcome, .upToDate)
+		#expect(upToDateOutcome == .upToDate)
 
 		try Data("local-ahead".utf8).write(to: repositoryURL.appending(path: "local-ahead.txt"))
 		try requestRunGit(["add", "local-ahead.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Local ahead"], at: repositoryURL)
 		let aheadOutcome = try await repository.requestPreparePull(at: repositoryURL)
-		XCTAssertEqual(aheadOutcome, .aheadOnly(aheadCount: 1))
+		#expect(aheadOutcome == .aheadOnly(aheadCount: 1))
 		try await repository.requestPush(.upstream, at: repositoryURL)
 
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
@@ -853,7 +879,7 @@ final class GitOutputParserTests: XCTestCase {
 		try requestRunGit(["commit", "--quiet", "-m", "Remote behind"], at: peerURL)
 		try requestRunGit(["push", "--quiet"], at: peerURL)
 		let fastForwardOutcome = try await repository.requestPreparePull(at: repositoryURL)
-		XCTAssertEqual(fastForwardOutcome, .fastForwarded)
+		#expect(fastForwardOutcome == .fastForwarded)
 
 		try Data("local-diverged".utf8).write(
 			to: repositoryURL.appending(path: "local-diverged.txt")
@@ -872,30 +898,30 @@ final class GitOutputParserTests: XCTestCase {
 				at: repositoryURL
 			)
 		else {
-			return XCTFail("Expected pull divergence")
+			Issue.record("Expected pull divergence")
+			return
 		}
-		XCTAssertEqual(divergence.upstream, "origin/\(branchName)")
-		XCTAssertEqual(divergence.aheadCount, 1)
-		XCTAssertEqual(divergence.behindCount, 1)
+		#expect(divergence.upstream == "origin/\(branchName)")
+		#expect(divergence.aheadCount == 1)
+		#expect(divergence.behindCount == 1)
 
 		try Data("dirty".utf8).write(to: repositoryURL.appending(path: "dirty.txt"))
 		do {
 			try await repository.requestResolvePull(divergence, using: .rebase, at: repositoryURL)
-			XCTFail("Expected dirty working tree rejection")
+			Issue.record("Expected dirty working tree rejection")
 		} catch let error as GitRepositoryError {
-			XCTAssertTrue(error.localizedDescription.contains("commit하거나 stash"))
+			#expect(error.localizedDescription.contains("commit하거나 stash"))
 		}
 		try FileManager.default.removeItem(at: repositoryURL.appending(path: "dirty.txt"))
 		try await repository.requestResolvePull(divergence, using: .rebase, at: repositoryURL)
-		XCTAssertEqual(
+		#expect(
 			try requestGitOutput(
 				["rev-list", "--count", "origin/\(branchName)..HEAD"], at: repositoryURL
 			)
-			.trimmingCharacters(in: .whitespacesAndNewlines),
-			"1"
-		)
+			.trimmingCharacters(in: .whitespacesAndNewlines) == "1")
 	}
 
+	@Test
 	func testForcePushWithLeaseReplacesKnownRemoteHistory() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -931,9 +957,10 @@ final class GitOutputParserTests: XCTestCase {
 			["--git-dir", remoteURL.path, "rev-parse", "refs/heads/\(branchName)"],
 			at: repositoryURL
 		).trimmingCharacters(in: .whitespacesAndNewlines)
-		XCTAssertEqual(remoteHash, localHash)
+		#expect(remoteHash == localHash)
 	}
 
+	@Test
 	func testPushTagsPublishesLocalTagsToRemote() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -954,9 +981,10 @@ final class GitOutputParserTests: XCTestCase {
 			["--git-dir", remoteURL.path, "rev-parse", "refs/tags/release/1.0.0"],
 			at: repositoryURL
 		).trimmingCharacters(in: .whitespacesAndNewlines)
-		XCTAssertEqual(remoteHash, localHash)
+		#expect(remoteHash == localHash)
 	}
 
+	@Test
 	func testFetchAllUpdatesRemoteTrackingReferences() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -993,9 +1021,10 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		).trimmingCharacters(in: .whitespacesAndNewlines)
 
-		XCTAssertEqual(fetchedHash, expectedHash)
+		#expect(fetchedHash == expectedHash)
 	}
 
+	@Test
 	func testRequestOperationStateReportsNormalAndDetachedHead() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -1004,12 +1033,13 @@ final class GitOutputParserTests: XCTestCase {
 		let repository = LocalGitRepository()
 
 		let normalState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertEqual(normalState, .normal)
+		#expect(normalState == .normal)
 		try requestRunGit(["switch", "--detach"], at: repositoryURL)
 		let detachedState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertEqual(detachedState, .detachedHead)
+		#expect(detachedState == .detachedHead)
 	}
 
+	@Test
 	func testMergeBranchReturnsConflictedOperationState() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -1029,12 +1059,13 @@ final class GitOutputParserTests: XCTestCase {
 		let repository = LocalGitRepository()
 		try await repository.requestMergeBranch(named: "conflict", at: repositoryURL)
 		let operationState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertEqual(operationState.operation?.kind, .merge)
-		XCTAssertEqual(operationState.conflicts.count, 1)
-		XCTAssertEqual(operationState.conflicts.first?.kind, .bothModified)
-		XCTAssertEqual(operationState.conflicts.first?.path, "tracked.txt")
+		#expect(operationState.operation?.kind == .merge)
+		#expect(operationState.conflicts.count == 1)
+		#expect(operationState.conflicts.first?.kind == .bothModified)
+		#expect(operationState.conflicts.first?.path == "tracked.txt")
 	}
 
+	@Test
 	func testCreateTagTargetsSpecifiedHistoricalCommit() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -1057,10 +1088,11 @@ final class GitOutputParserTests: XCTestCase {
 		)
 		let tags = try await repository.requestTags(at: repositoryURL)
 
-		XCTAssertNotEqual(historicalHash, headHash)
-		XCTAssertEqual(tags.first(where: { $0.name == "historical-tag" })?.targetHash, historicalHash)
+		#expect(historicalHash != headHash)
+		#expect(tags.first(where: { $0.name == "historical-tag" })?.targetHash == historicalHash)
 	}
 
+	@Test
 	func testDeleteTagRemovesLocalTag() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -1072,9 +1104,10 @@ final class GitOutputParserTests: XCTestCase {
 		try await repository.requestDeleteTag(named: "release/1.0.0", at: repositoryURL)
 
 		let tags = try await repository.requestTags(at: repositoryURL)
-		XCTAssertFalse(tags.contains(where: { $0.name == "release/1.0.0" }))
+		#expect(!(tags.contains(where: { $0.name == "release/1.0.0" })))
 	}
 
+	@Test
 	func testCreateAndDropStashIncludesUntrackedFiles() async throws {
 		let repositoryURL = try makeRepository()
 		defer {
@@ -1086,26 +1119,25 @@ final class GitOutputParserTests: XCTestCase {
 		try await repository.requestCreateStash(message: "Sidebar work", at: repositoryURL)
 
 		let stashes = try await repository.requestStashes(at: repositoryURL)
-		let stash = try XCTUnwrap(stashes.first)
-		XCTAssertTrue(stash.subject.contains("Sidebar work"))
-		XCTAssertFalse(
-			FileManager.default.fileExists(
+		let stash = try #require(stashes.first)
+		#expect(stash.subject.contains("Sidebar work"))
+		#expect(
+			!(FileManager.default.fileExists(
 				atPath: repositoryURL.appending(path: "untracked.txt").path
-			)
-		)
+			)))
 
 		try await repository.requestApplyStash(stash, at: repositoryURL)
-		XCTAssertTrue(
+		#expect(
 			FileManager.default.fileExists(
 				atPath: repositoryURL.appending(path: "untracked.txt").path
-			)
-		)
+			))
 
 		try await repository.requestDropStash(stash, at: repositoryURL)
 		let remainingStashes = try await repository.requestStashes(at: repositoryURL)
-		XCTAssertTrue(remainingStashes.isEmpty)
+		#expect(remainingStashes.isEmpty)
 	}
 
+	@Test
 	func testMergeConflictCanBeResolvedContinuedAndRestoredByNewRepositoryInstance() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1117,14 +1149,14 @@ final class GitOutputParserTests: XCTestCase {
 
 		try await LocalGitRepository().requestMergeBranch(named: "conflict", at: repositoryURL)
 		let restoredState = try await LocalGitRepository().requestOperationState(at: repositoryURL)
-		let conflict = try XCTUnwrap(restoredState.conflicts.first)
-		XCTAssertEqual(restoredState.operation?.kind, .merge)
+		let conflict = try #require(restoredState.conflicts.first)
+		#expect(restoredState.operation?.kind == .merge)
 
 		let repository = LocalGitRepository()
 		try await repository.requestResolveConflict(conflict, using: .theirs, at: repositoryURL)
 		let resolvedState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertTrue(resolvedState.conflicts.isEmpty)
-		XCTAssertEqual(resolvedState.operation?.kind, .merge)
+		#expect(resolvedState.conflicts.isEmpty)
+		#expect(resolvedState.operation?.kind == .merge)
 		try await repository.requestPerformOperationAction(.continue, for: .merge, at: repositoryURL)
 
 		let completedState = try await repository.requestOperationState(at: repositoryURL)
@@ -1132,10 +1164,11 @@ final class GitOutputParserTests: XCTestCase {
 			contentsOf: repositoryURL.appending(path: "tracked.txt"),
 			encoding: .utf8
 		)
-		XCTAssertTrue(completedState.isIdle)
-		XCTAssertEqual(contents, "incoming")
+		#expect(completedState.isIdle)
+		#expect(contents == "incoming")
 	}
 
+	@Test
 	func testRebaseConflictCanBeAborted() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1149,15 +1182,16 @@ final class GitOutputParserTests: XCTestCase {
 		let repository = LocalGitRepository()
 		try await repository.requestRebase(onto: baseBranch, at: repositoryURL)
 		let activeState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertEqual(activeState.operation?.kind, .rebase)
-		XCTAssertTrue(activeState.hasConflicts)
+		#expect(activeState.operation?.kind == .rebase)
+		#expect(activeState.hasConflicts)
 		try await repository.requestPerformOperationAction(.abort, for: .rebase, at: repositoryURL)
 
 		let completedState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertTrue(completedState.isIdle)
-		XCTAssertEqual(try currentBranch(at: repositoryURL), "feature")
+		#expect(completedState.isIdle)
+		#expect(try currentBranch(at: repositoryURL) == "feature")
 	}
 
+	@Test
 	func testRebaseConflictCanBeResolvedAndContinuedWithoutEditorPrompt() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1171,7 +1205,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		try await repository.requestRebase(onto: baseBranch, at: repositoryURL)
 		let conflictedState = try await repository.requestOperationState(at: repositoryURL)
-		let conflict = try XCTUnwrap(conflictedState.conflicts.first)
+		let conflict = try #require(conflictedState.conflicts.first)
 		try await repository.requestResolveConflict(conflict, using: .theirs, at: repositoryURL)
 		try await repository.requestPerformOperationAction(.continue, for: .rebase, at: repositoryURL)
 
@@ -1180,11 +1214,12 @@ final class GitOutputParserTests: XCTestCase {
 			contentsOf: repositoryURL.appending(path: "tracked.txt"),
 			encoding: .utf8
 		)
-		XCTAssertTrue(state.isIdle)
-		XCTAssertEqual(try currentBranch(at: repositoryURL), "feature")
-		XCTAssertEqual(contents, "feature")
+		#expect(state.isIdle)
+		#expect(try currentBranch(at: repositoryURL) == "feature")
+		#expect(contents == "feature")
 	}
 
+	@Test
 	func testRebaseConflictCanSkipCurrentCommit() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1204,10 +1239,11 @@ final class GitOutputParserTests: XCTestCase {
 			contentsOf: repositoryURL.appending(path: "tracked.txt"),
 			encoding: .utf8
 		)
-		XCTAssertTrue(state.isIdle)
-		XCTAssertEqual(contents, "base")
+		#expect(state.isIdle)
+		#expect(contents == "base")
 	}
 
+	@Test
 	func testCherryPickAndRevertCompleteWithoutLeavingOperationState() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1226,18 +1262,19 @@ final class GitOutputParserTests: XCTestCase {
 			mainline: nil,
 			at: repositoryURL
 		)
-		XCTAssertTrue(
+		#expect(
 			FileManager.default.fileExists(atPath: repositoryURL.appending(path: "picked.txt").path))
 		let cherryPickState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertTrue(cherryPickState.isIdle)
+		#expect(cherryPickState.isIdle)
 
 		try await repository.requestRevert(commitHash: pickedHash, mainline: nil, at: repositoryURL)
-		XCTAssertFalse(
-			FileManager.default.fileExists(atPath: repositoryURL.appending(path: "picked.txt").path))
+		#expect(
+			!(FileManager.default.fileExists(atPath: repositoryURL.appending(path: "picked.txt").path)))
 		let revertState = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertTrue(revertState.isIdle)
+		#expect(revertState.isIdle)
 	}
 
+	@Test
 	func testStashPreviewAndIncludeUntrackedOption() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1252,11 +1289,11 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 		let trackedOnlyStashes = try await repository.requestStashes(at: repositoryURL)
-		let trackedOnly = try XCTUnwrap(trackedOnlyStashes.first)
+		let trackedOnly = try #require(trackedOnlyStashes.first)
 		let trackedDiff = try await repository.requestStashDiff(for: trackedOnly, at: repositoryURL)
-		XCTAssertTrue(trackedDiff.contains("tracked.txt"))
-		XCTAssertFalse(trackedDiff.contains("untracked.txt"))
-		XCTAssertTrue(FileManager.default.fileExists(atPath: untrackedURL.path))
+		#expect(trackedDiff.contains("tracked.txt"))
+		#expect(!(trackedDiff.contains("untracked.txt")))
+		#expect(FileManager.default.fileExists(atPath: untrackedURL.path))
 		try await repository.requestDropStash(trackedOnly, at: repositoryURL)
 
 		try Data("changed again".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
@@ -1266,12 +1303,13 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 		let everythingStashes = try await repository.requestStashes(at: repositoryURL)
-		let everything = try XCTUnwrap(everythingStashes.first)
+		let everything = try #require(everythingStashes.first)
 		let everythingDiff = try await repository.requestStashDiff(for: everything, at: repositoryURL)
-		XCTAssertTrue(everythingDiff.contains("untracked.txt"))
-		XCTAssertFalse(FileManager.default.fileExists(atPath: untrackedURL.path))
+		#expect(everythingDiff.contains("untracked.txt"))
+		#expect(!(FileManager.default.fileExists(atPath: untrackedURL.path)))
 	}
 
+	@Test
 	func testStashApplyConflictHasNoPersistentOperationActions() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1284,15 +1322,16 @@ final class GitOutputParserTests: XCTestCase {
 		)
 		try commit(contents: "current", message: "Current change", at: repositoryURL)
 		let stashes = try await repository.requestStashes(at: repositoryURL)
-		let stash = try XCTUnwrap(stashes.first)
+		let stash = try #require(stashes.first)
 
 		try await repository.requestApplyStash(stash, at: repositoryURL)
 
 		let state = try await repository.requestOperationState(at: repositoryURL)
-		XCTAssertTrue(state.hasConflicts)
-		XCTAssertNil(state.operation)
+		#expect(state.hasConflicts)
+		#expect(state.operation == nil)
 	}
 
+	@Test
 	func testRemoteBranchDeleteRemovesBranchFromRemote() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
@@ -1307,8 +1346,8 @@ final class GitOutputParserTests: XCTestCase {
 		try requestRunGit(["push", "--quiet", "-u", "origin", "cleanup"], at: repositoryURL)
 		let repository = LocalGitRepository()
 		let remotes = try await repository.requestRemotes(at: repositoryURL)
-		let remote = try XCTUnwrap(remotes.first)
-		let branch = try XCTUnwrap(remote.branches.first { $0.name == "cleanup" })
+		let remote = try #require(remotes.first)
+		let branch = try #require(remote.branches.first { $0.name == "cleanup" })
 
 		try await repository.requestDeleteRemoteBranch(branch, at: repositoryURL)
 
@@ -1316,9 +1355,10 @@ final class GitOutputParserTests: XCTestCase {
 			["ls-remote", "--heads", remoteURL.path, "refs/heads/cleanup"],
 			at: repositoryURL
 		)
-		XCTAssertTrue(heads.isEmpty)
+		#expect(heads.isEmpty)
 	}
 
+	@Test
 	func testCommitMetadataAndNoEditAmend() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1332,22 +1372,23 @@ final class GitOutputParserTests: XCTestCase {
 		)
 		let repository = LocalGitRepository()
 		var commits = try await repository.requestCommitHistory(at: repositoryURL)
-		let commit = try XCTUnwrap(commits.first)
-		XCTAssertEqual(commit.author, "Author Name")
-		XCTAssertEqual(commit.authorEmail, "author@example.com")
-		XCTAssertEqual(commit.committer, "Committer Name")
-		XCTAssertEqual(commit.committerEmail, "committer@example.com")
-		XCTAssertGreaterThan(commit.committedDate.timeIntervalSince1970, 0)
+		let commit = try #require(commits.first)
+		#expect(commit.author == "Author Name")
+		#expect(commit.authorEmail == "author@example.com")
+		#expect(commit.committer == "Committer Name")
+		#expect(commit.committerEmail == "committer@example.com")
+		#expect(commit.committedDate.timeIntervalSince1970 > 0)
 
 		try Data("amended".utf8).write(to: repositoryURL.appending(path: "metadata.txt"))
 		try requestRunGit(["add", "metadata.txt"], at: repositoryURL)
 		try await repository.requestAmendWithoutEditingMessage(at: repositoryURL)
 		commits = try await repository.requestCommitHistory(at: repositoryURL)
-		let amended = try XCTUnwrap(commits.first)
-		XCTAssertEqual(amended.subject, "Metadata")
-		XCTAssertEqual(try requestGitOutput(["rev-list", "--count", "HEAD"], at: repositoryURL), "2\n")
+		let amended = try #require(commits.first)
+		#expect(amended.subject == "Metadata")
+		#expect(try requestGitOutput(["rev-list", "--count", "HEAD"], at: repositoryURL) == "2\n")
 	}
 
+	@Test
 	func testApplyDiffHunkStagesAndDiscardsSelectedHunks() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1366,7 +1407,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		var changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		var change = try XCTUnwrap(changes.first)
+		var change = try #require(changes.first)
 		let diff = try await repository.requestDiff(
 			for: change,
 			source: .unstaged,
@@ -1374,28 +1415,28 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 		let selections = diffHunkSelections(in: diff)
-		XCTAssertEqual(selections.count, 2)
+		#expect(selections.count == 2)
 
 		try await repository.requestApplyDiffHunk(
-			try XCTUnwrap(selections.first),
+			try #require(selections.first),
 			action: .stage,
 			for: change,
 			options: GitDiffOptions(),
 			at: repositoryURL
 		)
 		var indexContents = try requestGitOutput(["show", ":tracked.txt"], at: repositoryURL)
-		XCTAssertTrue(indexContents.contains("line TWO"))
-		XCTAssertTrue(indexContents.contains("line 14"))
+		#expect(indexContents.contains("line TWO"))
+		#expect(indexContents.contains("line 14"))
 
 		changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		change = try XCTUnwrap(changes.first)
+		change = try #require(changes.first)
 		let remainingDiff = try await repository.requestDiff(
 			for: change,
 			source: .unstaged,
 			options: GitDiffOptions(),
 			at: repositoryURL
 		)
-		let remainingSelection = try XCTUnwrap(diffHunkSelections(in: remainingDiff).first)
+		let remainingSelection = try #require(diffHunkSelections(in: remainingDiff).first)
 		try await repository.requestApplyDiffHunk(
 			remainingSelection,
 			action: .discard,
@@ -1409,12 +1450,13 @@ final class GitOutputParserTests: XCTestCase {
 			encoding: .utf8
 		)
 		indexContents = try requestGitOutput(["show", ":tracked.txt"], at: repositoryURL)
-		XCTAssertTrue(workingContents.contains("line TWO"))
-		XCTAssertTrue(workingContents.contains("line 14"))
-		XCTAssertFalse(workingContents.contains("line FOURTEEN"))
-		XCTAssertEqual(workingContents, indexContents)
+		#expect(workingContents.contains("line TWO"))
+		#expect(workingContents.contains("line 14"))
+		#expect(!(workingContents.contains("line FOURTEEN")))
+		#expect(workingContents == indexContents)
 	}
 
+	@Test
 	func testApplyDiffHunkUnstagesOnlySelectedHunk() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1434,14 +1476,14 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let change = try XCTUnwrap(changes.first)
+		let change = try #require(changes.first)
 		let stagedDiff = try await repository.requestDiff(
 			for: change,
 			source: .staged,
 			options: GitDiffOptions(),
 			at: repositoryURL
 		)
-		let selection = try XCTUnwrap(diffHunkSelections(in: stagedDiff).first)
+		let selection = try #require(diffHunkSelections(in: stagedDiff).first)
 		try await repository.requestApplyDiffHunk(
 			selection,
 			action: .unstage,
@@ -1451,11 +1493,12 @@ final class GitOutputParserTests: XCTestCase {
 		)
 
 		let indexContents = try requestGitOutput(["show", ":tracked.txt"], at: repositoryURL)
-		XCTAssertTrue(indexContents.contains("line 2"))
-		XCTAssertFalse(indexContents.contains("line TWO"))
-		XCTAssertTrue(indexContents.contains("line FOURTEEN"))
+		#expect(indexContents.contains("line 2"))
+		#expect(!(indexContents.contains("line TWO")))
+		#expect(indexContents.contains("line FOURTEEN"))
 	}
 
+	@Test
 	func testDiffOptionsControlContextAndWhitespace() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1473,7 +1516,7 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		var changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		var change = try XCTUnwrap(changes.first)
+		var change = try #require(changes.first)
 		let zeroContext = try await repository.requestDiff(
 			for: change,
 			source: .unstaged,
@@ -1486,9 +1529,9 @@ final class GitOutputParserTests: XCTestCase {
 			options: GitDiffOptions(contextLineCount: 6),
 			at: repositoryURL
 		)
-		XCTAssertGreaterThan(
-			sixLineContext.split(whereSeparator: \.isNewline).count,
-			zeroContext.split(whereSeparator: \.isNewline).count)
+		#expect(
+			sixLineContext.split(whereSeparator: \.isNewline).count
+				> zeroContext.split(whereSeparator: \.isNewline).count)
 
 		try Data("line    TEN\n".utf8).write(
 			to: repositoryURL.appending(path: "tracked.txt")
@@ -1497,16 +1540,17 @@ final class GitOutputParserTests: XCTestCase {
 		try requestRunGit(["commit", "--quiet", "-m", "Add whitespace fixture"], at: repositoryURL)
 		try Data("line TEN\n".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
 		changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		change = try XCTUnwrap(changes.first)
+		change = try #require(changes.first)
 		let ignoredWhitespace = try await repository.requestDiff(
 			for: change,
 			source: .unstaged,
 			options: GitDiffOptions(ignoresWhitespace: true),
 			at: repositoryURL
 		)
-		XCTAssertTrue(ignoredWhitespace.isEmpty)
+		#expect(ignoredWhitespace.isEmpty)
 	}
 
+	@Test
 	func testConflictContentLoadsStagesAndAcceptsBoth() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -1525,18 +1569,18 @@ final class GitOutputParserTests: XCTestCase {
 
 		let repository = LocalGitRepository()
 		let state = try await repository.requestOperationState(at: repositoryURL)
-		let conflict = try XCTUnwrap(state.conflicts.first)
+		let conflict = try #require(state.conflicts.first)
 		let content = try await repository.requestConflictContent(
 			for: conflict,
 			at: repositoryURL
 		)
-		XCTAssertEqual(content.current, "current\n")
-		XCTAssertEqual(content.incoming, "incoming\n")
-		XCTAssertEqual(content.hunks.count, 1)
-		XCTAssertTrue(content.hasConflictMarkers)
+		#expect(content.current == "current\n")
+		#expect(content.incoming == "incoming\n")
+		#expect(content.hunks.count == 1)
+		#expect(content.hasConflictMarkers)
 
 		try await repository.requestResolveConflictHunk(
-			try XCTUnwrap(content.hunks.first),
+			try #require(content.hunks.first),
 			in: conflict,
 			using: .both,
 			at: repositoryURL
@@ -1545,10 +1589,11 @@ final class GitOutputParserTests: XCTestCase {
 			for: conflict,
 			at: repositoryURL
 		)
-		XCTAssertEqual(resolved.workingTree, "current\nincoming\n")
-		XCTAssertFalse(resolved.hasConflictMarkers)
+		#expect(resolved.workingTree == "current\nincoming\n")
+		#expect(!(resolved.hasConflictMarkers))
 	}
 
+	@Test
 	func testConflictMarkerParserSupportsCustomSizeDiff3AndCRLF() throws {
 		let contents = [
 			"before",
@@ -1564,14 +1609,15 @@ final class GitOutputParserTests: XCTestCase {
 
 		let hunks = GitConflictMarkerParser.parse(contents)
 
-		XCTAssertEqual(hunks.count, 1)
-		XCTAssertEqual(hunks[0].base, "base")
-		XCTAssertEqual(hunks[0].current, "current")
-		XCTAssertEqual(hunks[0].incoming, "incoming")
+		#expect(hunks.count == 1)
+		#expect(hunks[0].base == "base")
+		#expect(hunks[0].current == "current")
+		#expect(hunks[0].incoming == "incoming")
 		let resolved = try GitConflictMarkerParser.resolve(0, using: .both, in: contents)
-		XCTAssertEqual(resolved, "before\r\ncurrent\r\nincoming\r\nafter")
+		#expect(resolved == "before\r\ncurrent\r\nincoming\r\nafter")
 	}
 
+	@Test
 	func testConflictMarkerParserRejectsMalformedAndMismatchedMarkers() {
 		let malformed = [
 			"<<<<<<< current",
@@ -1588,10 +1634,11 @@ final class GitOutputParserTests: XCTestCase {
 			">>>>>> incoming",
 		].joined(separator: "\n")
 
-		XCTAssertTrue(GitConflictMarkerParser.parse(malformed).isEmpty)
-		XCTAssertTrue(GitConflictMarkerParser.parse(short).isEmpty)
+		#expect(GitConflictMarkerParser.parse(malformed).isEmpty)
+		#expect(GitConflictMarkerParser.parse(short).isEmpty)
 	}
 
+	@Test
 	func testConflictMarkerParserResolvesMultipleHunksInEitherOrder() throws {
 		let contents = [
 			"<<<<<<< current",
@@ -1608,9 +1655,9 @@ final class GitOutputParserTests: XCTestCase {
 		].joined(separator: "\n")
 
 		let lastFirst = try GitConflictMarkerParser.resolve(1, using: .incoming, in: contents)
-		XCTAssertEqual(GitConflictMarkerParser.parse(lastFirst).count, 1)
+		#expect(GitConflictMarkerParser.parse(lastFirst).count == 1)
 		let fullyResolved = try GitConflictMarkerParser.resolve(0, using: .current, in: lastFirst)
-		XCTAssertEqual(fullyResolved, "one-current\nmiddle\ntwo-incoming")
+		#expect(fullyResolved == "one-current\nmiddle\ntwo-incoming")
 	}
 
 	private func makeRepository() throws -> URL {

@@ -1,10 +1,11 @@
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import FeatureRepositoryChanges
 
 @MainActor
-final class CommitViewModelTests: XCTestCase {
+struct CommitViewModelTests {
 	private actor SnapshotGate {
 		private(set) var requestCount = 0
 		private var continuations: [Int: CheckedContinuation<RepositorySnapshot, Error>] = [:]
@@ -22,6 +23,7 @@ final class CommitViewModelTests: XCTestCase {
 		}
 	}
 
+	@Test
 	func testSnapshotAvailabilityUpdatesCommitActions() {
 		let viewModel = makeViewModel()
 		viewModel.subject = "Commit staged changes"
@@ -40,10 +42,10 @@ final class CommitViewModelTests: XCTestCase {
 			)
 		)
 
-		XCTAssertTrue(viewModel.hasStagedChanges)
-		XCTAssertTrue(viewModel.hasCommits)
-		XCTAssertTrue(viewModel.canCommit)
-		XCTAssertTrue(viewModel.canAmendCommit)
+		#expect(viewModel.hasStagedChanges)
+		#expect(viewModel.hasCommits)
+		#expect(viewModel.canCommit)
+		#expect(viewModel.canAmendCommit)
 
 		viewModel.apply(
 			makeSnapshot(
@@ -53,12 +55,13 @@ final class CommitViewModelTests: XCTestCase {
 			)
 		)
 
-		XCTAssertFalse(viewModel.hasStagedChanges)
-		XCTAssertTrue(viewModel.isDetached)
-		XCTAssertFalse(viewModel.canCommit)
-		XCTAssertFalse(viewModel.canAmendCommit)
+		#expect(!(viewModel.hasStagedChanges))
+		#expect(viewModel.isDetached)
+		#expect(!(viewModel.canCommit))
+		#expect(!(viewModel.canAmendCommit))
 	}
 
+	@Test
 	func testCommitImmediatelyBlocksRepeatedSubmission() async throws {
 		let gate = SnapshotGate()
 		let viewModel = makeViewModel(
@@ -70,19 +73,20 @@ final class CommitViewModelTests: XCTestCase {
 		prepareCommit(viewModel)
 
 		viewModel.didRequestCommit()
-		XCTAssertTrue(viewModel.isLoading)
-		XCTAssertFalse(viewModel.canCommit)
+		#expect(viewModel.isLoading)
+		#expect(!(viewModel.canCommit))
 		viewModel.didRequestCommit()
 
 		try await waitUntil { await gate.requestCount >= 1 }
 		try await Task.sleep(for: .milliseconds(50))
 		let requestCount = await gate.requestCount
-		XCTAssertEqual(requestCount, 1)
+		#expect(requestCount == 1)
 		for index in 0..<requestCount {
 			await gate.resume(index, returning: makeSnapshot(changes: [], commits: [makeCommit()]))
 		}
 	}
 
+	@Test
 	func testCancelledCommitDoesNotEraseNewDraft() async throws {
 		let gate = SnapshotGate()
 		let viewModel = makeViewModel(
@@ -100,103 +104,115 @@ final class CommitViewModelTests: XCTestCase {
 		await gate.resume(0, returning: makeSnapshot(changes: [], commits: [makeCommit()]))
 		try await Task.sleep(for: .milliseconds(50))
 
-		XCTAssertEqual(viewModel.subject, "New draft")
-		XCTAssertEqual(viewModel.body, "Keep this description")
-		XCTAssertFalse(viewModel.isLoading)
+		#expect(viewModel.subject == "New draft")
+		#expect(viewModel.body == "Keep this description")
+		#expect(!(viewModel.isLoading))
 	}
 
+	@Test
 	func testOldCommitDoesNotFinishNewerLoadingState() async throws {
-		let gate = SnapshotGate()
-		let completed = expectation(description: "Current commit completed")
-		let viewModel = makeViewModel(
-			changesUseCase: ChangesUseCaseStub(commitOperation: { _, _, _, _ in
-				try await gate.load()
-			}),
-			didProduceSnapshot: { _ in completed.fulfill() }
-		)
-		prepareCommit(viewModel)
-		viewModel.didRequestCommit()
-		try await waitUntil { await gate.requestCount == 1 }
-		viewModel.onDisappear()
-		viewModel.subject = "Second commit"
-		viewModel.didRequestCommit()
-		try await waitUntil { await gate.requestCount == 2 }
-		let snapshot = makeSnapshot(changes: [], commits: [makeCommit()])
-		await gate.resume(0, returning: snapshot)
-		try await Task.sleep(for: .milliseconds(50))
+		try await confirmation("Current commit completed") { completed in
+			let gate = SnapshotGate()
+			let viewModel = makeViewModel(
+				changesUseCase: ChangesUseCaseStub(commitOperation: { _, _, _, _ in
+					try await gate.load()
+				}),
+				didProduceSnapshot: { _ in completed() }
+			)
+			prepareCommit(viewModel)
+			viewModel.didRequestCommit()
+			try await waitUntil { await gate.requestCount == 1 }
+			viewModel.onDisappear()
+			viewModel.subject = "Second commit"
+			viewModel.didRequestCommit()
+			try await waitUntil { await gate.requestCount == 2 }
+			let snapshot = makeSnapshot(changes: [], commits: [makeCommit()])
+			await gate.resume(0, returning: snapshot)
+			try await Task.sleep(for: .milliseconds(50))
 
-		XCTAssertTrue(viewModel.isLoading)
-		XCTAssertEqual(viewModel.subject, "Second commit")
-		await gate.resume(1, returning: snapshot)
-		await fulfillment(of: [completed], timeout: 2)
-		XCTAssertFalse(viewModel.isLoading)
-		XCTAssertEqual(viewModel.subject, "")
+			#expect(viewModel.isLoading)
+			#expect(viewModel.subject == "Second commit")
+			await gate.resume(1, returning: snapshot)
+			try await waitUntil { !viewModel.isLoading }
+			#expect(!(viewModel.isLoading))
+			#expect(viewModel.subject == "")
+
+		}
 	}
 
+	@Test
 	func testSuccessfulCommitPreservesDraftEditedWhileRunning() async throws {
-		let gate = SnapshotGate()
-		let completed = expectation(description: "Commit completed")
-		let viewModel = makeViewModel(
-			changesUseCase: ChangesUseCaseStub(commitOperation: { _, _, _, _ in
-				try await gate.load()
-			}),
-			didProduceSnapshot: { _ in completed.fulfill() }
-		)
-		prepareCommit(viewModel)
-		viewModel.didRequestCommit()
-		try await waitUntil { await gate.requestCount == 1 }
-		viewModel.subject = "Next commit"
-		viewModel.body = "Next description"
+		try await confirmation("Commit completed") { completed in
+			let gate = SnapshotGate()
+			let viewModel = makeViewModel(
+				changesUseCase: ChangesUseCaseStub(commitOperation: { _, _, _, _ in
+					try await gate.load()
+				}),
+				didProduceSnapshot: { _ in completed() }
+			)
+			prepareCommit(viewModel)
+			viewModel.didRequestCommit()
+			try await waitUntil { await gate.requestCount == 1 }
+			viewModel.subject = "Next commit"
+			viewModel.body = "Next description"
 
-		await gate.resume(0, returning: makeSnapshot(changes: [], commits: [makeCommit()]))
-		await fulfillment(of: [completed], timeout: 2)
+			await gate.resume(0, returning: makeSnapshot(changes: [], commits: [makeCommit()]))
+			try await waitUntil { !viewModel.isLoading }
 
-		XCTAssertEqual(viewModel.subject, "Next commit")
-		XCTAssertEqual(viewModel.body, "Next description")
+			#expect(viewModel.subject == "Next commit")
+			#expect(viewModel.body == "Next description")
+
+		}
 	}
 
-	func testFailedCommitPreservesDraftAndAllowsRetry() async {
-		let recovered = expectation(description: "Repository state restored")
-		let receivedError = expectation(description: "Commit error reported")
-		let snapshot = makeSnapshot(changes: [], commits: [])
-		let viewModel = makeViewModel(
-			contentUseCase: ChangesContentUseCaseStub(snapshotOperation: { _ in snapshot }),
-			changesUseCase: ChangesUseCaseStub(commitOperation: { _, _, _, _ in
-				throw GitRepositoryError.commandFailed("Set your commit identity")
-			}),
-			didProduceSnapshot: { _ in recovered.fulfill() },
-			didReceiveError: { message in
-				XCTAssertTrue(message.contains("Set your commit identity"))
-				receivedError.fulfill()
+	@Test
+	func testFailedCommitPreservesDraftAndAllowsRetry() async throws {
+		try await confirmation("Repository state restored") { recovered in
+			try await confirmation("Commit error reported") { receivedError in
+				let snapshot = makeSnapshot(changes: [], commits: [])
+				let viewModel = makeViewModel(
+					contentUseCase: ChangesContentUseCaseStub(snapshotOperation: { _ in snapshot }),
+					changesUseCase: ChangesUseCaseStub(commitOperation: { _, _, _, _ in
+						throw GitRepositoryError.commandFailed("Set your commit identity")
+					}),
+					didProduceSnapshot: { _ in recovered() },
+					didReceiveError: { message in
+						#expect(message.contains("Set your commit identity"))
+						receivedError()
+					}
+				)
+				prepareCommit(viewModel)
+				viewModel.body = "Description"
+
+				viewModel.didRequestCommit()
+				try await waitUntil { !viewModel.isLoading }
+
+				#expect(viewModel.subject == "Commit staged changes")
+				#expect(viewModel.body == "Description")
+				#expect(!(viewModel.isLoading))
+				#expect(viewModel.canCommit)
+
 			}
-		)
-		prepareCommit(viewModel)
-		viewModel.body = "Description"
-
-		viewModel.didRequestCommit()
-		await fulfillment(of: [receivedError, recovered], timeout: 2)
-
-		XCTAssertEqual(viewModel.subject, "Commit staged changes")
-		XCTAssertEqual(viewModel.body, "Description")
-		XCTAssertFalse(viewModel.isLoading)
-		XCTAssertTrue(viewModel.canCommit)
+		}
 	}
 
-	func testCannotAmendBeforeFirstCommit() async {
-		let amended = expectation(description: "Amend is unavailable without a commit")
-		amended.isInverted = true
-		let snapshot = makeSnapshot(changes: [], commits: [])
-		let viewModel = makeViewModel(
-			changesUseCase: ChangesUseCaseStub(amendOperation: { _ in
-				amended.fulfill()
-				return snapshot
-			})
-		)
-		prepareCommit(viewModel)
+	@Test
+	func testCannotAmendBeforeFirstCommit() async throws {
+		try await confirmation("Amend is unavailable without a commit", expectedCount: 0) { amended in
+			let snapshot = makeSnapshot(changes: [], commits: [])
+			let viewModel = makeViewModel(
+				changesUseCase: ChangesUseCaseStub(amendOperation: { _ in
+					amended()
+					return snapshot
+				})
+			)
+			prepareCommit(viewModel)
 
-		viewModel.didRequestAmendWithoutEditingMessage()
+			viewModel.didRequestAmendWithoutEditingMessage()
 
-		await fulfillment(of: [amended], timeout: 0.1)
+			try await Task.sleep(for: .milliseconds(100))
+
+		}
 	}
 
 	private func prepareCommit(_ viewModel: CommitViewModel) {
@@ -221,7 +237,7 @@ final class CommitViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: .seconds(2))
 		while await !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for commit request")
+				Issue.record("Timed out waiting for commit request")
 				throw CancellationError()
 			}
 			try await Task.sleep(for: .milliseconds(10))

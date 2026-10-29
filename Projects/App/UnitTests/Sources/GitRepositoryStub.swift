@@ -1,7 +1,6 @@
 import DomainGit
 import DomainGitInterface
 import Foundation
-import XCTest
 
 @testable import Groves
 

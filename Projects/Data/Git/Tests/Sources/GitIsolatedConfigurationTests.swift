@@ -1,11 +1,12 @@
 import CoreGitCredential
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import DataGit
 
-final class GitIsolatedConfigurationTests: XCTestCase {
+struct GitIsolatedConfigurationTests {
+	@Test
 	func testNetworkOperationsIgnoreGlobalAndURLSpecificAuthenticationSettings() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -32,15 +33,16 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 				acceptedTerminationStatuses: [0, 1],
 				isNetworkOperation: true
 			)
-			XCTAssertTrue(result.standardOutput.trimmingCharacters(in: .newlines).isEmpty)
+			#expect(result.standardOutput.trimmingCharacters(in: .newlines).isEmpty)
 		}
 		for (key, value) in settings {
 			let result = try await runner.requestRun(
 				arguments: ["config", "--local", "--get", key], at: repositoryURL)
-			XCTAssertEqual(result.standardOutput.trimmingCharacters(in: .newlines), value)
+			#expect(result.standardOutput.trimmingCharacters(in: .newlines) == value)
 		}
 	}
 
+	@Test
 	func testNetworkOperationsUsePrivateHomeForNetrcAndCurlConfiguration() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -58,12 +60,13 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 			isNetworkOperation: true
 		)
 		let paths = result.standardOutput.split(separator: "\n").map(String.init)
-		XCTAssertEqual(paths.count, 3)
-		XCTAssertNotEqual(paths.first, "/external/home")
-		XCTAssertEqual(paths.first, paths.dropFirst().first)
-		XCTAssertTrue(paths.allSatisfy { $0.hasPrefix(configURL.deletingLastPathComponent().path) })
+		#expect(paths.count == 3)
+		#expect(paths.first != "/external/home")
+		#expect(paths.first == paths.dropFirst().first)
+		#expect(paths.allSatisfy { $0.hasPrefix(configURL.deletingLastPathComponent().path) })
 	}
 
+	@Test
 	func testExistingRemoteWithEmbeddedCredentialsIsRejectedBeforeFetch() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -80,10 +83,11 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 
 		do {
 			try await repository.requestFetch(remote: "origin", at: repositoryURL)
-			XCTFail("Expected an embedded credential rejection")
+			Issue.record("Expected an embedded credential rejection")
 		} catch GitRepositoryError.invalidRemoteURL {}
 	}
 
+	@Test
 	func testCloneRejectsCredentialsIntroducedByURLRewriting() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -101,12 +105,12 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 		do {
 			_ = try await repository.requestCloneRepository(
 				from: "https://example.com/repo.git", into: repositoryURL)
-			XCTFail("Expected rewritten credentials to be rejected before cloning")
+			Issue.record("Expected rewritten credentials to be rejected before cloning")
 		} catch GitRepositoryError.invalidRemoteURL {}
-		XCTAssertFalse(
-			FileManager.default.fileExists(atPath: repositoryURL.appending(path: "repo").path))
+		#expect(!(FileManager.default.fileExists(atPath: repositoryURL.appending(path: "repo").path)))
 	}
 
+	@Test
 	func testConfiguredClientCertificateStopsBeforeTheNetworkCommandStarts() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -124,13 +128,14 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 			_ = try await runner.requestRun(
 				arguments: ["-c", "alias.mark=!touch '\(markerURL.path)'", "mark"],
 				at: repositoryURL, isNetworkOperation: true)
-			XCTFail("Expected client certificate isolation guidance")
+			Issue.record("Expected client certificate isolation guidance")
 		} catch GitRepositoryError.authentication(let message) {
-			XCTAssertTrue(message.contains("TLS client certificates"))
+			#expect(message.contains("TLS client certificates"))
 		}
-		XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
+		#expect(!(FileManager.default.fileExists(atPath: markerURL.path)))
 	}
 
+	@Test
 	func testCredentialsInAuthenticationURLContextAreRejectedWithoutBeingReported() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -150,13 +155,14 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 					"config", "--get-urlmatch", "http.extraHeader", "https://github.com/owner/repo",
 				],
 				at: repositoryURL, isNetworkOperation: true)
-			XCTFail("Expected authentication context rejection")
+			Issue.record("Expected authentication context rejection")
 		} catch GitRepositoryError.authentication(let message) {
-			XCTAssertFalse(message.contains("private-token"))
-			XCTAssertFalse(message.contains("external"))
+			#expect(!(message.contains("private-token")))
+			#expect(!(message.contains("external")))
 		}
 	}
 
+	@Test
 	func testIsolatedCloneCommitAndPushUseSavedIdentity() async throws {
 		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
@@ -186,15 +192,16 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 
 		let author = try await runner.requestRun(
 			arguments: ["log", "-1", "--format=%an%n%ae%n%B"], at: remoteURL)
-		XCTAssertEqual(
-			author.standardOutput.trimmingCharacters(in: .newlines),
-			"Groves Author\ngroves@example.com\nFirst commit\n\nCommit description")
+		#expect(
+			author.standardOutput.trimmingCharacters(in: .newlines)
+				== "Groves Author\ngroves@example.com\nFirst commit\n\nCommit description")
 		let branch = try await repository.requestBranches(at: repositoryURL).first(where: \.isCurrent)
-		XCTAssertEqual(branch?.upstream, "origin/main")
+		#expect(branch?.upstream == "origin/main")
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertTrue(changes.isEmpty)
+		#expect(changes.isEmpty)
 	}
 
+	@Test
 	func testMissingIdentityCanBeConfiguredAndCommitRetried() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -212,20 +219,21 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 		do {
 			try await repository.requestCommit(
 				subject: "First commit", body: "", amend: false, at: repositoryURL)
-			XCTFail("Expected missing identity guidance")
+			Issue.record("Expected missing identity guidance")
 		} catch GitRepositoryError.commandFailed(let message) {
-			XCTAssertTrue(message.contains("Settings → Accounts"))
+			#expect(message.contains("Settings → Accounts"))
 		}
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		XCTAssertEqual(changes.filter(\.isStaged).map(\.path), ["README.md"])
+		#expect(changes.filter(\.isStaged).map(\.path) == ["README.md"])
 		try GitIdentityConfiguration(name: "Groves Author", email: "groves@example.com").save(
 			to: configURL)
 		try await repository.requestCommit(
 			subject: "First commit", body: "", amend: false, at: repositoryURL)
 		let commits = try await repository.requestCommitHistory(at: repositoryURL)
-		XCTAssertEqual(commits.map(\.subject), ["First commit"])
+		#expect(commits.map(\.subject) == ["First commit"])
 	}
 
+	@Test
 	func testHelperTerminationIsNotReportedAsInvalidCredentials() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -243,14 +251,15 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 				],
 				at: repositoryURL
 			)
-			XCTFail("Expected helper execution failure")
+			Issue.record("Expected helper execution failure")
 		} catch GitRepositoryError.commandFailed(let message) {
-			XCTAssertTrue(message.contains("provisioning profile"))
-			XCTAssertTrue(message.contains("died of signal 9"))
-			XCTAssertFalse(message.contains("Check repository permissions"))
+			#expect(message.contains("provisioning profile"))
+			#expect(message.contains("died of signal 9"))
+			#expect(!(message.contains("Check repository permissions")))
 		}
 	}
 
+	@Test
 	func testMissingRuntimeDoesNotFallBackToSystemGit() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -261,12 +270,13 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 		)
 		do {
 			_ = try await runner.requestRun(arguments: ["status"], at: repositoryURL)
-			XCTFail("Expected missing runtime error")
+			Issue.record("Expected missing runtime error")
 		} catch GitRepositoryError.commandFailed(let message) {
-			XCTAssertTrue(message.contains("runtime is missing"))
+			#expect(message.contains("runtime is missing"))
 		}
 	}
 
+	@Test
 	func testRuntimeOverridesInheritedHelperAndExecutablePaths() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -283,13 +293,12 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 			at: repositoryURL,
 			environment: ["GIT_EXEC_PATH": "/external/git", "GIT_TEMPLATE_DIR": "/external/templates"]
 		)
-		XCTAssertEqual(
-			result.standardOutput,
-			repositoryURL.appending(path: "libexec/git-core").path + "\n"
-				+ repositoryURL.appending(path: "share/git-core/templates").path + "\n"
-		)
+		#expect(
+			result.standardOutput == repositoryURL.appending(path: "libexec/git-core").path + "\n"
+				+ repositoryURL.appending(path: "share/git-core/templates").path + "\n")
 	}
 
+	@Test
 	func testAuthenticationFailurePreservesDetailsWithoutCredentials() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -307,16 +316,17 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 				],
 				at: repositoryURL
 			)
-			XCTFail("Expected authentication failure")
+			Issue.record("Expected authentication failure")
 		} catch GitRepositoryError.authentication(let message) {
-			XCTAssertTrue(message.contains("organization approval required"))
-			XCTAssertTrue(message.contains("https://***@example.com/repo"))
+			#expect(message.contains("organization approval required"))
+			#expect(message.contains("https://***@example.com/repo"))
 			for secret in ["user:secret", "ghp_fakeSecret", "fakeBearer", "fakePassword"] {
-				XCTAssertFalse(message.contains(secret))
+				#expect(!(message.contains(secret)))
 			}
 		}
 	}
 
+	@Test
 	func testIsolatedOperationsNeverOpenAnInteractiveEditor() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -334,9 +344,10 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 			at: repositoryURL,
 			environment: ["GIT_EDITOR": "external-editor"]
 		)
-		XCTAssertEqual(result.standardOutput, "/usr/bin/true\n/usr/bin/true\nno\n")
+		#expect(result.standardOutput == "/usr/bin/true\n/usr/bin/true\nno\n")
 	}
 
+	@Test
 	func testIdentityQuotesRoundTripThroughGit() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -349,9 +360,10 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 		)
 		let result = try await runner.requestRun(
 			arguments: ["config", "--global", "user.name"], at: repositoryURL)
-		XCTAssertEqual(result.standardOutput.trimmingCharacters(in: .newlines), name)
+		#expect(result.standardOutput.trimmingCharacters(in: .newlines) == name)
 	}
 
+	@Test
 	func testAppConfigurationOverridesInheritedGlobalConfigAndRuntimeInjection() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -375,10 +387,11 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 				"GIT_CONFIG_VALUE_0": "Injected Author",
 			]
 		)
-		XCTAssertEqual(
-			result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines), "Groves Author")
+		#expect(
+			result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines) == "Groves Author")
 	}
 
+	@Test
 	func testLocalRepositoryIdentityStillTakesPrecedence() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -391,10 +404,10 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 		_ = try await runner.requestRun(
 			arguments: ["config", "--local", "user.name", "Local Author"], at: repositoryURL)
 		let result = try await runner.requestRun(arguments: ["config", "user.name"], at: repositoryURL)
-		XCTAssertEqual(
-			result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines), "Local Author")
+		#expect(result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines) == "Local Author")
 	}
 
+	@Test
 	func testExternalCredentialHelperIsNotExecuted() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -420,10 +433,11 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 			standardInput: "protocol=https\nhost=github.com\n\n",
 			isNetworkOperation: true
 		)
-		XCTAssertTrue(result.standardOutput.contains("username=groves"))
-		XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
+		#expect(result.standardOutput.contains("username=groves"))
+		#expect(!(FileManager.default.fileExists(atPath: markerURL.path)))
 	}
 
+	@Test
 	func testSSHStopsWithHTTPSMigrationGuidance() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -436,9 +450,9 @@ final class GitIsolatedConfigurationTests: XCTestCase {
 			_ = try await runner.requestRun(
 				arguments: ["status"], at: repositoryURL, isNetworkOperation: true,
 				requiresSSHTrustScope: true)
-			XCTFail("Expected HTTPS guidance")
+			Issue.record("Expected HTTPS guidance")
 		} catch GitRepositoryError.authentication(let message) {
-			XCTAssertTrue(message.contains("HTTPS"))
+			#expect(message.contains("HTTPS"))
 		}
 	}
 }

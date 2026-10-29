@@ -1,6 +1,6 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import CoreRepositoryDiff
 @testable import FeatureRepositoryChanges
@@ -10,7 +10,9 @@ import XCTest
 @testable import Groves
 
 @MainActor
-final class WorkspaceViewModelTests: XCTestCase {
+@Suite(.serialized)
+struct WorkspaceViewModelTests {
+	@Test
 	func testRefreshKeepsLoadedWorkspaceContentVisible() async throws {
 		let workspace = makeRepositoryWorkspace()
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
@@ -18,11 +20,12 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		workspace.viewModel.didRequestRefresh()
 
-		XCTAssertTrue(workspace.viewModel.isLoading)
-		XCTAssertFalse(workspace.viewModel.isLoadingContent)
+		#expect(workspace.viewModel.isLoading)
+		#expect(!(workspace.viewModel.isLoadingContent))
 		try await waitUntil { !workspace.viewModel.isLoading }
 	}
 
+	@Test
 	func testRepositoryMonitorDoesNotRetainWorkspaceViewModel() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory.appending(
 			path: "GrovesMonitorLifetime-\(UUID().uuidString)",
@@ -45,6 +48,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { weakViewModel == nil }
 	}
 
+	@Test
 	func testResumingRepositoryMonitoringRefreshesMissedChanges() async throws {
 		let contentGate = GitDiffGate()
 		let workspace = makeRepositoryWorkspace(
@@ -70,6 +74,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		)
 	}
 
+	@Test
 	func testStagedAndUnstagedSelectionsUseIndependentDiffSources() async throws {
 		let change = WorkingTreeChange(
 			path: "GalleryView.swift",
@@ -91,14 +96,15 @@ final class WorkspaceViewModelTests: XCTestCase {
 		workspace.changesViewModel.selectedChangeIDs = [.staged(change.id)]
 		workspace.changesViewModel.didChangeSelectedChanges()
 		try await waitUntil { workspace.changesDiffViewModel.diff == "cached diff" }
-		XCTAssertEqual(workspace.changesViewModel.selectedFileState, .modified)
+		#expect(workspace.changesViewModel.selectedFileState == .modified)
 
 		workspace.changesViewModel.selectedChangeIDs = [.unstaged(change.id)]
 		workspace.changesViewModel.didChangeSelectedChanges()
 		try await waitUntil { workspace.changesDiffViewModel.diff == "working tree diff" }
-		XCTAssertEqual(workspace.changesViewModel.selectedFileState, .modified)
+		#expect(workspace.changesViewModel.selectedFileState == .modified)
 	}
 
+	@Test
 	func testPushActionUsesUpstreamOrModelsRemoteChoice() async throws {
 		let trackedBranch = GitBranch(
 			name: "main",
@@ -120,7 +126,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		)
 		trackedWorkspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Tracked"))
 		try await waitUntil { trackedWorkspace.referencesViewModel.currentBranch == trackedBranch }
-		XCTAssertEqual(trackedWorkspace.syncViewModel.pushAction, .upstream)
+		#expect(trackedWorkspace.syncViewModel.pushAction == .upstream)
 
 		let singleRemoteWorkspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(branches: [untrackedBranch], remotes: [origin])
@@ -129,10 +135,9 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil {
 			singleRemoteWorkspace.referencesViewModel.currentBranch == untrackedBranch
 		}
-		XCTAssertEqual(
-			singleRemoteWorkspace.syncViewModel.pushAction,
-			.setUpstream(remoteName: "origin", branchName: "feature/push")
-		)
+		#expect(
+			singleRemoteWorkspace.syncViewModel.pushAction
+				== .setUpstream(remoteName: "origin", branchName: "feature/push"))
 
 		let multipleRemoteWorkspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(
@@ -144,15 +149,15 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil {
 			multipleRemoteWorkspace.referencesViewModel.currentBranch == untrackedBranch
 		}
-		XCTAssertEqual(
-			multipleRemoteWorkspace.syncViewModel.pushAction,
-			.chooseRemote(
-				remoteNames: ["origin", "upstream"],
-				branchName: "feature/push"
-			)
-		)
+		#expect(
+			multipleRemoteWorkspace.syncViewModel.pushAction
+				== .chooseRemote(
+					remoteNames: ["origin", "upstream"],
+					branchName: "feature/push"
+				))
 	}
 
+	@Test
 	func testForcePushRequiresConfirmationAndUsesCapturedRemote() async throws {
 		let recorder = GitRepositoryRecorder()
 		let branch = GitBranch(
@@ -179,11 +184,11 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		guard case .forcePush(let remoteName) = workspace.syncViewModel.pendingConfirmation
 		else {
-			return XCTFail("Expected a force-push confirmation")
+			Issue.record("Expected a force-push confirmation")
+			return
 		}
-		XCTAssertEqual(remoteName, "upstream")
-		XCTAssertEqual(
-			workspace.syncViewModel.forcePushConfirmationTitle, "Force Push feature/force-push?")
+		#expect(remoteName == "upstream")
+		#expect(workspace.syncViewModel.forcePushConfirmationTitle == "Force Push feature/force-push?")
 
 		workspace.syncViewModel.didConfirmPendingConfirmation()
 
@@ -191,9 +196,10 @@ final class WorkspaceViewModelTests: XCTestCase {
 			.forcePush(.setUpstream(remoteName: "upstream", branchName: branch.name)),
 			by: recorder
 		)
-		XCTAssertNil(workspace.syncViewModel.pendingConfirmation)
+		#expect(workspace.syncViewModel.pendingConfirmation == nil)
 	}
 
+	@Test
 	func testPushTagsUsesSelectedRemote() async throws {
 		let recorder = GitRepositoryRecorder()
 		let origin = GitRemote(name: "origin", fetchURL: nil, pushURL: nil)
@@ -208,6 +214,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntilRecorded(.pushTags(remoteName: origin.name), by: recorder)
 	}
 
+	@Test
 	func testRepositoryOperationStateIsLoadedIntoWorkspace() async throws {
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(operationState: .rebaseInProgress)
@@ -216,9 +223,10 @@ final class WorkspaceViewModelTests: XCTestCase {
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Rebase"))
 		try await waitUntil { workspace.operationViewModel.operationState == .rebaseInProgress }
 
-		XCTAssertEqual(workspace.referencesViewModel.currentBranchStatus, "Rebase in Progress")
+		#expect(workspace.referencesViewModel.currentBranchStatus == "Rebase in Progress")
 	}
 
+	@Test
 	func testConflictsAreExcludedFromStagedAndUnstagedSections() async throws {
 		let change = WorkingTreeChange(
 			path: "Sources/Conflict.swift",
@@ -248,23 +256,25 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { workspace.changesViewModel.conflicts == [conflict] }
 		try await waitUntil { workspace.conflictViewModel.content != nil }
 
-		XCTAssertEqual(workspace.changesViewModel.filteredConflicts, [conflict])
-		XCTAssertTrue(workspace.changesViewModel.filteredStagedChanges.isEmpty)
-		XCTAssertTrue(workspace.changesViewModel.filteredUnstagedChanges.isEmpty)
-		XCTAssertEqual(workspace.changesViewModel.selectedChangeIDs, [.conflict(conflict.path)])
+		#expect(workspace.changesViewModel.filteredConflicts == [conflict])
+		#expect(workspace.changesViewModel.filteredStagedChanges.isEmpty)
+		#expect(workspace.changesViewModel.filteredUnstagedChanges.isEmpty)
+		#expect(workspace.changesViewModel.selectedChangeIDs == [.conflict(conflict.path)])
 
 		await workspace.changesViewModel.didSelectChanges([])
 
-		XCTAssertNil(workspace.conflictViewModel.content)
+		#expect(workspace.conflictViewModel.content == nil)
 	}
 
+	@Test
 	func testExternalEditorUsesConfiguredApplicationAndIgnoresDeletedConflict() async throws {
+		let previousEditor = UserDefaults.standard.object(forKey: "externalEditorBundleIdentifier")
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.appending(path: "GrovesExternalEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
-			UserDefaults.standard.removeObject(forKey: "externalEditorBundleIdentifier")
+			UserDefaults.standard.set(previousEditor, forKey: "externalEditorBundleIdentifier")
 		}
 		let conflict = GitConflict(
 			path: "Conflict.swift",
@@ -283,13 +293,14 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		workspace.conflictViewModel.didOpenInEditor(conflict)
 
-		XCTAssertEqual(opener.openedFileURL, fileURL)
-		XCTAssertEqual(opener.applicationBundleIdentifier, "com.example.Editor")
+		#expect(opener.openedFileURL == fileURL)
+		#expect(opener.applicationBundleIdentifier == "com.example.Editor")
 		try FileManager.default.removeItem(at: fileURL)
 		workspace.conflictViewModel.didOpenInEditor(conflict)
-		XCTAssertEqual(opener.invocationCount, 1)
+		#expect(opener.invocationCount == 1)
 	}
 
+	@Test
 	func testUnavailableExternalEditorShowsSettingsRecovery() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.appending(path: "GrovesMissingEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -311,12 +322,12 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		workspace.conflictViewModel.didOpenInEditor(conflict)
 
-		XCTAssertEqual(
-			workspace.viewModel.alertMessage,
-			"The selected editor is unavailable. Choose another app in Settings."
-		)
+		#expect(
+			workspace.viewModel.alertMessage
+				== "The selected editor is unavailable. Choose another app in Settings.")
 	}
 
+	@Test
 	func testMergeBranchUsesExplicitContextMenuBranch() async throws {
 		let recorder = GitRepositoryRecorder()
 		let currentBranch = GitBranch(
@@ -340,8 +351,8 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntil { workspace.referencesViewModel.currentBranch == currentBranch }
-		XCTAssertTrue(workspace.operationViewModel.canMergeBranch(mergeBranch))
-		XCTAssertFalse(workspace.operationViewModel.canMergeBranch(currentBranch))
+		#expect(workspace.operationViewModel.canMergeBranch(mergeBranch))
+		#expect(!(workspace.operationViewModel.canMergeBranch(currentBranch)))
 
 		workspace.operationViewModel.didRequestMergeBranch(mergeBranch)
 		try await waitUntilRecorded(
@@ -350,6 +361,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		)
 	}
 
+	@Test
 	func testCreateTagUsesExplicitContextMenuCommit() async throws {
 		let recorder = GitRepositoryRecorder()
 		let selectedCommit = GitCommit(
@@ -397,10 +409,11 @@ final class WorkspaceViewModelTests: XCTestCase {
 		)
 		try await waitUntil { workspace.referencesViewModel.pendingTagCommit == nil }
 
-		XCTAssertTrue(workspace.referencesViewModel.newTagName.isEmpty)
-		XCTAssertTrue(workspace.referencesViewModel.newTagMessage.isEmpty)
+		#expect(workspace.referencesViewModel.newTagName.isEmpty)
+		#expect(workspace.referencesViewModel.newTagMessage.isEmpty)
 	}
 
+	@Test
 	func testDeleteTagUsesExplicitContextMenuTag() async throws {
 		let recorder = GitRepositoryRecorder()
 		let tag = GitTag(
@@ -420,13 +433,11 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		guard case .deleteTag(let pendingTag) = workspace.referencesViewModel.pendingConfirmation
 		else {
-			return XCTFail("Expected a tag-deletion confirmation")
+			Issue.record("Expected a tag-deletion confirmation")
+			return
 		}
-		XCTAssertEqual(pendingTag, tag)
-		XCTAssertEqual(
-			workspace.referencesViewModel.pendingConfirmation?.title,
-			"Delete “release/1.0.0”"
-		)
+		#expect(pendingTag == tag)
+		#expect(workspace.referencesViewModel.pendingConfirmation?.title == "Delete “release/1.0.0”")
 
 		workspace.referencesViewModel.didConfirmPendingConfirmation()
 
@@ -434,6 +445,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { workspace.referencesViewModel.pendingConfirmation == nil }
 	}
 
+	@Test
 	func testOpeningBranchFocusesLatestCommitInHistory() async throws {
 		let commits = (0...10).map { index in
 			GitCommit(
@@ -463,11 +475,12 @@ final class WorkspaceViewModelTests: XCTestCase {
 		workspace.historyViewModel.didOpenBranch(branch)
 		try await waitUntil { workspace.historyViewModel.selectedCommitID == "commit-7" }
 
-		XCTAssertEqual(workspace.viewModel.selectedSection, .history)
-		XCTAssertEqual(workspace.referencesViewModel.selectedBranchID, branch.id)
-		XCTAssertEqual(workspace.historyViewModel.historyFocusRequest?.commitID, "commit-7")
+		#expect(workspace.viewModel.selectedSection == .history)
+		#expect(workspace.referencesViewModel.selectedBranchID == branch.id)
+		#expect(workspace.historyViewModel.historyFocusRequest?.commitID == "commit-7")
 	}
 
+	@Test
 	func testOpeningRemoteBranchFocusesLatestCommitInHistory() async throws {
 		let commit = GitCommit(
 			hash: "remote-commit",
@@ -501,11 +514,12 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		workspace.historyViewModel.didOpenRemoteBranch(branch)
 
-		XCTAssertEqual(workspace.viewModel.selectedSection, .history)
-		XCTAssertEqual(workspace.remotesViewModel.selectedRemoteID, remote.id)
-		XCTAssertEqual(workspace.historyViewModel.historyFocusRequest?.commitID, commit.id)
+		#expect(workspace.viewModel.selectedSection == .history)
+		#expect(workspace.remotesViewModel.selectedRemoteID == remote.id)
+		#expect(workspace.historyViewModel.historyFocusRequest?.commitID == commit.id)
 	}
 
+	@Test
 	func testOpeningTagFocusesDistantCommitInCompleteHistory() async throws {
 		let lastIndex = 600
 		let commits = (0...lastIndex).map { index in
@@ -537,11 +551,12 @@ final class WorkspaceViewModelTests: XCTestCase {
 		workspace.historyViewModel.didOpenTag(tag)
 		try await waitUntil { workspace.historyViewModel.selectedCommitID == tag.targetHash }
 
-		XCTAssertEqual(workspace.historyViewModel.commitGraphItems.count, commits.count)
-		XCTAssertEqual(workspace.viewModel.selectedSection, .history)
-		XCTAssertEqual(workspace.historyViewModel.historyFocusRequest?.commitID, tag.targetHash)
+		#expect(workspace.historyViewModel.commitGraphItems.count == commits.count)
+		#expect(workspace.viewModel.selectedSection == .history)
+		#expect(workspace.historyViewModel.historyFocusRequest?.commitID == tag.targetHash)
 	}
 
+	@Test
 	func testViewModelOwnsChangeFilteringAndDiscardPresentation() async throws {
 		let swiftChange = WorkingTreeChange(
 			path: "Sources/GalleryView.swift",
@@ -563,8 +578,8 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { workspace.changesViewModel.changes.count == 2 }
 		workspace.changesViewModel.filterText = "gallery"
 
-		XCTAssertEqual(workspace.changesViewModel.filteredStagedChanges, [swiftChange])
-		XCTAssertEqual(workspace.changesViewModel.filteredUnstagedChanges, [swiftChange])
+		#expect(workspace.changesViewModel.filteredStagedChanges == [swiftChange])
+		#expect(workspace.changesViewModel.filteredUnstagedChanges == [swiftChange])
 
 		workspace.changesViewModel.didPresentDiscardConfirmation(
 			for: [swiftChange, markdownChange]
@@ -572,19 +587,18 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		guard case .discard(let pendingChanges) = workspace.changesViewModel.pendingConfirmation
 		else {
-			return XCTFail("Expected a discard confirmation")
+			Issue.record("Expected a discard confirmation")
+			return
 		}
-		XCTAssertEqual(pendingChanges, [swiftChange, markdownChange])
-		XCTAssertEqual(
-			workspace.changesViewModel.pendingConfirmation?.title,
-			"Discard Changes to 2 Files?"
-		)
+		#expect(pendingChanges == [swiftChange, markdownChange])
+		#expect(workspace.changesViewModel.pendingConfirmation?.title == "Discard Changes to 2 Files?")
 
 		workspace.changesViewModel.didDismissPendingConfirmation()
 
-		XCTAssertNil(workspace.changesViewModel.pendingConfirmation)
+		#expect(workspace.changesViewModel.pendingConfirmation == nil)
 	}
 
+	@Test
 	func testViewModelOwnsSidebarTreeAndNewBranchPresentationState() async {
 		let workspace = makeRepositoryWorkspace()
 		let repositoryID = UUID()
@@ -595,24 +609,25 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		workspace.viewModel.didPrepareSidebar(repositoryID: repositoryID)
 
-		XCTAssertTrue(workspace.viewModel.expandedSidebarGroups.contains(branchesGroup))
+		#expect(workspace.viewModel.expandedSidebarGroups.contains(branchesGroup))
 
 		workspace.viewModel.setSidebarGroup(branchesGroup, isExpanded: false)
 		workspace.treeViewModel.setTreeNode("Sources", isExpanded: true)
 		workspace.referencesViewModel.didPresentNewBranch()
 		workspace.referencesViewModel.newBranchName = "feature/view-model-state"
 
-		XCTAssertFalse(workspace.viewModel.expandedSidebarGroups.contains(branchesGroup))
-		XCTAssertTrue(workspace.treeViewModel.expandedTreeNodeIDs.contains("Sources"))
-		XCTAssertTrue(workspace.referencesViewModel.isPresentingNewBranch)
-		XCTAssertEqual(workspace.referencesViewModel.newBranchName, "feature/view-model-state")
+		#expect(!(workspace.viewModel.expandedSidebarGroups.contains(branchesGroup)))
+		#expect(workspace.treeViewModel.expandedTreeNodeIDs.contains("Sources"))
+		#expect(workspace.referencesViewModel.isPresentingNewBranch)
+		#expect(workspace.referencesViewModel.newBranchName == "feature/view-model-state")
 
 		workspace.referencesViewModel.didDismissNewBranch()
 
-		XCTAssertFalse(workspace.referencesViewModel.isPresentingNewBranch)
-		XCTAssertTrue(workspace.referencesViewModel.newBranchName.isEmpty)
+		#expect(!(workspace.referencesViewModel.isPresentingNewBranch))
+		#expect(workspace.referencesViewModel.newBranchName.isEmpty)
 	}
 
+	@Test
 	func testSelectionEventsPublishAfterSwiftUIUpdateCycle() async throws {
 		let change = WorkingTreeChange(
 			path: "GalleryView.swift",
@@ -628,9 +643,10 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 		await workspace.changesViewModel.didSelectChanges([.unstaged(change.id)])
 
-		XCTAssertEqual(workspace.changesViewModel.selectedChangeIDs, [.unstaged(change.id)])
+		#expect(workspace.changesViewModel.selectedChangeIDs == [.unstaged(change.id)])
 	}
 
+	@Test
 	func testIgnoreAllWhitespaceDisablesPartialActionsOnly() async throws {
 		let change = WorkingTreeChange(
 			path: "GalleryView.swift",
@@ -645,17 +661,18 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 		workspace.changesViewModel.selectedChangeIDs = [.unstaged(change.id)]
 
-		XCTAssertEqual(workspace.changesDiffViewModel.selectedDiffLineAction, .stage)
-		XCTAssertEqual(workspace.changesDiffViewModel.selectedDiffHunkActions, [.stage, .discard])
-		XCTAssertEqual(workspace.changesViewModel.selectedStageableChanges, [change])
+		#expect(workspace.changesDiffViewModel.selectedDiffLineAction == .stage)
+		#expect(workspace.changesDiffViewModel.selectedDiffHunkActions == [.stage, .discard])
+		#expect(workspace.changesViewModel.selectedStageableChanges == [change])
 
 		workspace.diffPreferences.options.ignoresWhitespace = true
 
-		XCTAssertNil(workspace.changesDiffViewModel.selectedDiffLineAction)
-		XCTAssertTrue(workspace.changesDiffViewModel.selectedDiffHunkActions.isEmpty)
-		XCTAssertEqual(workspace.changesViewModel.selectedStageableChanges, [change])
+		#expect(workspace.changesDiffViewModel.selectedDiffLineAction == nil)
+		#expect(workspace.changesDiffViewModel.selectedDiffHunkActions.isEmpty)
+		#expect(workspace.changesViewModel.selectedStageableChanges == [change])
 	}
 
+	@Test
 	func testPartialDiffMutationReloadsUnchangedSelection() async throws {
 		let recorder = GitRepositoryRecorder()
 		let change = WorkingTreeChange(
@@ -681,9 +698,10 @@ final class WorkspaceViewModelTests: XCTestCase {
 
 		try await waitUntilRecorded(.applyDiffLine(.stage), by: recorder)
 		try await waitUntilRecordedCount(.loadDiff(.unstaged), count: 2, by: recorder)
-		XCTAssertEqual(workspace.changesViewModel.selectedChangeIDs, [.unstaged(change.id)])
+		#expect(workspace.changesViewModel.selectedChangeIDs == [.unstaged(change.id)])
 	}
 
+	@Test
 	func testHistorySearchFiltersMetadataAfterDebounce() async throws {
 		let first = GitCommit(
 			hash: "1111111111111111111111111111111111111111",
@@ -729,6 +747,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { workspace.historyViewModel.displayedCommitGraphItems.isEmpty }
 	}
 
+	@Test
 	func testCreateBranchFromCommitAndCheckoutCommitUseExplicitCommit() async throws {
 		let recorder = GitRepositoryRecorder()
 		let commit = GitCommit(
@@ -761,6 +780,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntilRecorded(.checkoutCommit(commit.hash), by: recorder)
 	}
 
+	@Test
 	func testDetachedHeadDisablesBranchDependentActions() async throws {
 		let change = WorkingTreeChange(
 			path: "staged.swift",
@@ -789,9 +809,9 @@ final class WorkspaceViewModelTests: XCTestCase {
 		try await waitUntil { workspace.operationViewModel.operationState.isDetached }
 		workspace.commitViewModel.subject = "Blocked commit"
 
-		XCTAssertFalse(workspace.commitViewModel.canCommit)
-		XCTAssertFalse(workspace.commitViewModel.canAmendCommit)
-		XCTAssertEqual(workspace.syncViewModel.pushAction, .unavailable)
+		#expect(!(workspace.commitViewModel.canCommit))
+		#expect(!(workspace.commitViewModel.canAmendCommit))
+		#expect(workspace.syncViewModel.pushAction == .unavailable)
 	}
 
 	private func waitUntil(
@@ -802,7 +822,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
@@ -818,7 +838,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !(await recorder.recordedEvents().contains(event)) {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for repository event")
+				Issue.record("Timed out waiting for repository event")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
@@ -835,7 +855,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while await recorder.recordedEvents().filter({ $0 == event }).count < count {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for repository event count")
+				Issue.record("Timed out waiting for repository event count")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
@@ -852,7 +872,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while await gate.callCount(of: label) < count {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for call count")
+				Issue.record("Timed out waiting for call count")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

@@ -1,23 +1,26 @@
 import CoreRepositoryDiff
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import FeatureRepositoryHistory
 
 @MainActor
-final class HistoryViewModelTests: XCTestCase {
+struct HistoryViewModelTests {
+	@Test
 	func testCommitGraphLayoutIsBuiltOffTheMainActor() async throws {
 		let viewModel = makeViewModel()
 		let commits = [makeCommit(index: 0), makeCommit(index: 1)]
 
 		viewModel.apply(makeSnapshot(commits: commits))
 
-		XCTAssertTrue(viewModel.commitGraphItems.isEmpty)
+		#expect(viewModel.commitGraphItems.isEmpty)
 		try await waitUntil { viewModel.commitGraphItems.isEmpty == false }
-		XCTAssertEqual(viewModel.commitGraphItems.map(\.commit), commits)
-		XCTAssertEqual(viewModel.displayedCommitGraphItems.map(\.commit), commits)
+		#expect(viewModel.commitGraphItems.map(\.commit) == commits)
+		#expect(viewModel.displayedCommitGraphItems.map(\.commit) == commits)
 	}
 
+	@Test
 	func testResetDiscardsAPendingCommitGraphLayout() async throws {
 		let viewModel = makeViewModel()
 
@@ -25,10 +28,11 @@ final class HistoryViewModelTests: XCTestCase {
 		viewModel.reset()
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertTrue(viewModel.commitGraphItems.isEmpty)
-		XCTAssertTrue(viewModel.displayedCommitGraphItems.isEmpty)
+		#expect(viewModel.commitGraphItems.isEmpty)
+		#expect(viewModel.displayedCommitGraphItems.isEmpty)
 	}
 
+	@Test
 	func testSupersededSnapshotNeverRequestsItsCommitDiff() async throws {
 		let seed = makeCommit(index: 0)
 		let superseded = makeCommit(index: 1)
@@ -46,9 +50,10 @@ final class HistoryViewModelTests: XCTestCase {
 		try await waitUntil { viewModel.commitGraphItems.map(\.commit) == [latest] }
 		try await waitUntilCallCount(1, commitHash: latest.hash, in: useCase)
 		let supersededRequestCount = await useCase.callCount(forCommit: superseded.hash)
-		XCTAssertEqual(supersededRequestCount, 0)
+		#expect(supersededRequestCount == 0)
 	}
 
+	@Test
 	func testSnapshotArrivingDuringASearchReRunsTheFilter() async throws {
 		let viewModel = makeViewModel()
 		let matching = makeCommit(index: 1, subject: "Add the release checklist")
@@ -60,10 +65,11 @@ final class HistoryViewModelTests: XCTestCase {
 		viewModel.apply(makeSnapshot(commits: [matching, makeCommit(index: 0)]))
 
 		try await waitUntil { viewModel.displayedCommitGraphItems.map(\.commit) == [matching] }
-		XCTAssertEqual(viewModel.commitGraphItems.count, 2)
-		XCTAssertEqual(viewModel.searchText, "release")
+		#expect(viewModel.commitGraphItems.count == 2)
+		#expect(viewModel.searchText == "release")
 	}
 
+	@Test
 	func testSearchResultsOfASupersededSnapshotAreDiscarded() async throws {
 		let viewModel = makeViewModel()
 		let staleMatch = makeCommit(index: 1, subject: "Add the release checklist")
@@ -76,9 +82,10 @@ final class HistoryViewModelTests: XCTestCase {
 
 		try await waitUntil { viewModel.displayedCommitGraphItems.map(\.commit) == [freshMatch] }
 		try await Task.sleep(for: .milliseconds(200))
-		XCTAssertEqual(viewModel.displayedCommitGraphItems.map(\.commit), [freshMatch])
+		#expect(viewModel.displayedCommitGraphItems.map(\.commit) == [freshMatch])
 	}
 
+	@Test
 	func testSelectionIsPreservedByCommitHashAcrossSnapshots() async throws {
 		let viewModel = makeViewModel()
 		let first = makeCommit(index: 0)
@@ -91,9 +98,10 @@ final class HistoryViewModelTests: XCTestCase {
 		viewModel.apply(makeSnapshot(commits: [latest, first, second]))
 
 		try await waitUntil { viewModel.commitGraphItems.count == 3 }
-		XCTAssertEqual(viewModel.selectedCommitID, second.id)
+		#expect(viewModel.selectedCommitID == second.id)
 	}
 
+	@Test
 	func testSearchIsDebouncedBeforeFiltering() async throws {
 		let viewModel = makeViewModel()
 		let commits = [makeCommit(index: 0), makeCommit(index: 1, subject: "Cut the release")]
@@ -103,10 +111,11 @@ final class HistoryViewModelTests: XCTestCase {
 		viewModel.didChangeSearchText("rel")
 		viewModel.didChangeSearchText("release")
 
-		XCTAssertEqual(viewModel.displayedCommitGraphItems.count, 2)
+		#expect(viewModel.displayedCommitGraphItems.count == 2)
 		try await waitUntil { viewModel.displayedCommitGraphItems.map(\.commit) == [commits[1]] }
 	}
 
+	@Test
 	func testRunningLayoutDoesNotRetainViewModel() {
 		let commits = (0..<10_000).map { makeCommit(index: $0) }
 		weak var weakViewModel: HistoryViewModel?
@@ -116,9 +125,10 @@ final class HistoryViewModelTests: XCTestCase {
 			weakViewModel = viewModel
 		}
 
-		XCTAssertNil(weakViewModel)
+		#expect(weakViewModel == nil)
 	}
 
+	@Test
 	func testWorkingTreeAvailabilityUpdatesWithoutCommitHistoryChanges() {
 		let viewModel = makeViewModel()
 		let commits = [makeCommit(index: 0)]
@@ -138,7 +148,7 @@ final class HistoryViewModelTests: XCTestCase {
 			)
 		)
 
-		XCTAssertTrue(viewModel.checkoutAvailability.hasWorkingTreeChanges)
+		#expect(viewModel.checkoutAvailability.hasWorkingTreeChanges)
 	}
 
 	private func makeViewModel(
@@ -199,7 +209,7 @@ final class HistoryViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while await useCase.callCount(forCommit: commitHash) < count {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for diff requests")
+				Issue.record("Timed out waiting for diff requests")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
@@ -214,7 +224,7 @@ final class HistoryViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
