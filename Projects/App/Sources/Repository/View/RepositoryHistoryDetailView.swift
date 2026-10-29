@@ -51,9 +51,11 @@ struct RepositoryHistoryDetailView: View {
 			repositoryName: repositoryName,
 			currentBranchStatus: referencesViewModel.currentBranchStatus,
 			operationState: operationViewModel.operationState,
-			isOperationLoading: operationViewModel.isLoading || syncViewModel.isLoading,
+			isOperationLoading: operationViewModel.isLoading || syncViewModel.isLoading
+				|| referencesViewModel.isLoading,
 			canCheckoutCommit: referencesViewModel.canCheckoutCommit
-				&& !checkoutAvailability.hasWorkingTreeChanges,
+				&& !checkoutAvailability.hasWorkingTreeChanges
+				&& !operationViewModel.isLoading && !syncViewModel.isLoading,
 			remoteNames: Set(remotesViewModel.remotes.map(\.name)),
 			commitActions: commitActions,
 			onDiffOptionsChanged: onDiffOptionsChanged

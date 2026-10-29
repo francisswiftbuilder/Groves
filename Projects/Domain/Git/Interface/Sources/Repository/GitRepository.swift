@@ -119,7 +119,10 @@ public protocol GitRepository: Sendable {
 		for operation: RepositoryOperationKind,
 		at repositoryURL: URL
 	) async throws
-	func requestReset(to commitHash: String, mode: GitResetMode, at repositoryURL: URL) async throws
+	func requestReset(
+		to commitHash: String, mode: GitResetMode, expecting context: GitResetContext,
+		at repositoryURL: URL
+	) async throws
 	func requestCreateTag(
 		named name: String,
 		message: String,

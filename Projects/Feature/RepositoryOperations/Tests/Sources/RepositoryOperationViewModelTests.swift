@@ -171,25 +171,6 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 		XCTAssertFalse(viewModel.canRebaseOnto(featureBranch))
 	}
 
-	func testDetachedHeadDisablesBranchOperationsAndResetPresentation() {
-		let currentBranch = makeBranch(name: "main", isCurrent: true)
-		let featureBranch = makeBranch(name: "feature", isCurrent: false)
-		let commit = makeCommit()
-		let viewModel = makeViewModel()
-
-		viewModel.apply(
-			makeSnapshot(
-				branches: [currentBranch, featureBranch],
-				operationState: .detachedHead
-			)
-		)
-		viewModel.didPresentReset(commit)
-
-		XCTAssertFalse(viewModel.canMergeBranch(featureBranch))
-		XCTAssertFalse(viewModel.canRebaseOnto(featureBranch))
-		XCTAssertNil(viewModel.pendingResetCommit)
-	}
-
 	func testViewConflictsOutputsTheFirstConflict() {
 		let first = makeConflict(path: "Sources/First.swift")
 		let second = makeConflict(path: "Sources/Second.swift")

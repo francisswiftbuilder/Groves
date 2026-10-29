@@ -8,8 +8,8 @@ struct RepositorySidebar: View {
 	let viewModel: WorkspaceViewModel
 	@ObservedObject var windowViewModel: RepositoryWindowViewModel
 	let changesViewModel: ChangesViewModel
-	let operationViewModel: RepositoryOperationViewModel
-	let referencesViewModel: RepositoryReferencesViewModel
+	@ObservedObject var operationViewModel: RepositoryOperationViewModel
+	@ObservedObject var referencesViewModel: RepositoryReferencesViewModel
 	let remotesViewModel: RemotesViewModel
 	let stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
@@ -27,8 +27,8 @@ struct RepositorySidebar: View {
 		self.viewModel = viewModel
 		self.windowViewModel = windowViewModel
 		self.changesViewModel = changesViewModel
-		self.operationViewModel = operationViewModel
-		self.referencesViewModel = referencesViewModel
+		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
+		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
 		self.remotesViewModel = remotesViewModel
 		self.stashesViewModel = stashesViewModel
 		self.repositoryID = repositoryID
@@ -83,7 +83,8 @@ struct RepositorySidebar: View {
 						selectBranch(branch)
 						referencesViewModel.didRequestSwitchBranch()
 					}
-					.disabled(branch.isCurrent)
+					.disabled(
+						branch.isCurrent || operationViewModel.isLoading || referencesViewModel.isLoading)
 
 					if let currentBranch = referencesViewModel.currentBranch, !branch.isCurrent {
 						Button(

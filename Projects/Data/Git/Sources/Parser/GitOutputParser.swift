@@ -152,6 +152,7 @@ enum GitOutputParser {
 			return GitBranch(
 				name: fields[0],
 				shortHash: fields[1],
+				hash: fields.count > 5 ? fields[5] : nil,
 				upstream: fields[3].isEmpty ? nil : fields[3],
 				aheadCount: trackingCounts.ahead,
 				behindCount: trackingCounts.behind,

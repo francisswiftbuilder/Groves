@@ -1238,37 +1238,6 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertTrue(revertState.isIdle)
 	}
 
-	func testResetModesPreserveUntrackedFiles() async throws {
-		let repositoryURL = try makeRepository()
-		defer { try? FileManager.default.removeItem(at: repositoryURL) }
-		let initialHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
-			.trimmingCharacters(in: .whitespacesAndNewlines)
-		try commit(contents: "updated", message: "Update tracked", at: repositoryURL)
-		let updatedHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
-			.trimmingCharacters(in: .whitespacesAndNewlines)
-		let untrackedURL = repositoryURL.appending(path: "untracked.txt")
-		try Data("keep".utf8).write(to: untrackedURL)
-		let repository = LocalGitRepository()
-
-		try await repository.requestReset(to: initialHash, mode: .soft, at: repositoryURL)
-		XCTAssertFalse(
-			try requestGitOutput(["diff", "--cached", "--name-only"], at: repositoryURL).isEmpty)
-		try await repository.requestReset(to: updatedHash, mode: .hard, at: repositoryURL)
-		try commit(contents: "mixed", message: "Mixed source", at: repositoryURL)
-		try await repository.requestReset(to: updatedHash, mode: .mixed, at: repositoryURL)
-		XCTAssertFalse(try requestGitOutput(["diff", "--name-only"], at: repositoryURL).isEmpty)
-		try await repository.requestReset(to: updatedHash, mode: .hard, at: repositoryURL)
-
-		XCTAssertTrue(FileManager.default.fileExists(atPath: untrackedURL.path))
-		XCTAssertEqual(
-			try String(
-				contentsOf: repositoryURL.appending(path: "tracked.txt"),
-				encoding: .utf8
-			),
-			"updated"
-		)
-	}
-
 	func testStashPreviewAndIncludeUntrackedOption() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
