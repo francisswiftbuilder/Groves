@@ -36,6 +36,7 @@ public final class RemotesViewModel: ObservableObject {
 	@Published public var selectedRemoteID: String?
 	@Published public private(set) var remotes: [GitRemote] = []
 	@Published public private(set) var isLoading = false
+	@Published private(set) var mutationErrorMessage: String?
 	@Published var editorPresentation: RemoteEditorPresentation?
 	@Published var pendingRename: GitRemote?
 	@Published var pendingConfirmation: RepositoryRemoteConfirmation?
@@ -43,6 +44,10 @@ public final class RemotesViewModel: ObservableObject {
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var mutationTask: Task<Void, Never>?
+	private var activeMutationRequestID: Int?
+	private var mutationRequestSequence = 0
+	private var editorPresentationID = UUID()
+	private var renamePresentationID = UUID()
 
 	public init(
 		dependencies: Dependencies,
@@ -77,31 +82,38 @@ public final class RemotesViewModel: ObservableObject {
 	}
 
 	public func reset() {
-		mutationTask?.cancel()
-		mutationTask = nil
+		onDisappear()
 		selectedRemoteID = nil
 		remotes = []
 		isLoading = false
 		editorPresentation = nil
 		pendingRename = nil
 		pendingConfirmation = nil
+		mutationErrorMessage = nil
 	}
 
 	public func onDisappear() {
 		mutationTask?.cancel()
 		mutationTask = nil
+		activeMutationRequestID = nil
 		isLoading = false
 	}
 
 	public func didPresentAddRemote() {
+		editorPresentationID = UUID()
+		mutationErrorMessage = nil
 		editorPresentation = .add
 	}
 
 	public func didPresentEditor(_ remote: GitRemote) {
+		editorPresentationID = UUID()
+		mutationErrorMessage = nil
 		editorPresentation = .edit(remote)
 	}
 
 	public func didPresentRename(_ remote: GitRemote) {
+		renamePresentationID = UUID()
+		mutationErrorMessage = nil
 		pendingRename = remote
 	}
 
@@ -116,10 +128,12 @@ public final class RemotesViewModel: ObservableObject {
 	}
 
 	func didDismissEditor() {
+		editorPresentationID = UUID()
 		editorPresentation = nil
 	}
 
 	func didDismissRename() {
+		renamePresentationID = UUID()
 		pendingRename = nil
 	}
 
@@ -129,43 +143,60 @@ public final class RemotesViewModel: ObservableObject {
 
 	func didRequestAddRemote(name: String, fetchURL: String, pushURL: String?) {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let presentationID = editorPresentationID
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.addRemote(
+			try await referencesUseCase.addRemote(
 				named: name,
 				fetchURL: fetchURL,
 				pushURL: pushURL,
 				at: repositoryURL
 			)
+		} didSucceed: { [weak self] in
+			guard let self, self.editorPresentationID == presentationID else { return }
+			self.didDismissEditor()
 		}
 	}
 
 	func didRequestRename(_ remote: GitRemote, to newName: String) {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let presentationID = renamePresentationID
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			let snapshot = try await self.dependencies.referencesUseCase.renameRemote(
+			let snapshot = try await referencesUseCase.renameRemote(
 				named: remote.name,
 				to: newName,
 				at: repositoryURL
 			)
-			self.selectedRemoteID = newName
 			return snapshot
+		} didSucceed: { [weak self] in
+			guard let self else { return }
+			self.selectedRemoteID = newName
+			if self.renamePresentationID == presentationID {
+				self.didDismissRename()
+			}
 		}
 	}
 
 	func didRequestUpdate(_ remote: GitRemote, fetchURL: String, pushURL: String?) {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let presentationID = editorPresentationID
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.updateRemote(
+			try await referencesUseCase.updateRemote(
 				named: remote.name,
 				fetchURL: fetchURL,
 				pushURL: pushURL,
 				at: repositoryURL
 			)
+		} didSucceed: { [weak self] in
+			guard let self, self.editorPresentationID == presentationID else { return }
+			self.didDismissEditor()
 		}
 	}
 
 	func didConfirmPendingConfirmation() {
-		guard let confirmation = pendingConfirmation else { return }
+		guard !isLoading, let confirmation = pendingConfirmation else { return }
 		pendingConfirmation = nil
 		switch confirmation {
 		case .deleteRemote(let remote):
@@ -177,8 +208,9 @@ public final class RemotesViewModel: ObservableObject {
 
 	private func requestDelete(_ remote: GitRemote) {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.deleteRemote(
+			try await referencesUseCase.deleteRemote(
 				named: remote.name,
 				at: repositoryURL
 			)
@@ -187,8 +219,9 @@ public final class RemotesViewModel: ObservableObject {
 
 	private func requestDelete(_ branch: GitRemoteBranch) {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.deleteRemoteBranch(
+			try await referencesUseCase.deleteRemoteBranch(
 				branch,
 				at: repositoryURL
 			)
@@ -196,27 +229,52 @@ public final class RemotesViewModel: ObservableObject {
 	}
 
 	private func requestMutation(
-		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
+		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot,
+		didSucceed: @escaping @MainActor () -> Void = {}
 	) {
-		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
+		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		mutationTask?.cancel()
-		mutationTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		mutationRequestSequence += 1
+		let requestID = mutationRequestSequence
+		activeMutationRequestID = requestID
+		isLoading = true
+		mutationErrorMessage = nil
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let snapshot = try await operation()
 				try Task.checkCancellation()
+				guard let self, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
+				didSucceed()
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
+				mutationErrorMessage = error.localizedDescription
 				actions.didReceiveError(error.localizedDescription)
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: expectedRepositoryURL
 				) {
+					guard !Task.isCancelled, activeMutationRequestID == requestID,
+						dependencies.repositoryURL() == expectedRepositoryURL
+					else { return }
 					actions.didProduceSnapshot(snapshot)
 				}
 			}
 		}
 	}
+
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isLoading = false
+	}
+
 }

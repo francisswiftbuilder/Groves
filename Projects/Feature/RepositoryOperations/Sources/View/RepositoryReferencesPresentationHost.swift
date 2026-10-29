@@ -21,6 +21,9 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 			.sheet(isPresented: newBranchPresentation) {
 				NewBranchSheet(
 					name: $viewModel.newBranchName,
+					startCommit: viewModel.pendingBranchStartCommit,
+					isLoading: viewModel.isLoading,
+					errorMessage: viewModel.mutationErrorMessage,
 					onCancel: viewModel.didDismissNewBranch,
 					onCreate: viewModel.didRequestCreateBranch
 				)
@@ -31,13 +34,18 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 						commit: commit,
 						name: $viewModel.newTagName,
 						message: $viewModel.newTagMessage,
+						isLoading: viewModel.isLoading,
+						errorMessage: viewModel.mutationErrorMessage,
 						onCancel: viewModel.didDismissNewTag,
 						onCreate: viewModel.didRequestCreateTag
 					)
 				}
 			}
 			.sheet(item: $viewModel.pendingBranchRename) { _ in
-				BranchRenameSheet(name: $viewModel.branchRenameName) {
+				BranchRenameSheet(
+					name: $viewModel.branchRenameName, isLoading: viewModel.isLoading,
+					errorMessage: viewModel.mutationErrorMessage
+				) {
 					viewModel.didConfirmBranchRename()
 				}
 			}
