@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct StashesView: View {
 	private let diffSearchViewModel: RepositorySearchViewModel
-	@ObservedObject private var stashesViewModel: StashesViewModel
+	private let stashesViewModel: StashesViewModel
 	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
 	let onDiffOptionsChanged: () -> Void
 
@@ -16,7 +16,7 @@ public struct StashesView: View {
 		onDiffOptionsChanged: @escaping () -> Void
 	) {
 		self.diffSearchViewModel = diffSearchViewModel
-		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
+		self.stashesViewModel = stashesViewModel
 		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
 		self.onDiffOptionsChanged = onDiffOptionsChanged
 	}
@@ -93,7 +93,7 @@ public struct StashesView: View {
 				stashesViewModel.didDismissStashDrop()
 			}
 		} message: {
-			if let stash = stashesViewModel.pendingDrop {
+			if let stash = stashesViewModel.pendingDrop?.stash {
 				Text("\(stash.reference) · \(stash.subject) will be permanently removed.")
 			}
 		}

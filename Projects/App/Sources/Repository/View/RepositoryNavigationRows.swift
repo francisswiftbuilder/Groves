@@ -9,7 +9,7 @@ struct RepositoryNavigationRows: View {
 	private let changesViewModel: ChangesViewModel
 	private let referencesViewModel: RepositoryReferencesViewModel
 	private let remotesViewModel: RemotesViewModel
-	@ObservedObject private var stashesViewModel: StashesViewModel
+	private let stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
 	let onCreateBranch: () -> Void
 
@@ -26,7 +26,7 @@ struct RepositoryNavigationRows: View {
 		self.changesViewModel = changesViewModel
 		self.referencesViewModel = referencesViewModel
 		self.remotesViewModel = remotesViewModel
-		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
+		self.stashesViewModel = stashesViewModel
 		self.repositoryID = repositoryID
 		self.onCreateBranch = onCreateBranch
 	}

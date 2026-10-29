@@ -36,24 +36,24 @@ actor StashesUseCaseStub: RepositoryStashesUseCase {
 		message: String,
 		includeUntracked: Bool,
 		at repositoryURL: URL
-	) async throws -> RepositorySnapshot {
+	) async throws -> RepositoryStashMutationResult {
 		fatalError()
 	}
 
 	func applyStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	{
 		fatalError()
 	}
 
 	func popStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	{
 		fatalError()
 	}
 
 	func dropStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	{
 		fatalError()
 	}

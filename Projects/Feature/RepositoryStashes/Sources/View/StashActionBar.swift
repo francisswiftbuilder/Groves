@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct StashActionBar: View {
-	@ObservedObject var viewModel: StashesViewModel
+	@Bindable var viewModel: StashesViewModel
 	let onDelete: () -> Void
 
 	init(
@@ -14,6 +14,20 @@ struct StashActionBar: View {
 	}
 
 	var body: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			controls
+			if let message = viewModel.mutationMessage {
+				Label(message, systemImage: "info.circle")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
+		}
+		.padding(.horizontal, 12)
+		.padding(.vertical, 10)
+		.background(.bar)
+	}
+
+	private var controls: some View {
 		HStack(spacing: 10) {
 			Label("New Stash", systemImage: "archivebox")
 				.font(.callout)
@@ -49,8 +63,5 @@ struct StashActionBar: View {
 			}
 			.disabled(viewModel.selectedStash == nil || viewModel.isLoading)
 		}
-		.padding(.horizontal, 12)
-		.padding(.vertical, 10)
-		.background(.bar)
 	}
 }

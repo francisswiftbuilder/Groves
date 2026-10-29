@@ -277,13 +277,18 @@ struct GitRepositoryStub: GitRepository {
 		await recorder?.record(.deleteTag(name: name))
 	}
 	func requestCreateStash(
-		message: String,
-		includeUntracked: Bool,
-		at repositoryURL: URL
-	) async throws {}
-	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
-	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
-	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws {}
+		message: String, includeUntracked: Bool, at repositoryURL: URL
+	) async throws -> RepositoryStashOutcome { .completed }
+	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
+		-> RepositoryStashOutcome
+	{ .completed }
+	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws
+		-> RepositoryStashOutcome
+	{ .completed }
+	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
+		-> RepositoryStashOutcome
+	{ .completed }
+
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws {}
 	func requestFetchAll(at repositoryURL: URL) async throws {}
 	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome {

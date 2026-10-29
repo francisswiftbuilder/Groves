@@ -203,10 +203,11 @@ public struct LocalGitRepository: GitRepository {
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> String {
-		try await runner.requestRun(
+		let hash = try await requestStashHash(stash.hash, at: repositoryURL)
+		return try await runner.requestRun(
 			arguments: [
 				"stash", "show", "--include-untracked", "--patch", "--no-color", "--find-renames",
-			] + diffOptionArguments(options) + [stash.reference],
+			] + diffOptionArguments(options) + ["--", hash],
 			at: repositoryURL
 		).standardOutput
 	}
@@ -509,13 +510,14 @@ public struct LocalGitRepository: GitRepository {
 		previousPath: String?,
 		at repositoryURL: URL
 	) async throws -> GitImageDiff {
+		let hash = try await requestStashHash(stash.hash, at: repositoryURL)
 		async let before = requestBlobData(
-			revision: "\(stash.reference)^1",
+			revision: "\(hash)^1",
 			path: previousPath ?? path,
 			at: repositoryURL
 		)
 		let trackedAfter = try await requestBlobData(
-			revision: stash.reference,
+			revision: hash,
 			path: path,
 			at: repositoryURL
 		)
@@ -524,7 +526,7 @@ public struct LocalGitRepository: GitRepository {
 			after = trackedAfter
 		} else {
 			after = try await requestBlobData(
-				revision: "\(stash.reference)^3",
+				revision: "\(hash)^3",
 				path: path,
 				at: repositoryURL
 			)
@@ -1080,13 +1082,20 @@ public struct LocalGitRepository: GitRepository {
 		_ = try await runner.requestRun(arguments: ["tag", "-d", "--", name], at: repositoryURL)
 	}
 
-	public func requestCreateStash(
+	@discardableResult public func requestCreateStash(
 		message: String,
 		includeUntracked: Bool = true,
 		at repositoryURL: URL
-	) async throws {
-		try await requestMutation(at: repositoryURL) {
+	) async throws -> RepositoryStashOutcome {
+		return try await requestMutation(at: repositoryURL) {
 			try await requestEnsureIdle(at: repositoryURL)
+			let changes = try await requestWorkingTreeChanges(at: repositoryURL)
+			guard
+				changes.contains(where: {
+					includeUntracked || $0.isStaged || $0.workingTreeState != .untracked
+				})
+			else { return .nothingToSave }
+			let before = try await requestStashes(at: repositoryURL)
 			var arguments = ["stash", "push"]
 			if includeUntracked {
 				arguments.append("--include-untracked")
@@ -1094,35 +1103,58 @@ public struct LocalGitRepository: GitRepository {
 			if !message.isEmpty {
 				arguments.append(contentsOf: ["--message", message])
 			}
-			_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+			let outcome = try await requestStashMutation(arguments: arguments, at: repositoryURL)
+			guard outcome == .completed else { return outcome }
+			let after = try await requestStashes(at: repositoryURL)
+			return after.count > before.count || after.first?.hash != before.first?.hash
+				? .completed : .nothingToSave
 		}
 	}
 
-	public func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws {
-		try await requestMutation(at: repositoryURL) {
+	@discardableResult public func requestApplyStash(_ stash: GitStash, at repositoryURL: URL)
+		async throws -> RepositoryStashOutcome
+	{
+		return try await requestMutation(at: repositoryURL) {
 			try await requestEnsureIdle(at: repositoryURL)
-			try await requestStashMutation(
-				arguments: ["stash", "apply", "--index", stash.reference],
-				at: repositoryURL
+			let current = try await requestCurrentStash(stash, at: repositoryURL)
+			return try await requestStashMutation(
+				arguments: ["stash", "apply", "--index", "--", current.hash],
+				at: repositoryURL, reportsConflicts: true
 			)
 		}
 	}
 
-	public func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws {
-		try await requestMutation(at: repositoryURL) {
+	@discardableResult public func requestPopStash(_ stash: GitStash, at repositoryURL: URL)
+		async throws -> RepositoryStashOutcome
+	{
+		return try await requestMutation(at: repositoryURL) {
 			try await requestEnsureIdle(at: repositoryURL)
-			try await requestStashMutation(
-				arguments: ["stash", "pop", "--index", stash.reference],
-				at: repositoryURL
+			let current = try await requestCurrentStash(stash, at: repositoryURL)
+			let outcome = try await requestStashMutation(
+				arguments: ["stash", "apply", "--index", "--", current.hash],
+				at: repositoryURL, reportsConflicts: true
 			)
+			guard outcome == .completed else { return outcome }
+			do {
+				let applied = try await requestCurrentStash(current, at: repositoryURL)
+				return try await requestStashMutation(
+					arguments: ["stash", "drop", "--", applied.reference], at: repositoryURL)
+			} catch is CancellationError {
+				throw CancellationError()
+			} catch {
+				return .failed(error.localizedDescription)
+			}
 		}
 	}
 
-	public func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(
-			arguments: ["stash", "drop", stash.reference],
-			at: repositoryURL
-		)
+	@discardableResult public func requestDropStash(_ stash: GitStash, at repositoryURL: URL)
+		async throws -> RepositoryStashOutcome
+	{
+		return try await requestMutation(at: repositoryURL) {
+			let current = try await requestCurrentStash(stash, at: repositoryURL)
+			return try await requestStashMutation(
+				arguments: ["stash", "drop", "--", current.reference], at: repositoryURL)
+		}
 	}
 
 	public func requestFetch(remote name: String, at repositoryURL: URL) async throws {
@@ -1493,14 +1525,53 @@ public struct LocalGitRepository: GitRepository {
 		}
 	}
 
-	private func requestStashMutation(arguments: [String], at repositoryURL: URL) async throws {
+	private func requestStashHash(_ hash: String, at repositoryURL: URL) async throws -> String {
+		let resolved = try await runner.requestRun(
+			arguments: ["rev-parse", "--verify", "--end-of-options", "\(hash)^{commit}"],
+			at: repositoryURL
+		).standardOutput.trimmingCharacters(in: .newlines)
+		guard resolved == hash else { throw GitRepositoryError.invalidOutput }
+		return resolved
+	}
+
+	private func requestCurrentStash(_ stash: GitStash, at repositoryURL: URL) async throws
+		-> GitStash
+	{
+		let candidates = try await requestStashes(at: repositoryURL).filter {
+			$0.hash == stash.hash && $0.subject == stash.subject
+		}
+		guard
+			let current = candidates.first(where: { $0.reference == stash.reference })
+				?? (candidates.count == 1 ? candidates.first : nil)
+		else {
+			throw GitRepositoryError.commandFailed(
+				"The stash list has changed. Refresh and select the stash again.")
+		}
+		let actual = try await runner.requestRun(
+			arguments: ["rev-parse", "--verify", "--end-of-options", "\(current.reference)^{commit}"],
+			at: repositoryURL
+		).standardOutput.trimmingCharacters(in: .newlines)
+		guard actual == stash.hash else {
+			throw GitRepositoryError.commandFailed(
+				"The stash list has changed. Refresh and select the stash again.")
+		}
+		return current
+	}
+
+	private func requestStashMutation(
+		arguments: [String], at repositoryURL: URL, reportsConflicts: Bool = false
+	) async throws
+		-> RepositoryStashOutcome
+	{
 		do {
 			_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+			return .completed
 		} catch is CancellationError {
 			throw CancellationError()
 		} catch {
-			let state = try? await requestOperationState(at: repositoryURL)
-			guard state?.hasConflicts == true else { throw error }
+			let state = reportsConflicts ? try? await requestOperationState(at: repositoryURL) : nil
+			try Task.checkCancellation()
+			return state?.hasConflicts == true ? .conflicted : .failed(error.localizedDescription)
 		}
 	}
 

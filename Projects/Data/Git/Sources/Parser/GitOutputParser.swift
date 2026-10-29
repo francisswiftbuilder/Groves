@@ -247,6 +247,7 @@ enum GitOutputParser {
 	}
 
 	static func parseStashes(_ output: String) -> [GitStash] {
+		var occurrences: [String: Int] = [:]
 		let formatter = DateFormatter()
 		formatter.locale = Locale(identifier: "en_US_POSIX")
 		formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
@@ -261,11 +262,15 @@ enum GitOutputParser {
 					omittingEmptySubsequences: false
 				).map(String.init)
 				guard fields.count == 4 else { return nil }
+				let key = "\(fields[1]):\(fields[2])"
+				let occurrence = occurrences[key, default: 0]
+				occurrences[key] = occurrence + 1
 				return GitStash(
 					reference: fields[0].trimmingCharacters(in: .whitespacesAndNewlines),
 					hash: fields[1],
 					subject: fields[2],
-					date: formatter.date(from: fields[3].trimmingCharacters(in: .newlines))
+					date: formatter.date(from: fields[3].trimmingCharacters(in: .newlines)),
+					occurrence: occurrence
 				)
 			}
 	}

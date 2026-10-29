@@ -37,34 +37,46 @@ public struct DefaultRepositoryStashesUseCase: RepositoryStashesUseCase {
 
 	public func createStash(message: String, includeUntracked: Bool, at repositoryURL: URL)
 		async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	{
-		try await repository.requestCreateStash(
-			message: message,
-			includeUntracked: includeUntracked,
-			at: repositoryURL
-		)
-		return try await content.loadSnapshot(at: repositoryURL)
+		try await requestMutation(at: repositoryURL) {
+			try await repository.requestCreateStash(
+				message: message, includeUntracked: includeUntracked, at: repositoryURL)
+		}
 	}
 
 	public func applyStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	{
-		try await repository.requestApplyStash(stash, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
+		try await requestMutation(at: repositoryURL) {
+			try await repository.requestApplyStash(stash, at: repositoryURL)
+		}
 	}
 
 	public func popStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	{
-		try await repository.requestPopStash(stash, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
+		try await requestMutation(at: repositoryURL) {
+			try await repository.requestPopStash(stash, at: repositoryURL)
+		}
 	}
 
 	public func dropStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	{
-		try await repository.requestDropStash(stash, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
+		try await requestMutation(at: repositoryURL) {
+			try await repository.requestDropStash(stash, at: repositoryURL)
+		}
+	}
+
+	private func requestMutation(
+		at repositoryURL: URL,
+		_ operation: @Sendable () async throws -> RepositoryStashOutcome
+	) async throws -> RepositoryStashMutationResult {
+		let outcome = try await operation()
+		try Task.checkCancellation()
+		let snapshot = try await content.loadSnapshot(at: repositoryURL)
+		try Task.checkCancellation()
+		return RepositoryStashMutationResult(outcome: outcome, snapshot: snapshot)
 	}
 }
