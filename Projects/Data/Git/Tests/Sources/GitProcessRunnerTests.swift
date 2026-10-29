@@ -5,6 +5,46 @@ import XCTest
 @testable import DataGit
 
 final class GitProcessRunnerTests: XCTestCase {
+	func testCancelledSuccessfulExitDoesNotCommitCredentials() async throws {
+		let directoryURL = try makeTemporaryDirectory()
+		defer { try? FileManager.default.removeItem(at: directoryURL) }
+		let executableURL = directoryURL.appending(path: "test-git")
+		let markerURL = directoryURL.appending(path: "started")
+		let escapedMarkerPath = markerURL.path.replacingOccurrences(of: "'", with: "'\\''")
+		try """
+		#!/bin/sh
+		trap 'exit 0' TERM
+		touch '\(escapedMarkerPath)'
+		while :; do sleep 0.01; done
+		""".write(to: executableURL, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes(
+			[.posixPermissions: 0o700], ofItemAtPath: executableURL.path)
+		let store = GitCredentialPersistingStub()
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(executableURL: executableURL),
+			credentialStore: store
+		)
+		let task = Task {
+			try await runner.requestRun(arguments: [], at: directoryURL, isNetworkOperation: true)
+		}
+		defer { task.cancel() }
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while !FileManager.default.fileExists(atPath: markerURL.path), clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+
+		task.cancel()
+		do {
+			_ = try await task.value
+			XCTFail("A cancelled operation must not succeed even when the process exits with zero")
+		} catch is CancellationError {}
+
+		XCTAssertEqual(store.commitCount, 0)
+		XCTAssertEqual(store.discardCount, 1)
+	}
+
 	func testRunnerReturnsOutputAndClassifiesCommandFailure() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }

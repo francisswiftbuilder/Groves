@@ -6,6 +6,25 @@ import XCTest
 @testable import DataGit
 
 final class GitCredentialNoticeTests: XCTestCase {
+	func testLocalCommandsDoNotAccessCredentialPersistence() async throws {
+		let repositoryURL = try makeTemporaryRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let error = GitCredentialStoreError(operation: .copySecret, status: -25308)
+		let store = GitCredentialPersistingStub(commitError: error, discardError: error)
+		let recorder = GitProcessNoticeRecorder()
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(noticeHandler: { recorder.record($0) }),
+			credentialStore: store
+		)
+
+		_ = try await runner.requestRun(
+			arguments: ["rev-parse", "--is-inside-work-tree"], at: repositoryURL)
+
+		XCTAssertEqual(store.commitCount, 0)
+		XCTAssertEqual(store.discardCount, 0)
+		XCTAssertTrue(recorder.notices.isEmpty)
+	}
+
 	func testCredentialPersistenceFailureKeepsTheCommandResult() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -24,7 +43,8 @@ final class GitCredentialNoticeTests: XCTestCase {
 
 		let result = try await runner.requestRun(
 			arguments: ["rev-parse", "--is-inside-work-tree"],
-			at: repositoryURL
+			at: repositoryURL,
+			isNetworkOperation: true
 		)
 
 		XCTAssertTrue(result.standardOutput.contains("true"))
@@ -53,7 +73,8 @@ final class GitCredentialNoticeTests: XCTestCase {
 
 		_ = try await runner.requestRun(
 			arguments: ["rev-parse", "--is-inside-work-tree"],
-			at: repositoryURL
+			at: repositoryURL,
+			isNetworkOperation: true
 		)
 
 		XCTAssertTrue(recorder.notices.isEmpty)
@@ -79,7 +100,8 @@ final class GitCredentialNoticeTests: XCTestCase {
 
 		_ = try await runner.requestRun(
 			arguments: ["rev-parse", "--is-inside-work-tree"],
-			at: repositoryURL
+			at: repositoryURL,
+			isNetworkOperation: true
 		)
 
 		XCTAssertEqual(
@@ -108,7 +130,8 @@ final class GitCredentialNoticeTests: XCTestCase {
 		)
 
 		do {
-			_ = try await runner.requestRun(arguments: ["not-a-command"], at: repositoryURL)
+			_ = try await runner.requestRun(
+				arguments: ["not-a-command"], at: repositoryURL, isNetworkOperation: true)
 			XCTFail("Expected command failure")
 		} catch GitRepositoryError.commandFailed {
 		} catch {

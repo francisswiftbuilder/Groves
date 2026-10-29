@@ -47,6 +47,12 @@ public struct LocalGitRepository: GitRepository {
 		else {
 			throw GitRepositoryError.invalidRemoteURL
 		}
+		let resolvedRemote = try await runner.requestRun(
+			arguments: ["ls-remote", "--get-url", "--", remoteURL], at: directoryURL
+		).standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !GitRemoteURLValidator.containsEmbeddedCredential(resolvedRemote) else {
+			throw GitRepositoryError.invalidRemoteURL
+		}
 
 		let repositoryURL =
 			directoryURL
@@ -61,7 +67,7 @@ public struct LocalGitRepository: GitRepository {
 				arguments: ["clone", "--", remoteURL, repositoryURL.path],
 				at: directoryURL,
 				isNetworkOperation: true,
-				requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(remoteURL)
+				requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(resolvedRemote)
 			)
 		} catch {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -1045,12 +1051,13 @@ public struct LocalGitRepository: GitRepository {
 	public func requestFetchAll(at repositoryURL: URL) async throws {
 		let remoteNames = try await requestRemoteNames(at: repositoryURL)
 		var requiresSSHTrustScope = false
-		for remoteName in remoteNames where requiresSSHTrustScope == false {
-			requiresSSHTrustScope = try await requestRemoteUsesSSH(
+		for remoteName in remoteNames {
+			let remoteUsesSSH = try await requestRemoteUsesSSH(
 				named: remoteName,
 				usesPushURL: false,
 				at: repositoryURL
 			)
+			requiresSSHTrustScope = requiresSSHTrustScope || remoteUsesSSH
 		}
 		_ = try await runner.requestRun(
 			arguments: ["fetch", "--all"],
@@ -1274,9 +1281,11 @@ public struct LocalGitRepository: GitRepository {
 			at: repositoryURL,
 			acceptedTerminationStatuses: [0, 2]
 		)
-		return result.standardOutput
-			.split(whereSeparator: \.isNewline)
-			.contains { GitRemoteURLValidator.isSSHRemote(String($0)) }
+		let remoteURLs = result.standardOutput.split(whereSeparator: \.isNewline).map(String.init)
+		guard !remoteURLs.contains(where: GitRemoteURLValidator.containsEmbeddedCredential) else {
+			throw GitRepositoryError.invalidRemoteURL
+		}
+		return remoteURLs.contains(where: GitRemoteURLValidator.isSSHRemote)
 	}
 
 	private func pushArguments(for target: GitPushTarget) -> [String] {

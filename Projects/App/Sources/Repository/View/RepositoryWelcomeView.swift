@@ -26,6 +26,10 @@ struct RepositoryWelcomeView: View {
 						.foregroundStyle(.secondary)
 						.multilineTextAlignment(.center)
 
+					SettingsLink {
+						Label("Accounts & Git Settings", systemImage: "person.crop.circle")
+					}
+
 					if isWorking {
 						HStack(spacing: 8) {
 							ProgressView("Working…")

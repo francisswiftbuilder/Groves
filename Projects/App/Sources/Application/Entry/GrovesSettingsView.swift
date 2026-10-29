@@ -7,11 +7,22 @@ struct GrovesSettingsView: View {
 	@AppStorage("externalEditorBundleIdentifier") private var bundleIdentifier = ""
 	@AppStorage("externalEditorDisplayName") private var displayName = "System Default"
 	@State private var selectionError: String?
-	@State private var credentials: [GitCredentialDescriptor] = []
-	@State private var credentialError: String?
-	private let credentialStore = GitCredentialStore()
+	@ObservedObject private var accountViewModel = AppDIContainer.shared.accountViewModel
 
 	var body: some View {
+		TabView {
+			Tab("Accounts", systemImage: "person.crop.circle") {
+				GitAccountSetupView(viewModel: accountViewModel, isOnboarding: false)
+			}
+			Tab("General", systemImage: "gear") {
+				generalSettings
+			}
+		}
+		.frame(width: 600, height: 740)
+		.navigationTitle("Groves Settings")
+	}
+
+	private var generalSettings: some View {
 		Form {
 			Section("General") {
 				Picker("Open conflict files with", selection: $bundleIdentifier) {
@@ -35,46 +46,12 @@ struct GrovesSettingsView: View {
 						.foregroundStyle(.red)
 				}
 			}
-			Section("Credentials") {
-				if credentials.isEmpty {
-					ContentUnavailableView(
-						"No Saved Credentials",
-						systemImage: "key",
-						description: Text("Saved Git accounts and SSH key passphrases appear here.")
-					)
-				} else {
-					ForEach(credentials) { credential in
-						HStack {
-							VStack(alignment: .leading, spacing: 2) {
-								Text(credential.account)
-								Text(credential.host)
-									.font(.caption)
-									.foregroundStyle(.secondary)
-							}
-							Spacer()
-							Text(credential.kind == .https ? "HTTPS" : "SSH")
-								.font(.caption)
-								.foregroundStyle(.secondary)
-							Button("Delete", role: .destructive) {
-								deleteCredential(credential)
-							}
-						}
-					}
-					Button("Delete All", role: .destructive) { deleteAllCredentials() }
-				}
-				if let credentialError {
-					Label(credentialError, systemImage: "exclamationmark.triangle.fill")
-						.font(.caption)
-						.foregroundStyle(.red)
-				}
-			}
+
 		}
 		.formStyle(.grouped)
 		.padding(20)
-		.frame(width: 520, height: 520)
 		.navigationTitle("Groves Settings")
 		.onChange(of: bundleIdentifier, initial: true) { validateSelection() }
-		.task { loadCredentials() }
 	}
 
 	private var selectedApplicationURL: URL? {
@@ -123,32 +100,6 @@ struct GrovesSettingsView: View {
 			: nil
 	}
 
-	private func loadCredentials() {
-		do {
-			credentials = try credentialStore.descriptors()
-			credentialError = nil
-		} catch {
-			credentialError = error.localizedDescription
-		}
-	}
-
-	private func deleteCredential(_ credential: GitCredentialDescriptor) {
-		do {
-			try credentialStore.delete(credential)
-			loadCredentials()
-		} catch {
-			credentialError = error.localizedDescription
-		}
-	}
-
-	private func deleteAllCredentials() {
-		do {
-			try credentialStore.deleteAll()
-			loadCredentials()
-		} catch {
-			credentialError = error.localizedDescription
-		}
-	}
 }
 
 #Preview {
