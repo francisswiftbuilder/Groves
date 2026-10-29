@@ -2,6 +2,9 @@ import DomainGitInterface
 import Foundation
 
 struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
+	var pushOperation: @Sendable (URL) async throws -> RepositorySnapshot = { _ in
+		fatalError()
+	}
 	let fetchAllOperation: @Sendable (URL) async throws -> RepositorySnapshot
 	let pushActionOperation:
 		@Sendable (GitBranch?, [GitRemote], RepositoryOperationState) -> RepositoryPushAction
@@ -125,7 +128,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		selectedRemoteName: String?,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await pushOperation(repositoryURL)
 	}
 
 	func forcePush(

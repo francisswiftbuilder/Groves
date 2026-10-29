@@ -194,9 +194,11 @@ public final class RepositorySyncViewModel: ObservableObject {
 		networkTask = Task { [weak self] in
 			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let preparation = try await referencesUseCase.preparePull(
 					at: repositoryURL
 				)
+				try Task.checkCancellation()
 				guard let self, self.activeNetworkRequestID == requestID else { return }
 				actions.didProduceSnapshot(preparation.snapshot)
 				if case .diverged(let divergence) = preparation.outcome {
@@ -205,9 +207,11 @@ public final class RepositorySyncViewModel: ObservableObject {
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, self.activeNetworkRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID else {
+					return
+				}
 				actions.didReceiveError(error.localizedDescription)
-				await restoreSnapshot(at: repositoryURL)
+				await restoreSnapshot(at: repositoryURL, requestID: requestID)
 			}
 		}
 	}
@@ -215,7 +219,8 @@ public final class RepositorySyncViewModel: ObservableObject {
 	public func didResolvePull(using resolution: RepositoryPullResolution) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
-			let divergence = pendingPullDivergence
+			let divergence = pendingPullDivergence,
+			!isLoading
 		else { return }
 		pendingPullDivergence = nil
 		let referencesUseCase = dependencies.referencesUseCase
@@ -334,21 +339,25 @@ public final class RepositorySyncViewModel: ObservableObject {
 		activity: Activity,
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
 	) {
-		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
+		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		networkTask?.cancel()
 		let requestID = beginNetworkRequest(activity: activity)
 		networkTask = Task { [weak self] in
 			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let snapshot = try await operation()
+				try Task.checkCancellation()
 				guard let self, self.activeNetworkRequestID == requestID else { return }
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, self.activeNetworkRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID else {
+					return
+				}
 				actions.didReceiveError(error.localizedDescription)
-				await restoreSnapshot(at: expectedRepositoryURL)
+				await restoreSnapshot(at: expectedRepositoryURL, requestID: requestID)
 			}
 		}
 	}
@@ -363,6 +372,7 @@ public final class RepositorySyncViewModel: ObservableObject {
 
 	private func finishNetworkRequest(id: Int) {
 		guard activeNetworkRequestID == id else { return }
+		networkTask = nil
 		activityPresentationTask?.cancel()
 		activityPresentationTask = nil
 		activeNetworkRequestID = nil
@@ -389,8 +399,9 @@ public final class RepositorySyncViewModel: ObservableObject {
 		}
 	}
 
-	private func restoreSnapshot(at repositoryURL: URL) async {
+	private func restoreSnapshot(at repositoryURL: URL, requestID: Int) async {
 		if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(at: repositoryURL) {
+			guard !Task.isCancelled, activeNetworkRequestID == requestID else { return }
 			actions.didProduceSnapshot(snapshot)
 		}
 	}

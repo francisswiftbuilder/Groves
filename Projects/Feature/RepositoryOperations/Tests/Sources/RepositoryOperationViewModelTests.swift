@@ -5,6 +5,144 @@ import XCTest
 
 @MainActor
 final class RepositoryOperationViewModelTests: XCTestCase {
+	private actor SnapshotGate {
+		private(set) var requestCount = 0
+		private var continuations: [Int: CheckedContinuation<RepositorySnapshot, Error>] = [:]
+
+		func load() async throws -> RepositorySnapshot {
+			let index = requestCount
+			requestCount += 1
+			return try await withCheckedThrowingContinuation {
+				continuations[index] = $0
+			}
+		}
+
+		func resume(_ index: Int, returning snapshot: RepositorySnapshot) {
+			continuations.removeValue(forKey: index)?.resume(returning: snapshot)
+		}
+
+		func fail(_ index: Int, with error: any Error) {
+			continuations.removeValue(forKey: index)?.resume(throwing: error)
+		}
+	}
+
+	func testSyncIgnoresRepeatedRequestsWhileRunning() async throws {
+		let gate = SnapshotGate()
+		let viewModel = makeSyncViewModel(
+			referencesUseCase: OperationsReferencesUseCaseStub { _ in try await gate.load() }
+		)
+		defer { viewModel.onDisappear() }
+
+		viewModel.didRequestFetchAll()
+		viewModel.didRequestFetchAll()
+		try await waitUntil { await gate.requestCount >= 1 }
+		try await Task.sleep(for: .milliseconds(50))
+		let requestCount = await gate.requestCount
+		XCTAssertEqual(requestCount, 1)
+		for index in 0..<requestCount {
+			await gate.resume(index, returning: makeSnapshot())
+		}
+	}
+
+	func testCancelledSyncDoesNotPublishLateSuccess() async throws {
+		let gate = SnapshotGate()
+		let published = expectation(description: "Cancelled sync must not publish a snapshot")
+		published.isInverted = true
+		let viewModel = makeSyncViewModel(
+			referencesUseCase: OperationsReferencesUseCaseStub { _ in try await gate.load() },
+			didProduceSnapshot: { _ in published.fulfill() }
+		)
+		viewModel.didRequestFetchAll()
+		try await waitUntil { await gate.requestCount == 1 }
+
+		viewModel.didRequestCancelOperation()
+		await gate.resume(0, returning: makeSnapshot())
+		await fulfillment(of: [published], timeout: 0.1)
+
+		XCTAssertFalse(viewModel.isLoading)
+	}
+
+	func testPushBlocksDuplicateRequestsAndCanRetryAfterFailure() async throws {
+		let recovered = expectation(description: "Failed push refreshes repository state")
+		let completed = expectation(description: "Push retry completed")
+		let gate = SnapshotGate()
+		let snapshot = makeSnapshot(branches: [makeBranch(name: "main", isCurrent: true)])
+		var referencesUseCase = OperationsReferencesUseCaseStub(
+			pushActionOperation: { _, _, _ in .upstream }
+		)
+		referencesUseCase.pushOperation = { _ in
+			try await gate.load()
+		}
+		var receivedErrors: [String] = []
+		var publishedSnapshotCount = 0
+		let viewModel = RepositorySyncViewModel(
+			dependencies: .init(
+				contentUseCase: OperationsContentUseCaseStub(snapshotOperation: { _ in snapshot }),
+				referencesUseCase: referencesUseCase,
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+			),
+			actions: .init(
+				didProduceSnapshot: { _ in
+					if publishedSnapshotCount == 0 {
+						recovered.fulfill()
+					} else {
+						completed.fulfill()
+					}
+					publishedSnapshotCount += 1
+				},
+				didReceiveError: { receivedErrors.append($0) }
+			)
+		)
+		viewModel.apply(snapshot)
+		viewModel.didRequestPush()
+		viewModel.didRequestPush()
+		try await waitUntil { await gate.requestCount >= 1 }
+		try await Task.sleep(for: .milliseconds(50))
+		let requestCount = await gate.requestCount
+		XCTAssertEqual(requestCount, 1)
+		await gate.fail(0, with: GitRepositoryError.authentication("Repository write access denied"))
+		await fulfillment(of: [recovered], timeout: 2)
+		XCTAssertFalse(viewModel.isLoading)
+		XCTAssertEqual(receivedErrors.count, 1)
+		XCTAssertTrue(receivedErrors.first?.contains("write access denied") == true)
+
+		viewModel.didRequestPush()
+		try await waitUntil { await gate.requestCount == 2 }
+		await gate.resume(1, returning: snapshot)
+		await fulfillment(of: [completed], timeout: 2)
+		XCTAssertFalse(viewModel.isLoading)
+	}
+
+	func testOldRecoveryDoesNotOverwriteNewerSnapshot() async throws {
+		let gate = SnapshotGate()
+		let currentSnapshot = makeSnapshot(branches: [makeBranch(name: "current", isCurrent: true)])
+		var publishedBranchNames: [String] = []
+		let viewModel = makeSyncViewModel(
+			contentUseCase: OperationsContentUseCaseStub(snapshotOperation: { _ in
+				try await gate.load()
+			}),
+			referencesUseCase: OperationsReferencesUseCaseStub { _ in
+				throw GitRepositoryError.network("Connection interrupted")
+			},
+			didProduceSnapshot: { snapshot in
+				publishedBranchNames.append(contentsOf: snapshot.branches.map(\.name))
+			}
+		)
+		viewModel.didRequestFetchAll()
+		try await waitUntil { await gate.requestCount == 1 }
+		viewModel.reset()
+		viewModel.didRequestFetchAll()
+		try await waitUntil { await gate.requestCount == 2 }
+		await gate.resume(1, returning: currentSnapshot)
+		try await waitUntil { !viewModel.isLoading }
+
+		let oldSnapshot = makeSnapshot(branches: [makeBranch(name: "old", isCurrent: true)])
+		await gate.resume(0, returning: oldSnapshot)
+		try await Task.sleep(for: .milliseconds(50))
+
+		XCTAssertEqual(publishedBranchNames, ["current"])
+	}
+
 	func testMergeAndRebaseAvailabilityReflectsRepositoryState() {
 		let currentBranch = makeBranch(name: "main", isCurrent: true)
 		let featureBranch = makeBranch(name: "feature", isCurrent: false)
@@ -270,6 +408,36 @@ final class RepositoryOperationViewModelTests: XCTestCase {
 				didRequestViewConflicts: didRequestViewConflicts
 			)
 		)
+	}
+
+	private func makeSyncViewModel(
+		contentUseCase: OperationsContentUseCaseStub = OperationsContentUseCaseStub(),
+		referencesUseCase: OperationsReferencesUseCaseStub,
+		didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void = { _ in }
+	) -> RepositorySyncViewModel {
+		RepositorySyncViewModel(
+			dependencies: .init(
+				contentUseCase: contentUseCase,
+				referencesUseCase: referencesUseCase,
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+			),
+			actions: .init(
+				didProduceSnapshot: didProduceSnapshot,
+				didReceiveError: { _ in }
+			)
+		)
+	}
+
+	private func waitUntil(_ condition: () async -> Bool) async throws {
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while await !condition() {
+			guard clock.now < deadline else {
+				XCTFail("Timed out waiting for network request")
+				throw CancellationError()
+			}
+			try await Task.sleep(for: .milliseconds(10))
+		}
 	}
 
 	private func makeSnapshot(
