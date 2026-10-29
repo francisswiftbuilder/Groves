@@ -6,7 +6,7 @@ import SwiftUI
 public struct HistoryView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	private let diffSearchViewModel: RepositorySearchViewModel
-	@ObservedObject private var historyViewModel: HistoryViewModel
+	private let historyViewModel: HistoryViewModel
 	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
 	let repositoryName: String
 	let currentBranchStatus: String
@@ -31,7 +31,7 @@ public struct HistoryView: View {
 		onDiffOptionsChanged: @escaping () -> Void
 	) {
 		self.diffSearchViewModel = diffSearchViewModel
-		_historyViewModel = ObservedObject(wrappedValue: historyViewModel)
+		self.historyViewModel = historyViewModel
 		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
 		self.repositoryName = repositoryName
 		self.currentBranchStatus = currentBranchStatus

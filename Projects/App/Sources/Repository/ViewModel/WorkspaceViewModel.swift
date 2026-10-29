@@ -1,8 +1,10 @@
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-final class WorkspaceViewModel: ObservableObject {
+@Observable
+final class WorkspaceViewModel {
 	struct Actions {
 		let resetContent: @MainActor () -> Void
 		let distributeSnapshot: @MainActor (RepositorySnapshot, URL?, Bool) -> Void
@@ -16,20 +18,20 @@ final class WorkspaceViewModel: ObservableObject {
 		let canAutomaticallyRefresh: @MainActor () -> Bool
 	}
 
-	@Published private(set) var selectedSection: WorkspaceSection? = .changes
-	@Published var expandedSidebarGroups: Set<RepositorySidebarGroup> = []
-	@Published private(set) var repositoryURL: URL?
-	@Published private(set) var isLoading = false
-	@Published private(set) var isLoadingContent: Bool
-	@Published var alertMessage: String?
+	private(set) var selectedSection: WorkspaceSection? = .changes
+	var expandedSidebarGroups: Set<RepositorySidebarGroup> = []
+	private(set) var repositoryURL: URL?
+	private(set) var isLoading = false
+	private(set) var isLoadingContent: Bool
+	var alertMessage: String?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
-	private var refreshTask: Task<Void, Never>?
-	private var repositoryMonitorTask: Task<Void, Never>?
+	@ObservationIgnored private var refreshTask: Task<Void, Never>?
+	@ObservationIgnored private var repositoryMonitorTask: Task<Void, Never>?
 	private var monitoredRepositoryURL: URL?
-	private var automaticRefreshTask: Task<Void, Never>?
-	private var conflictFocusTask: Task<Void, Never>?
+	@ObservationIgnored private var automaticRefreshTask: Task<Void, Never>?
+	@ObservationIgnored private var conflictFocusTask: Task<Void, Never>?
 	private var contentLoadID: UUID?
 	private var hasLoadedContent = false
 	private var refreshesWhenMonitoringResumes = false

@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct RepositoryOperationPresentationHost<Content: View>: View {
-	@ObservedObject private var viewModel: RepositoryOperationViewModel
+	@Bindable private var viewModel: RepositoryOperationViewModel
 	private let content: Content
 
 	public init(

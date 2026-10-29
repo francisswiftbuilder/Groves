@@ -3,7 +3,7 @@ import DomainGitInterface
 import SwiftUI
 
 public struct CommitDiffView: View {
-	@StateObject private var viewerModel = DiffViewerViewModel()
+	@State private var viewerModel = DiffViewerViewModel()
 	private let searchModel: RepositorySearchViewModel
 	@Binding var options: GitDiffOptions
 	@Binding var presentationMode: DiffPresentationMode

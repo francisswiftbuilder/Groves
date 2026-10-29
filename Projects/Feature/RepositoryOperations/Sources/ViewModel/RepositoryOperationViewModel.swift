@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositoryOperationViewModel: ObservableObject {
+@Observable
+public final class RepositoryOperationViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -39,19 +40,19 @@ public final class RepositoryOperationViewModel: ObservableObject {
 		}
 	}
 
-	@Published public private(set) var operationState: RepositoryOperationState = .normal
-	@Published public private(set) var isLoading = false
-	@Published var pendingMainlineAction: PendingMainlineAction?
-	@Published var pendingReset: RepositoryResetPresentation?
-	@Published var resetMode: GitResetMode = .mixed
-	@Published var pendingConfirmation: RepositoryOperationConfirmation?
-	@Published private(set) var mutationErrorMessage: String?
+	public private(set) var operationState: RepositoryOperationState = .normal
+	public private(set) var isLoading = false
+	var pendingMainlineAction: PendingMainlineAction?
+	var pendingReset: RepositoryResetPresentation?
+	var resetMode: GitResetMode = .mixed
+	var pendingConfirmation: RepositoryOperationConfirmation?
+	private(set) var mutationErrorMessage: String?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var changes: [WorkingTreeChange] = []
 	private var currentBranch: GitBranch?
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
 

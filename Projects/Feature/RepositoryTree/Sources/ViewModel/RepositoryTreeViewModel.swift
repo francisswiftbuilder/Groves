@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositoryTreeViewModel: ObservableObject {
+@Observable
+public final class RepositoryTreeViewModel {
 	public struct Dependencies {
 		public let contentUseCase: any RepositoryContentUseCase
 
@@ -12,14 +13,14 @@ public final class RepositoryTreeViewModel: ObservableObject {
 		}
 	}
 
-	@Published private(set) var fileTree: [RepositoryTreeNode] = []
-	@Published private(set) var selectedTreeNodeID: String?
-	@Published var expandedTreeNodeIDs: Set<String> = []
-	@Published private(set) var filePreview: RepositoryFilePreview = .none
+	private(set) var fileTree: [RepositoryTreeNode] = []
+	private(set) var selectedTreeNodeID: String?
+	var expandedTreeNodeIDs: Set<String> = []
+	private(set) var filePreview: RepositoryFilePreview = .none
 
 	private let dependencies: Dependencies
 	private var repositoryURL: URL?
-	private var filePreviewTask: Task<Void, Never>?
+	@ObservationIgnored private var filePreviewTask: Task<Void, Never>?
 
 	public init(dependencies: Dependencies) {
 		self.dependencies = dependencies

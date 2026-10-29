@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct RepositoryRemotePresentationHost<Content: View>: View {
-	@ObservedObject private var viewModel: RemotesViewModel
+	@Bindable private var viewModel: RemotesViewModel
 	private let content: Content
 
 	public init(

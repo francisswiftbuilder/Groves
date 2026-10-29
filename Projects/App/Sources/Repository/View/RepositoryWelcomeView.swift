@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RepositoryWelcomeView: View {
-	@ObservedObject var viewModel: RepositoryWindowViewModel
+	@Bindable var viewModel: RepositoryWindowViewModel
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
 	let onCloneRepository: () -> Void

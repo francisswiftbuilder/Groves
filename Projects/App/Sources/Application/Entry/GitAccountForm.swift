@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GitAccountForm: View {
-	@ObservedObject var viewModel: GitAccountViewModel
+	@Bindable var viewModel: GitAccountViewModel
 	@State private var isConfirmingSignOut = false
 
 	var body: some View {

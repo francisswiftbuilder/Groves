@@ -9,9 +9,9 @@ import FeatureRepositoryTree
 import SwiftUI
 
 struct WorkspaceDetail: View {
-	@ObservedObject var viewModel: WorkspaceViewModel
-	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
-	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
+	let viewModel: WorkspaceViewModel
+	private let operationViewModel: RepositoryOperationViewModel
+	private let referencesViewModel: RepositoryReferencesViewModel
 	let syncViewModel: RepositorySyncViewModel
 	let remotesViewModel: RemotesViewModel
 	let changesViewModel: ChangesViewModel
@@ -52,8 +52,8 @@ struct WorkspaceDetail: View {
 		self.commitViewModel = commitViewModel
 		self.conflictViewModel = conflictViewModel
 		self.historyViewModel = historyViewModel
-		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
-		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
+		self.operationViewModel = operationViewModel
+		self.referencesViewModel = referencesViewModel
 		self.syncViewModel = syncViewModel
 		self.remotesViewModel = remotesViewModel
 		self.stashesViewModel = stashesViewModel

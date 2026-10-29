@@ -1,8 +1,10 @@
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-final class RepositoryTabsViewModel: ObservableObject {
+@Observable
+final class RepositoryTabsViewModel {
 	struct Actions {
 		let didOpenRepository: @MainActor (RepositoryTab.ID) -> Void
 	}
@@ -12,13 +14,13 @@ final class RepositoryTabsViewModel: ObservableObject {
 		let makeWorkspace: @MainActor (URL) -> RepositoryWorkspace
 	}
 
-	@Published private(set) var tabs: [RepositoryTab] = []
-	@Published private(set) var selectedTabID: SavedRepository.ID?
-	@Published private(set) var isAddingRepository = false
-	@Published var alertMessage: String?
+	private(set) var tabs: [RepositoryTab] = []
+	private(set) var selectedTabID: SavedRepository.ID?
+	private(set) var isAddingRepository = false
+	var alertMessage: String?
 
 	private let dependencies: Dependencies
-	private var addRepositoryTask: Task<Void, Never>?
+	@ObservationIgnored private var addRepositoryTask: Task<Void, Never>?
 	private var didRestoreRepositoryWindows = false
 
 	init(dependencies: Dependencies) {

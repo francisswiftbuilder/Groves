@@ -1,8 +1,9 @@
-import Combine
 import Foundation
+import Observation
 
 @MainActor
-final class DiffViewerViewModel: ObservableObject {
+@Observable
+final class DiffViewerViewModel {
 	struct Input: Hashable {
 		let sourceID: String?
 		let filePath: String?
@@ -22,8 +23,8 @@ final class DiffViewerViewModel: ObservableObject {
 		let sideBySideRows: [DiffSideBySideRow]
 	}
 
-	@Published private(set) var presentation: Presentation?
-	@Published private(set) var isParsing = false
+	private(set) var presentation: Presentation?
+	private(set) var isParsing = false
 
 	private var activeRequestID: Int?
 	private var requestSequence = 0

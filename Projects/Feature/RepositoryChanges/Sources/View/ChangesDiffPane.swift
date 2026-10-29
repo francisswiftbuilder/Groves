@@ -5,8 +5,8 @@ import SwiftUI
 
 struct ChangesDiffPane: View {
 	private let searchViewModel: RepositorySearchViewModel
-	@ObservedObject private var viewModel: ChangesViewModel
-	@ObservedObject private var diffViewModel: ChangesDiffViewModel
+	private let viewModel: ChangesViewModel
+	private let diffViewModel: ChangesDiffViewModel
 	private let conflictViewModel: ConflictViewModel
 	@ObservedObject private var preferences: WorkspaceDiffPreferences
 	let repositoryURL: URL?
@@ -22,8 +22,8 @@ struct ChangesDiffPane: View {
 		onOptionsChanged: @escaping () -> Void
 	) {
 		self.searchViewModel = searchViewModel
-		_viewModel = ObservedObject(wrappedValue: viewModel)
-		_diffViewModel = ObservedObject(wrappedValue: diffViewModel)
+		self.viewModel = viewModel
+		self.diffViewModel = diffViewModel
 		self.conflictViewModel = conflictViewModel
 		_preferences = ObservedObject(wrappedValue: preferences)
 		self.repositoryURL = repositoryURL

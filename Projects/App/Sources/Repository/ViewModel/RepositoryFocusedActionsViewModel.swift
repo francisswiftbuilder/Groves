@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-final class RepositoryFocusedActionsViewModel: ObservableObject {
+@Observable
+final class RepositoryFocusedActionsViewModel {
 	typealias VoidAction = () -> Void
 
 	struct Actions {
@@ -53,20 +54,17 @@ final class RepositoryFocusedActionsViewModel: ObservableObject {
 	}
 
 	struct Dependencies {
-		let stateChanges: AnyPublisher<Void, Never>
 		let operationState: @MainActor () -> RepositoryOperationState
 		let selectedBranch: @MainActor () -> GitBranch?
 		let selectedCommit: @MainActor () -> GitCommit?
 		let selectedRemote: @MainActor () -> GitRemote?
 
 		init(
-			stateChanges: AnyPublisher<Void, Never>,
 			operationState: @escaping @MainActor () -> RepositoryOperationState,
 			selectedBranch: @escaping @MainActor () -> GitBranch?,
 			selectedCommit: @escaping @MainActor () -> GitCommit?,
 			selectedRemote: @escaping @MainActor () -> GitRemote?
 		) {
-			self.stateChanges = stateChanges
 			self.operationState = operationState
 			self.selectedBranch = selectedBranch
 			self.selectedCommit = selectedCommit
@@ -74,33 +72,16 @@ final class RepositoryFocusedActionsViewModel: ObservableObject {
 		}
 	}
 
-	@Published private(set) var focusedActions: RepositoryFocusedActions
+	var focusedActions: RepositoryFocusedActions {
+		Self.makeFocusedActions(dependencies: dependencies, actions: actions)
+	}
 
 	private let dependencies: Dependencies
 	private let actions: Actions
-	private var stateChangesCancellable: AnyCancellable?
 
 	init(dependencies: Dependencies, actions: Actions) {
 		self.dependencies = dependencies
 		self.actions = actions
-		focusedActions = Self.makeFocusedActions(dependencies: dependencies, actions: actions)
-	}
-
-	func onAppear() {
-		updateFocusedActions()
-		guard stateChangesCancellable == nil else { return }
-		stateChangesCancellable = dependencies.stateChanges.sink { [weak self] in
-			self?.updateFocusedActions()
-		}
-	}
-
-	func onDisappear() {
-		stateChangesCancellable?.cancel()
-		stateChangesCancellable = nil
-	}
-
-	private func updateFocusedActions() {
-		focusedActions = Self.makeFocusedActions(dependencies: dependencies, actions: actions)
 	}
 
 	private static func makeFocusedActions(

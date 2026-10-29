@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositoryReferencesViewModel: ObservableObject {
+@Observable
+public final class RepositoryReferencesViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -33,26 +34,26 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 		}
 	}
 
-	@Published public var selectedBranchID: String?
-	@Published public private(set) var branches: [GitBranch] = []
-	@Published public private(set) var tags: [GitTag] = []
-	@Published public private(set) var operationState: RepositoryOperationState = .normal
-	@Published public private(set) var isLoading = false
-	@Published private(set) var mutationErrorMessage: String?
-	@Published var newBranchName = ""
-	@Published var isPresentingNewBranch = false
-	@Published private(set) var pendingBranchStartCommit: GitCommit?
-	@Published var branchRenameName = ""
-	@Published var pendingBranchRename: GitBranch?
-	@Published var newTagName = ""
-	@Published var newTagMessage = ""
-	@Published private(set) var pendingTagCommit: GitCommit?
-	@Published var pendingConfirmation: RepositoryReferenceConfirmation?
+	public var selectedBranchID: String?
+	public private(set) var branches: [GitBranch] = []
+	public private(set) var tags: [GitTag] = []
+	public private(set) var operationState: RepositoryOperationState = .normal
+	public private(set) var isLoading = false
+	private(set) var mutationErrorMessage: String?
+	var newBranchName = ""
+	var isPresentingNewBranch = false
+	private(set) var pendingBranchStartCommit: GitCommit?
+	var branchRenameName = ""
+	var pendingBranchRename: GitBranch?
+	var newTagName = ""
+	var newTagMessage = ""
+	private(set) var pendingTagCommit: GitCommit?
+	var pendingConfirmation: RepositoryReferenceConfirmation?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var changes: [WorkingTreeChange] = []
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
 	private var branchPresentationID = UUID()

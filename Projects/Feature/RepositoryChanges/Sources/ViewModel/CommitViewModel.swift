@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class CommitViewModel: ObservableObject {
+@Observable
+public final class CommitViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -36,16 +37,16 @@ public final class CommitViewModel: ObservableObject {
 		}
 	}
 
-	@Published var subject = ""
-	@Published var body = ""
-	@Published private(set) var isAmendingCommit = false
-	@Published public private(set) var isLoading = false
-	@Published private var availability = CommitAvailability.empty
+	var subject = ""
+	var body = ""
+	private(set) var isAmendingCommit = false
+	public private(set) var isLoading = false
+	private var availability = CommitAvailability.empty
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var commits: [GitCommit] = []
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
 

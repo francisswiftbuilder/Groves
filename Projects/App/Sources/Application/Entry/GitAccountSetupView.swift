@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GitAccountSetupView: View {
-	@ObservedObject var viewModel: GitAccountViewModel
+	let viewModel: GitAccountViewModel
 	let isOnboarding: Bool
 
 	var body: some View {

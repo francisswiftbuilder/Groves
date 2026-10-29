@@ -3,15 +3,15 @@ import DomainGitInterface
 import SwiftUI
 
 public struct ImageDiffView: View {
-	@StateObject private var viewModel: ImageDiffViewModel
+	@State private var viewModel: ImageDiffViewModel
 	@State private var zoom = 1.0
 	let diff: GitImageDiff
 	let beforeTitle: String
 	let afterTitle: String
 
 	public init(diff: GitImageDiff, beforeTitle: String, afterTitle: String) {
-		_viewModel = StateObject(
-			wrappedValue: ImageDiffViewModel(
+		_viewModel = State(
+			initialValue: ImageDiffViewModel(
 				dependencies: .init { data in
 					await DiffImageDecoder.decode(data)
 				}

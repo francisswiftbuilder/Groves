@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RemotesViewModel: ObservableObject {
+@Observable
+public final class RemotesViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -33,17 +34,17 @@ public final class RemotesViewModel: ObservableObject {
 		}
 	}
 
-	@Published public var selectedRemoteID: String?
-	@Published public private(set) var remotes: [GitRemote] = []
-	@Published public private(set) var isLoading = false
-	@Published private(set) var mutationErrorMessage: String?
-	@Published var editorPresentation: RemoteEditorPresentation?
-	@Published var pendingRename: GitRemote?
-	@Published var pendingConfirmation: RepositoryRemoteConfirmation?
+	public var selectedRemoteID: String?
+	public private(set) var remotes: [GitRemote] = []
+	public private(set) var isLoading = false
+	private(set) var mutationErrorMessage: String?
+	var editorPresentation: RemoteEditorPresentation?
+	var pendingRename: GitRemote?
+	var pendingConfirmation: RepositoryRemoteConfirmation?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
 	private var editorPresentationID = UUID()

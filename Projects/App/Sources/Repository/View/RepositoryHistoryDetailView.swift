@@ -7,10 +7,10 @@ struct RepositoryHistoryDetailView: View {
 	let diffSearchViewModel: RepositorySearchViewModel
 	let historyViewModel: HistoryViewModel
 	@ObservedObject private var checkoutAvailability: HistoryCheckoutAvailability
-	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
-	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
-	@ObservedObject private var syncViewModel: RepositorySyncViewModel
-	@ObservedObject private var remotesViewModel: RemotesViewModel
+	private let operationViewModel: RepositoryOperationViewModel
+	private let referencesViewModel: RepositoryReferencesViewModel
+	private let syncViewModel: RepositorySyncViewModel
+	private let remotesViewModel: RemotesViewModel
 	let diffPreferences: WorkspaceDiffPreferences
 	let repositoryName: String
 	let commitActions: RepositoryCommitActions
@@ -33,10 +33,10 @@ struct RepositoryHistoryDetailView: View {
 		_checkoutAvailability = ObservedObject(
 			wrappedValue: historyViewModel.checkoutAvailability
 		)
-		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
-		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
-		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
-		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
+		self.operationViewModel = operationViewModel
+		self.referencesViewModel = referencesViewModel
+		self.syncViewModel = syncViewModel
+		self.remotesViewModel = remotesViewModel
 		self.diffPreferences = diffPreferences
 		self.repositoryName = repositoryName
 		self.commitActions = commitActions

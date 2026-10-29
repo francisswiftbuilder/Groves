@@ -5,10 +5,10 @@ import FeatureRepositoryStashes
 import SwiftUI
 
 struct RepositoryNavigationRows: View {
-	@ObservedObject var workspace: WorkspaceViewModel
-	@ObservedObject private var changesViewModel: ChangesViewModel
-	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
-	@ObservedObject private var remotesViewModel: RemotesViewModel
+	let workspace: WorkspaceViewModel
+	private let changesViewModel: ChangesViewModel
+	private let referencesViewModel: RepositoryReferencesViewModel
+	private let remotesViewModel: RemotesViewModel
 	@ObservedObject private var stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
 	let onCreateBranch: () -> Void
@@ -23,9 +23,9 @@ struct RepositoryNavigationRows: View {
 		onCreateBranch: @escaping () -> Void
 	) {
 		self.workspace = workspace
-		_changesViewModel = ObservedObject(wrappedValue: changesViewModel)
-		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
-		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
+		self.changesViewModel = changesViewModel
+		self.referencesViewModel = referencesViewModel
+		self.remotesViewModel = remotesViewModel
 		_stashesViewModel = ObservedObject(wrappedValue: stashesViewModel)
 		self.repositoryID = repositoryID
 		self.onCreateBranch = onCreateBranch

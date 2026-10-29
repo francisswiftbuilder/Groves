@@ -1,21 +1,22 @@
-import Combine
 import CoreGitCredential
 import Foundation
+import Observation
 
 @MainActor
-final class GitAccountViewModel: ObservableObject {
-	@Published var token = ""
-	@Published var identity = GitIdentityConfiguration()
-	@Published private(set) var account: GitCredentialDescriptor?
-	@Published private(set) var isConnecting = false
-	@Published private(set) var errorMessage: String?
-	@Published private(set) var statusMessage: String?
-	@Published private(set) var hasCompletedSetup: Bool
+@Observable
+final class GitAccountViewModel {
+	var token = ""
+	var identity = GitIdentityConfiguration()
+	private(set) var account: GitCredentialDescriptor?
+	private(set) var isConnecting = false
+	private(set) var errorMessage: String?
+	private(set) var statusMessage: String?
+	private(set) var hasCompletedSetup: Bool
 	private let store: GitCredentialStore
 	private let client: GitHubAuthenticationClient
 	private let defaults: UserDefaults
 	private let configurationURL: URL
-	private var connectionTask: Task<Void, Never>?
+	@ObservationIgnored private var connectionTask: Task<Void, Never>?
 	private var activeConnectionRequestID: Int?
 	private var connectionRequestSequence = 0
 

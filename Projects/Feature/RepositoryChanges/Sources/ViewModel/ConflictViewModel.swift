@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class ConflictViewModel: ObservableObject {
+@Observable
+public final class ConflictViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -36,11 +37,11 @@ public final class ConflictViewModel: ObservableObject {
 		}
 	}
 
-	@Published private(set) var content: GitConflictContent?
-	@Published private(set) var isLoadingContent = false
-	@Published public private(set) var isLoading = false
-	@Published var pendingConfirmation: ConflictConfirmation?
-	@Published private(set) var operationState: RepositoryOperationState = .normal
+	private(set) var content: GitConflictContent?
+	private(set) var isLoadingContent = false
+	public private(set) var isLoading = false
+	var pendingConfirmation: ConflictConfirmation?
+	private(set) var operationState: RepositoryOperationState = .normal
 
 	private let dependencies: Dependencies
 	private let actions: Actions
@@ -49,8 +50,8 @@ public final class ConflictViewModel: ObservableObject {
 	private var contentRequestSequence = 0
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
-	private var contentTask: Task<Void, Never>?
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var contentTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 
 	public init(
 		dependencies: Dependencies,

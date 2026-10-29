@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ConflictPresentationHost<Content: View>: View {
-	@ObservedObject private var viewModel: ConflictViewModel
+	private let viewModel: ConflictViewModel
 	private let content: Content
 
 	init(

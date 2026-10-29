@@ -7,7 +7,7 @@ struct GrovesSettingsView: View {
 	@AppStorage("externalEditorBundleIdentifier") private var bundleIdentifier = ""
 	@AppStorage("externalEditorDisplayName") private var displayName = "System Default"
 	@State private var selectionError: String?
-	@ObservedObject private var accountViewModel = AppDIContainer.shared.accountViewModel
+	private let accountViewModel = AppDIContainer.shared.accountViewModel
 
 	var body: some View {
 		TabView {

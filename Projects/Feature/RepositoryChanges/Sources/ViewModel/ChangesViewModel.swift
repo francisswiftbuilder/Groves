@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class ChangesViewModel: ObservableObject {
+@Observable
+public final class ChangesViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -39,16 +40,16 @@ public final class ChangesViewModel: ObservableObject {
 		}
 	}
 
-	@Published var selectedChangeIDs: Set<WorkspaceChangeSelection> = []
-	@Published var filterText = ""
-	@Published private(set) var isAmendingCommit = false
-	@Published private var snapshotState = ChangesSnapshotState.empty
-	@Published public private(set) var isLoading = false
-	@Published var pendingConfirmation: ChangesConfirmation?
+	var selectedChangeIDs: Set<WorkspaceChangeSelection> = []
+	var filterText = ""
+	private(set) var isAmendingCommit = false
+	private var snapshotState = ChangesSnapshotState.empty
+	public private(set) var isLoading = false
+	var pendingConfirmation: ChangesConfirmation?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
 

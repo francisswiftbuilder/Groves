@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositorySyncViewModel: ObservableObject {
+@Observable
+public final class RepositorySyncViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -97,18 +98,18 @@ public final class RepositorySyncViewModel: ObservableObject {
 		}
 	}
 
-	@Published var pendingPullDivergence: RepositoryPullDivergence?
-	@Published var pendingConfirmation: RepositorySyncConfirmation?
-	@Published public private(set) var activity: Activity?
-	@Published public private(set) var presentedActivity: Activity?
-	@Published private var state = RepositorySyncState.empty
+	var pendingPullDivergence: RepositoryPullDivergence?
+	var pendingConfirmation: RepositorySyncConfirmation?
+	public private(set) var activity: Activity?
+	public private(set) var presentedActivity: Activity?
+	private var state = RepositorySyncState.empty
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var currentBranch: GitBranch?
 	private var operationState: RepositoryOperationState = .normal
-	private var networkTask: Task<Void, Never>?
-	private var activityPresentationTask: Task<Void, Never>?
+	@ObservationIgnored private var networkTask: Task<Void, Never>?
+	@ObservationIgnored private var activityPresentationTask: Task<Void, Never>?
 	private var activeNetworkRequestID: Int?
 	private var networkRequestSequence = 0
 

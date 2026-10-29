@@ -6,10 +6,10 @@ import SwiftUI
 
 struct RepositorySidebar: View {
 	let viewModel: WorkspaceViewModel
-	@ObservedObject var windowViewModel: RepositoryWindowViewModel
+	let windowViewModel: RepositoryWindowViewModel
 	let changesViewModel: ChangesViewModel
-	@ObservedObject var operationViewModel: RepositoryOperationViewModel
-	@ObservedObject var referencesViewModel: RepositoryReferencesViewModel
+	let operationViewModel: RepositoryOperationViewModel
+	let referencesViewModel: RepositoryReferencesViewModel
 	let remotesViewModel: RemotesViewModel
 	let stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
@@ -27,8 +27,8 @@ struct RepositorySidebar: View {
 		self.viewModel = viewModel
 		self.windowViewModel = windowViewModel
 		self.changesViewModel = changesViewModel
-		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
-		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
+		self.operationViewModel = operationViewModel
+		self.referencesViewModel = referencesViewModel
 		self.remotesViewModel = remotesViewModel
 		self.stashesViewModel = stashesViewModel
 		self.repositoryID = repositoryID

@@ -243,7 +243,7 @@ struct WorkspaceChildViewModelTests {
 		workspace.onDisappear()
 		workspace.referencesViewModel.selectedBranchID = nil
 		await Task.yield()
-		#expect(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch != nil)
+		#expect(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch == nil)
 
 		workspace.onAppear()
 		#expect(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch == nil)

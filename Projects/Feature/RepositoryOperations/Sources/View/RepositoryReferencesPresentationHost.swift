@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 public struct RepositoryReferencesPresentationHost<Content: View>: View {
-	@ObservedObject private var viewModel: RepositoryReferencesViewModel
+	@Bindable private var viewModel: RepositoryReferencesViewModel
 	private let onConfirmDeleteTag: (GitTag) -> Void
 	private let content: Content
 

@@ -1,10 +1,11 @@
 import AppKit
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-final class ImageDiffViewModel: ObservableObject {
+@Observable
+final class ImageDiffViewModel {
 	struct Dependencies {
 		let decode: @MainActor (Data?) async -> NSImage?
 
@@ -26,13 +27,13 @@ final class ImageDiffViewModel: ObservableObject {
 		case loaded(Presentation)
 	}
 
-	@Published private(set) var state: State = .idle
+	private(set) var state: State = .idle
 
 	private let dependencies: Dependencies
 	private var displayedDiff: GitImageDiff?
 	private var requestedDiff: GitImageDiff?
 	private var requestSequence = 0
-	private var loadTask: Task<Void, Never>?
+	@ObservationIgnored private var loadTask: Task<Void, Never>?
 
 	init(dependencies: Dependencies) {
 		self.dependencies = dependencies

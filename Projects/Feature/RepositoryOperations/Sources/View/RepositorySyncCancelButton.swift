@@ -1,10 +1,10 @@
 import SwiftUI
 
 public struct RepositorySyncCancelButton: View {
-	@ObservedObject private var viewModel: RepositorySyncViewModel
+	private let viewModel: RepositorySyncViewModel
 
 	public init(viewModel: RepositorySyncViewModel) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 	}
 
 	public var body: some View {

@@ -6,11 +6,11 @@ import SwiftUI
 
 public struct RepositoryTreeView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
-	@ObservedObject private var viewModel: RepositoryTreeViewModel
+	private let viewModel: RepositoryTreeViewModel
 	@FocusState private var isTreeFocused: Bool
 
 	public init(viewModel: RepositoryTreeViewModel) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 	}
 
 	public var body: some View {

@@ -4,8 +4,8 @@ import UniformTypeIdentifiers
 
 struct RepositoryTabsView: View {
 	@Environment(\.windowTabCoordinator) private var coordinator
-	@ObservedObject var viewModel: RepositoryTabsViewModel
-	@ObservedObject var windowViewModel: RepositoryWindowViewModel
+	let viewModel: RepositoryTabsViewModel
+	let windowViewModel: RepositoryWindowViewModel
 	@Binding var repositoryID: RepositoryTab.ID?
 
 	var body: some View {

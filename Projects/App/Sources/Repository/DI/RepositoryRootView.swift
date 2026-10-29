@@ -2,11 +2,11 @@ import Foundation
 import SwiftUI
 
 struct RepositoryRootView: View {
-	@ObservedObject var viewModel: RepositoryTabsViewModel
+	let viewModel: RepositoryTabsViewModel
 	@ObservedObject var noticeCenter: RepositoryNoticeCenter
 	@Binding var repositoryID: UUID?
-	@StateObject private var windowViewModel = RepositoryWindowViewModel()
-	@ObservedObject private var accountViewModel = AppDIContainer.shared.accountViewModel
+	@State private var windowViewModel = RepositoryWindowViewModel()
+	private let accountViewModel = AppDIContainer.shared.accountViewModel
 
 	var body: some View {
 		Group {

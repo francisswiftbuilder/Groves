@@ -1,10 +1,10 @@
 import SwiftUI
 
 public struct RepositoryDetachedHeadBanner: View {
-	@ObservedObject private var viewModel: RepositoryReferencesViewModel
+	private let viewModel: RepositoryReferencesViewModel
 
 	public init(viewModel: RepositoryReferencesViewModel) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 	}
 
 	public var body: some View {
