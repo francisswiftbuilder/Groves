@@ -103,6 +103,10 @@ Groves integrates with the macOS security system for Git authentication.
 
 ## Development
 
+Run `make bundled-git` before the first Xcode build. This downloads checksum-pinned Git source and builds an arm64/x86_64 runtime for macOS 26 with Apple's command-line tools. Subsequent builds reuse the local runtime. The build/run and release scripts perform this step automatically. Run `./script/test_bundled_git.sh .build/bundled-git/runtime` for an isolated local clone/commit/push/pull smoke test.
+
+Git source, build scripts, and license notices are included inside `Groves.app/Contents/Resources/Git/share/groves-source`. See [third-party notices](THIRD_PARTY_NOTICES.md). Git GUI, Perl/Python tools, translations, and legacy WebDAV push are excluded.
+
 Groves uses Tuist to manage its modular project structure.
 
 ### Commands
@@ -192,14 +196,18 @@ Repository access is restored between launches using macOS security-scoped bookm
 
 ## Testing
 
-Individual modules expose their own test schemes. Run the complete test suite with the `Groves-Workspace` scheme:
+Individual modules expose their own test schemes. Run the complete test suite using the same schemes as CI:
 
 ```bash
-xcodebuild test \
-  -workspace Groves.xcworkspace \
-  -scheme Groves-Workspace \
-  -destination 'platform=macOS' \
-  CODE_SIGNING_ALLOWED=NO
+for SCHEME in AppTests CoreGitCredential CoreRepositoryDiff DataGit \
+  FeatureRepositoryChanges FeatureRepositoryHistory FeatureRepositoryOperations \
+  FeatureRepositoryStashes FeatureRepositoryTree; do
+  xcodebuild test \
+    -workspace Groves.xcworkspace \
+    -scheme "$SCHEME" \
+    -destination 'platform=macOS' \
+    CODE_SIGNING_ALLOWED=NO || break
+done
 ```
 
 ## Roadmap
@@ -216,3 +224,5 @@ Groves is still evolving. Planned areas include:
 ## License
 
 Groves is available under the [MIT License](LICENSE).
+
+Bundled Git retains its own license; see [third-party notices](THIRD_PARTY_NOTICES.md).

@@ -5,7 +5,8 @@ public enum GrovesProduct {
 	public static let askPassSources: SourceFilesList = .paths([
 		.relativeToRoot("Projects/App/Helpers/GrovesAskPass/Sources/**")
 	])
-	public static let askPassExecutableRelativePath = "Contents/Helpers/GrovesAskPass"
+	public static let askPassExecutableRelativePath =
+		"Contents/Helpers/GrovesAskPass.app/Contents/MacOS/GrovesAskPass"
 	// The App layer owns no generated Tests target: the module generator would name it after the
 	// app itself, so the unit tests live in a directory it does not scan and are declared by hand.
 	public static let appTestsTargetName = "AppTests"

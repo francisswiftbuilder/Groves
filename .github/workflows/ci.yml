@@ -34,10 +34,15 @@ jobs:
         run: git diff --exit-code
       - name: Build & test
         run: |
+          make bundled-git
+          ./script/test_bundled_git.sh .build/bundled-git/runtime
           WORKSPACE=$(ls -d *.xcworkspace | head -1)
-          SCHEME="$(basename "$WORKSPACE" .xcworkspace)-Workspace"
-          xcodebuild test \
-            -workspace "$WORKSPACE" \
-            -scheme "$SCHEME" \
-            -destination 'platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO
+          for SCHEME in AppTests CoreGitCredential CoreRepositoryDiff DataGit \
+            FeatureRepositoryChanges FeatureRepositoryHistory FeatureRepositoryOperations \
+            FeatureRepositoryStashes FeatureRepositoryTree; do
+            xcodebuild test \
+              -workspace "$WORKSPACE" \
+              -scheme "$SCHEME" \
+              -destination 'platform=macOS' \
+              CODE_SIGNING_ALLOWED=NO
+          done

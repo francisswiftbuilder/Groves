@@ -7,6 +7,9 @@ generate:
 	tuist install
 	tuist generate
 
+bundled-git:
+	./script/build_bundled_git.sh
+
 clean:
 	tuist clean
 	rm -rf **/**/**/*.xcodeproj
@@ -30,4 +33,4 @@ architecture-lint:
 lint: structure-lint architecture-lint
 	xcrun swift-format lint --strict --parallel --configuration .swift-format $(SWIFT_SOURCES)
 
-.PHONY: generate clean format structure-lint architecture-lint lint
+.PHONY: generate bundled-git clean format structure-lint architecture-lint lint
