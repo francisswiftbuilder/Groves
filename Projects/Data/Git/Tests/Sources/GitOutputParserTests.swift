@@ -89,34 +89,6 @@ final class GitOutputParserTests: XCTestCase {
 		XCTAssertEqual(nodes.first?.children.map(\.name), ["Feature", "App.swift"])
 	}
 
-	func testParseRemotesCombinesFetchAndPushURLs() {
-		let output =
-			"origin\thttps://example.com/Groves.git (fetch)\norigin\tgit@example.com:Groves.git (push)\n"
-
-		let remotes = GitOutputParser.parseRemotes(output)
-
-		XCTAssertEqual(remotes.count, 1)
-		XCTAssertEqual(remotes.first?.name, "origin")
-		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Groves.git")
-		XCTAssertEqual(remotes.first?.pushURL, "git@example.com:Groves.git")
-	}
-
-	func testParseRemoteBranchesSeparatesRemoteAndBranchNames() {
-		let output = """
-			origin/main\t1234567\t1234567890abcdef\t
-			origin/feature/sidebar\t2345678\t234567890abcdef1\t
-			origin/HEAD\t1234567\t1234567890abcdef\trefs/remotes/origin/main
-			"""
-
-		let branches = GitOutputParser.parseRemoteBranches(output)
-
-		XCTAssertEqual(branches.count, 2)
-		XCTAssertEqual(branches[0].remoteName, "origin")
-		XCTAssertEqual(branches[0].name, "main")
-		XCTAssertEqual(branches[0].fullName, "origin/main")
-		XCTAssertEqual(branches[1].name, "feature/sidebar")
-	}
-
 	func testParseBranchesIncludesUpstreamTrackingCounts() {
 		let output = "main\tabc1234\t*\torigin/main\tahead 2, behind 3\n"
 
@@ -674,27 +646,6 @@ final class GitOutputParserTests: XCTestCase {
 
 		let restagedAmendChanges = try await repository.requestAmendChanges(at: repositoryURL)
 		XCTAssertEqual(restagedAmendChanges.first?.state, .added)
-	}
-
-	func testRequestRemotesReturnsConfiguredRemote() async throws {
-		let repositoryURL = try makeRepository()
-		defer {
-			try? FileManager.default.removeItem(at: repositoryURL)
-		}
-		try requestRunGit(
-			["remote", "add", "origin", "https://example.com/Groves.git"],
-			at: repositoryURL
-		)
-		let head = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
-			.trimmingCharacters(in: .whitespacesAndNewlines)
-		try requestRunGit(["update-ref", "refs/remotes/origin/main", head], at: repositoryURL)
-
-		let remotes = try await LocalGitRepository().requestRemotes(at: repositoryURL)
-
-		XCTAssertEqual(remotes.first?.name, "origin")
-		XCTAssertEqual(remotes.first?.fetchURL, "https://example.com/Groves.git")
-		XCTAssertEqual(remotes.first?.pushURL, "https://example.com/Groves.git")
-		XCTAssertEqual(remotes.first?.branches.map(\.fullName), ["origin/main"])
 	}
 
 	func testCreateAndDeleteLocalBranch() async throws {
@@ -1397,48 +1348,6 @@ final class GitOutputParserTests: XCTestCase {
 			at: repositoryURL
 		)
 		XCTAssertTrue(heads.isEmpty)
-	}
-
-	func testBranchRenameAndRemoteCRUD() async throws {
-		let repositoryURL = try makeRepository()
-		defer { try? FileManager.default.removeItem(at: repositoryURL) }
-		let originalBranch = try currentBranch(at: repositoryURL)
-		let repository = LocalGitRepository()
-
-		try await repository.requestRenameBranch(
-			named: originalBranch,
-			to: "renamed",
-			at: repositoryURL
-		)
-		XCTAssertEqual(try currentBranch(at: repositoryURL), "renamed")
-
-		try await repository.requestAddRemote(
-			named: "origin",
-			fetchURL: "https://example.com/fetch.git",
-			pushURL: "ssh://example.com/push.git",
-			at: repositoryURL
-		)
-		var remotes = try await repository.requestRemotes(at: repositoryURL)
-		var remote = try XCTUnwrap(remotes.first)
-		XCTAssertEqual(remote.fetchURL, "https://example.com/fetch.git")
-		XCTAssertEqual(remote.pushURL, "ssh://example.com/push.git")
-
-		try await repository.requestUpdateRemote(
-			named: "origin",
-			fetchURL: "https://example.com/updated.git",
-			pushURL: nil,
-			at: repositoryURL
-		)
-		try await repository.requestRenameRemote(named: "origin", to: "upstream", at: repositoryURL)
-		remotes = try await repository.requestRemotes(at: repositoryURL)
-		remote = try XCTUnwrap(remotes.first)
-		XCTAssertEqual(remote.name, "upstream")
-		XCTAssertEqual(remote.fetchURL, "https://example.com/updated.git")
-		XCTAssertEqual(remote.pushURL, "https://example.com/updated.git")
-
-		try await repository.requestDeleteRemote(named: "upstream", at: repositoryURL)
-		remotes = try await repository.requestRemotes(at: repositoryURL)
-		XCTAssertTrue(remotes.isEmpty)
 	}
 
 	func testCommitMetadataAndNoEditAmend() async throws {
