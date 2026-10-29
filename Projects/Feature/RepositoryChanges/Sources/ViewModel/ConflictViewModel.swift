@@ -23,17 +23,20 @@ public final class ConflictViewModel {
 		public let operationsUseCase: any RepositoryOperationsUseCase
 		public let openExternalEditor: (@MainActor (URL, String?) throws -> Void)?
 		public let repositoryURL: @MainActor () -> URL?
+		public let externalEditorBundleIdentifier: @MainActor () -> String?
 
 		public init(
 			contentUseCase: any RepositoryContentUseCase,
 			operationsUseCase: any RepositoryOperationsUseCase,
 			openExternalEditor: (@MainActor (URL, String?) throws -> Void)?,
-			repositoryURL: @escaping @MainActor () -> URL?
+			repositoryURL: @escaping @MainActor () -> URL?,
+			externalEditorBundleIdentifier: @escaping @MainActor () -> String?
 		) {
 			self.contentUseCase = contentUseCase
 			self.operationsUseCase = operationsUseCase
 			self.openExternalEditor = openExternalEditor
 			self.repositoryURL = repositoryURL
+			self.externalEditorBundleIdentifier = externalEditorBundleIdentifier
 		}
 	}
 
@@ -179,6 +182,7 @@ public final class ConflictViewModel {
 				return
 			} catch {
 				guard activeContentRequestID == requestID else { return }
+				actions.didReceiveError(error.localizedDescription)
 			}
 		}
 	}
@@ -287,9 +291,7 @@ public final class ConflictViewModel {
 		let fileURL = repositoryURL.appending(path: conflict.path)
 		guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
 		do {
-			let storedBundleIdentifier = UserDefaults.standard.string(
-				forKey: "externalEditorBundleIdentifier"
-			)
+			let storedBundleIdentifier = dependencies.externalEditorBundleIdentifier()
 			try openExternalEditor(
 				fileURL,
 				storedBundleIdentifier?.isEmpty == false ? storedBundleIdentifier : nil

@@ -1,9 +1,11 @@
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositoryNoticeCenter: ObservableObject {
-	@Published public private(set) var notice: GitProcessNotice?
+@Observable
+public final class RepositoryNoticeCenter {
+	public private(set) var notice: GitProcessNotice?
 
 	public init() {}
 

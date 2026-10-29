@@ -61,14 +61,8 @@ public struct ImageDiffView: View {
 		.safeAreaInset(edge: .top) {
 			zoomControls
 		}
-		.onAppear {
-			viewModel.onAppear(diff: diff)
-		}
-		.onChange(of: diff) { _, diff in
-			viewModel.didChangeDiff(diff)
-		}
-		.onDisappear {
-			viewModel.onDisappear()
+		.task(id: diff) {
+			await viewModel.update(diff: diff)
 		}
 	}
 

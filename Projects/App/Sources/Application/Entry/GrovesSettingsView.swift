@@ -4,10 +4,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct GrovesSettingsView: View {
-	@AppStorage("externalEditorBundleIdentifier") private var bundleIdentifier = ""
+	@AppStorage(ExternalEditorPreferenceKey.bundleIdentifier) private var bundleIdentifier = ""
 	@AppStorage("externalEditorDisplayName") private var displayName = "System Default"
 	@State private var selectionError: String?
-	private let accountViewModel = AppDIContainer.shared.accountViewModel
+	private let accountViewModel: GitAccountViewModel
+
+	init(accountViewModel: GitAccountViewModel) {
+		self.accountViewModel = accountViewModel
+	}
 
 	var body: some View {
 		TabView {
@@ -103,5 +107,5 @@ struct GrovesSettingsView: View {
 }
 
 #Preview {
-	GrovesSettingsView()
+	GrovesSettingsView(accountViewModel: GitAccountViewModel())
 }

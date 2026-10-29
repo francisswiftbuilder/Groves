@@ -75,6 +75,59 @@ struct WorkspaceViewModelTests {
 	}
 
 	@Test
+	func testCancelledAutomaticRefreshRevalidatesSelectedContentOnNextRefresh() async throws {
+		let repositoryURL = FileManager.default.temporaryDirectory
+			.resolvingSymlinksInPath()
+			.appending(path: "GrovesAutomaticRefresh-\(UUID().uuidString)", directoryHint: .isDirectory)
+		let gitDirectoryURL = repositoryURL.appending(path: ".git", directoryHint: .isDirectory)
+		try FileManager.default.createDirectory(
+			at: gitDirectoryURL,
+			withIntermediateDirectories: true
+		)
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let conflict = GitConflict(
+			path: "Conflict.swift",
+			kind: .bothModified,
+			hasBase: true,
+			hasOurs: true,
+			hasTheirs: true
+		)
+		let contentGate = GitDiffGate(suspendsRequests: true)
+		let diffGate = GitDiffGate()
+		let workspace = makeRepositoryWorkspace(
+			repository: GitRepositoryStub(
+				operationState: RepositoryOperationState(
+					head: .attached,
+					operation: RepositoryOperation(kind: .merge),
+					conflicts: [conflict]
+				),
+				diffGate: diffGate,
+				contentGate: contentGate
+			)
+		)
+		let snapshotLabel = GitDiffGateLabel.workingTreeChanges
+		let conflictLabel = GitDiffGateLabel.conflictContent(path: conflict.path)
+		workspace.viewModel.didChooseRepository(repositoryURL)
+		try await waitUntilCallCount(1, of: snapshotLabel, in: contentGate)
+		await contentGate.resumeCall(0)
+		try await waitUntilCallCount(1, of: conflictLabel, in: diffGate)
+		try await waitUntil {
+			!workspace.viewModel.isLoading && !workspace.conflictViewModel.isLoadingContent
+		}
+		workspace.viewModel.onAppear(isSceneActive: true)
+
+		try Data("working tree".utf8).write(to: repositoryURL.appending(path: "File.txt"))
+		try await waitUntilCallCount(2, of: snapshotLabel, in: contentGate, timeout: .seconds(5))
+		try Data("metadata".utf8).write(to: gitDirectoryURL.appending(path: "GROVES_EVENT"))
+		try await waitUntilCallCount(3, of: snapshotLabel, in: contentGate, timeout: .seconds(5))
+		await contentGate.resumeCall(1)
+		await contentGate.resumeCall(2)
+
+		try await waitUntilCallCount(2, of: conflictLabel, in: diffGate, timeout: .seconds(3))
+		workspace.viewModel.onDisappear()
+	}
+
+	@Test
 	func testStagedAndUnstagedSelectionsUseIndependentDiffSources() async throws {
 		let change = WorkingTreeChange(
 			path: "GalleryView.swift",
@@ -268,13 +321,15 @@ struct WorkspaceViewModelTests {
 
 	@Test
 	func testExternalEditorUsesConfiguredApplicationAndIgnoresDeletedConflict() async throws {
-		let previousEditor = UserDefaults.standard.object(forKey: "externalEditorBundleIdentifier")
+		let previousEditor = UserDefaults.standard.object(
+			forKey: ExternalEditorPreferenceKey.bundleIdentifier)
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.appending(path: "GrovesExternalEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
-			UserDefaults.standard.set(previousEditor, forKey: "externalEditorBundleIdentifier")
+			UserDefaults.standard.set(
+				previousEditor, forKey: ExternalEditorPreferenceKey.bundleIdentifier)
 		}
 		let conflict = GitConflict(
 			path: "Conflict.swift",
@@ -289,7 +344,8 @@ struct WorkspaceViewModelTests {
 		let workspace = makeRepositoryWorkspace(externalEditorOpener: opener)
 		workspace.viewModel.didChooseRepository(repositoryURL)
 		try await waitUntil { workspace.viewModel.repositoryURL == repositoryURL }
-		UserDefaults.standard.set("com.example.Editor", forKey: "externalEditorBundleIdentifier")
+		UserDefaults.standard.set(
+			"com.example.Editor", forKey: ExternalEditorPreferenceKey.bundleIdentifier)
 
 		workspace.conflictViewModel.didOpenInEditor(conflict)
 

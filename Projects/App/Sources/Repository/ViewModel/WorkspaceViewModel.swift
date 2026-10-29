@@ -244,11 +244,13 @@ final class WorkspaceViewModel {
 				else { return }
 				let revalidatesSelectedContent =
 					self.automaticRefreshRevalidatesSelectedContent
-				self.automaticRefreshRevalidatesSelectedContent = false
 				try await self.requestAllContent(
 					at: repositoryURL,
 					revalidatesSelectedContent: revalidatesSelectedContent
 				)
+				if revalidatesSelectedContent {
+					self.automaticRefreshRevalidatesSelectedContent = false
+				}
 			} catch is CancellationError {
 				return
 			} catch {}

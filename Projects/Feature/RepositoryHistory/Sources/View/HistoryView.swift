@@ -7,7 +7,7 @@ public struct HistoryView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	private let diffSearchViewModel: RepositorySearchViewModel
 	private let historyViewModel: HistoryViewModel
-	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
+	@Bindable private var diffPreferences: WorkspaceDiffPreferences
 	let repositoryName: String
 	let currentBranchStatus: String
 	let operationState: RepositoryOperationState
@@ -32,7 +32,7 @@ public struct HistoryView: View {
 	) {
 		self.diffSearchViewModel = diffSearchViewModel
 		self.historyViewModel = historyViewModel
-		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
+		_diffPreferences = Bindable(wrappedValue: diffPreferences)
 		self.repositoryName = repositoryName
 		self.currentBranchStatus = currentBranchStatus
 		self.operationState = operationState

@@ -51,7 +51,7 @@ public final class HistoryViewModel {
 	var historyFocusRequest: HistoryFocusRequest?
 	var isLoadingCommitDiff = false
 	var isLoadingCommitImageDiff = false
-	public let checkoutAvailability = HistoryCheckoutAvailability()
+	public private(set) var hasWorkingTreeChanges = false
 	private var displayedCommitDiffID: String?
 	private var requestedCommitDiffID: String?
 	private var activeCommitDiffRequestID: Int?
@@ -111,7 +111,10 @@ public final class HistoryViewModel {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		checkoutAvailability.apply(hasWorkingTreeChanges: !snapshot.changes.isEmpty)
+		let hasChanges = !snapshot.changes.isEmpty
+		if hasWorkingTreeChanges != hasChanges {
+			hasWorkingTreeChanges = hasChanges
+		}
 		guard commits != snapshot.commits else { return }
 		commits = snapshot.commits
 		requestLayout()
@@ -158,7 +161,9 @@ public final class HistoryViewModel {
 		cancelTasks()
 		snapshotRevision += 1
 		commits = []
-		checkoutAvailability.apply(hasWorkingTreeChanges: false)
+		if hasWorkingTreeChanges {
+			hasWorkingTreeChanges = false
+		}
 		selectedCommitID = nil
 		selectedCommitFileID = nil
 		commitGraphItems = []

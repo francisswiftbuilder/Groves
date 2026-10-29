@@ -375,7 +375,7 @@ public struct LocalGitRepository: GitRepository {
 			}
 
 			do {
-				let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+				let data = try Data(contentsOf: fileURL)
 				try Task.checkCancellation()
 				return data
 			} catch is CancellationError {

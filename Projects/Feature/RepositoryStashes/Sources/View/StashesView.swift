@@ -6,7 +6,7 @@ import SwiftUI
 public struct StashesView: View {
 	private let diffSearchViewModel: RepositorySearchViewModel
 	private let stashesViewModel: StashesViewModel
-	@ObservedObject private var diffPreferences: WorkspaceDiffPreferences
+	@Bindable private var diffPreferences: WorkspaceDiffPreferences
 	let onDiffOptionsChanged: () -> Void
 
 	public init(
@@ -17,7 +17,7 @@ public struct StashesView: View {
 	) {
 		self.diffSearchViewModel = diffSearchViewModel
 		self.stashesViewModel = stashesViewModel
-		_diffPreferences = ObservedObject(wrappedValue: diffPreferences)
+		_diffPreferences = Bindable(wrappedValue: diffPreferences)
 		self.onDiffOptionsChanged = onDiffOptionsChanged
 	}
 

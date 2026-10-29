@@ -148,7 +148,7 @@ struct HistoryViewModelTests {
 			)
 		)
 
-		#expect(viewModel.checkoutAvailability.hasWorkingTreeChanges)
+		#expect(viewModel.hasWorkingTreeChanges)
 	}
 
 	private func makeViewModel(

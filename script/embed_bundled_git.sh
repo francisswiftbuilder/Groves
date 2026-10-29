@@ -15,8 +15,7 @@ if [[ ! -x "$RUNTIME/bin/git" ]]; then
 fi
 for previous in "$DESTINATION" "$APP_BUNDLE/Contents/Helpers/Git"; do
 	if [[ -e "$previous" ]]; then
-		BACKUP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/groves-previous-runtime.XXXXXX")"
-		mv "$previous" "$BACKUP_DIR/Git"
+		/bin/rm -rf "$previous"
 	fi
 done
 mkdir -p "$DESTINATION"

@@ -82,7 +82,10 @@ final class RepositoryWorkspaceAssembly {
 				contentUseCase: dependencies.contentUseCase,
 				operationsUseCase: dependencies.operationsUseCase,
 				openExternalEditor: openExternalEditor,
-				repositoryURL: { output.workspaceViewModel?.repositoryURL }
+				repositoryURL: { output.workspaceViewModel?.repositoryURL },
+				externalEditorBundleIdentifier: {
+					UserDefaults.standard.string(forKey: ExternalEditorPreferenceKey.bundleIdentifier)
+				}
 			),
 			actions: .init(
 				didProduceSnapshot: { snapshot in

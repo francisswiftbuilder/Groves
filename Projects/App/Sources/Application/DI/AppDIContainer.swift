@@ -8,16 +8,18 @@ import SwiftUI
 @MainActor
 final class AppDIContainer {
 	static let shared = AppDIContainer()
-	let accountViewModel = GitAccountViewModel()
+	let accountViewModel: GitAccountViewModel
 	let windowTabCoordinator: any RepositoryWindowTabCoordinating
 	private let noticeCenter: RepositoryNoticeCenter
 	private let viewModelResult: Result<RepositoryTabsViewModel, Error>
 
 	private init() {
 		let noticeCenter = RepositoryNoticeCenter()
+		let accountViewModel = GitAccountViewModel()
 		let isRunningTests =
 			ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 		self.noticeCenter = noticeCenter
+		self.accountViewModel = accountViewModel
 		let repository = LocalGitRepository(
 			configuration: GitProcessConfiguration(
 				executableURL: Bundle.main.bundleURL.appending(path: "Contents/Resources/Git/bin/git"),
@@ -83,6 +85,7 @@ final class AppDIContainer {
 				AppDIContainer.makeRepositoryRootView(
 					viewModelResult: result,
 					noticeCenter: noticeCenter,
+					accountViewModel: accountViewModel,
 					repositoryID: repositoryID
 				)
 			}
@@ -94,6 +97,7 @@ final class AppDIContainer {
 			Self.makeRepositoryRootView(
 				viewModelResult: viewModelResult,
 				noticeCenter: noticeCenter,
+				accountViewModel: accountViewModel,
 				repositoryID: repositoryID
 			)
 			.environment(\.windowTabCoordinator, windowTabCoordinator)
@@ -103,6 +107,7 @@ final class AppDIContainer {
 	private static func makeRepositoryRootView(
 		viewModelResult: Result<RepositoryTabsViewModel, Error>,
 		noticeCenter: RepositoryNoticeCenter,
+		accountViewModel: GitAccountViewModel,
 		repositoryID: Binding<UUID?>
 	) -> AnyView {
 		switch viewModelResult {
@@ -111,6 +116,7 @@ final class AppDIContainer {
 				RepositoryRootView(
 					viewModel: viewModel,
 					noticeCenter: noticeCenter,
+					accountViewModel: accountViewModel,
 					repositoryID: repositoryID
 				)
 			)

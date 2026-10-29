@@ -8,7 +8,7 @@ struct ChangesDiffPane: View {
 	private let viewModel: ChangesViewModel
 	private let diffViewModel: ChangesDiffViewModel
 	private let conflictViewModel: ConflictViewModel
-	@ObservedObject private var preferences: WorkspaceDiffPreferences
+	@Bindable private var preferences: WorkspaceDiffPreferences
 	let repositoryURL: URL?
 	let onOptionsChanged: () -> Void
 
@@ -25,7 +25,7 @@ struct ChangesDiffPane: View {
 		self.viewModel = viewModel
 		self.diffViewModel = diffViewModel
 		self.conflictViewModel = conflictViewModel
-		_preferences = ObservedObject(wrappedValue: preferences)
+		_preferences = Bindable(wrappedValue: preferences)
 		self.repositoryURL = repositoryURL
 		self.onOptionsChanged = onOptionsChanged
 	}

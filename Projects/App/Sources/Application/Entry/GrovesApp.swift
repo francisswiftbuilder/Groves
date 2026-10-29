@@ -30,7 +30,7 @@ struct GrovesApp: App {
 		}
 
 		Settings {
-			GrovesSettingsView()
+			GrovesSettingsView(accountViewModel: AppDIContainer.shared.accountViewModel)
 		}
 	}
 }

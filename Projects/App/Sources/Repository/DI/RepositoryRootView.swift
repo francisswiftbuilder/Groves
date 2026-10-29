@@ -3,10 +3,10 @@ import SwiftUI
 
 struct RepositoryRootView: View {
 	let viewModel: RepositoryTabsViewModel
-	@ObservedObject var noticeCenter: RepositoryNoticeCenter
+	let noticeCenter: RepositoryNoticeCenter
+	let accountViewModel: GitAccountViewModel
 	@Binding var repositoryID: UUID?
 	@State private var windowViewModel = RepositoryWindowViewModel()
-	private let accountViewModel = AppDIContainer.shared.accountViewModel
 
 	var body: some View {
 		Group {
