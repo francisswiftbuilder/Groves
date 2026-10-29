@@ -152,6 +152,7 @@ enum GitOutputParser {
 			return GitBranch(
 				name: fields[0],
 				shortHash: fields[1],
+				hash: fields.count > 5 ? fields[5] : nil,
 				upstream: fields[3].isEmpty ? nil : fields[3],
 				aheadCount: trackingCounts.ahead,
 				behindCount: trackingCounts.behind,
@@ -181,45 +182,41 @@ enum GitOutputParser {
 	}
 
 	static func parseRemotes(_ output: String) -> [GitRemote] {
-		var remoteOrder: [String] = []
-		var remoteURLs: [String: (fetch: String?, push: String?)] = [:]
-
-		for line in output.split(whereSeparator: \.isNewline) {
-			let fields = line.split(separator: "\t", maxSplits: 1).map(String.init)
-			guard fields.count == 2 else { continue }
-			let name = fields[0]
-			let value = fields[1]
-			guard let markerRange = value.range(of: " (", options: .backwards) else { continue }
-			let url = String(value[..<markerRange.lowerBound])
-			let kind = String(value[markerRange.lowerBound...])
-
-			if remoteURLs[name] == nil {
-				remoteOrder.append(name)
-				remoteURLs[name] = (nil, nil)
-			}
-			if kind == " (fetch)" {
-				remoteURLs[name]?.fetch = url
-			} else if kind == " (push)" {
-				remoteURLs[name]?.push = url
-			}
+		var urls: [String: (fetch: [String], push: [String])] = [:]
+		for record in output.split(separator: "\0") {
+			guard let separator = record.firstIndex(of: "\n") else { continue }
+			let key = record[..<separator]
+			guard key.hasPrefix("remote."), let lastDot = key.lastIndex(of: ".") else { continue }
+			let nameStart = key.index(key.startIndex, offsetBy: "remote.".count)
+			guard lastDot > nameStart else { continue }
+			let name = String(key[nameStart..<lastDot])
+			let field = key[key.index(after: lastDot)...]
+			let value = String(record[record.index(after: separator)...])
+			if urls[name] == nil { urls[name] = ([], []) }
+			if field == "url" { urls[name]?.fetch.append(value) }
+			if field == "pushurl" { urls[name]?.push.append(value) }
 		}
-
-		return remoteOrder.compactMap { name in
-			guard let urls = remoteURLs[name] else { return nil }
-			return GitRemote(name: name, fetchURL: urls.fetch, pushURL: urls.push)
+		return urls.keys.sorted().compactMap { name in
+			guard let values = urls[name] else { return nil }
+			return GitRemote(name: name, fetchURLs: values.fetch, pushURLs: values.push)
 		}
 	}
 
-	static func parseRemoteBranches(_ output: String) -> [GitRemoteBranch] {
-		output.split(whereSeparator: \.isNewline).compactMap { line in
+	static func parseRemoteBranches(_ output: String, remoteNames: [String]) -> [GitRemoteBranch] {
+		let names = remoteNames.sorted {
+			$0.count == $1.count ? $0 < $1 : $0.count > $1.count
+		}
+		return output.split(whereSeparator: \.isNewline).compactMap { line in
 			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-			guard fields.count >= 4, fields[3].isEmpty else { return nil }
-			let fullName = fields[0]
-			guard let separatorIndex = fullName.firstIndex(of: "/") else { return nil }
-			let remoteName = String(fullName[..<separatorIndex])
-			let branchName = String(fullName[fullName.index(after: separatorIndex)...])
-			guard !remoteName.isEmpty, !branchName.isEmpty else { return nil }
-
+			guard fields.count >= 4, fields[3].isEmpty,
+				fields[0].hasPrefix("refs/remotes/")
+			else { return nil }
+			let fullName = String(fields[0].dropFirst("refs/remotes/".count))
+			guard let remoteName = names.first(where: { fullName.hasPrefix($0 + "/") }) else {
+				return nil
+			}
+			let branchName = String(fullName.dropFirst(remoteName.count + 1))
+			guard !branchName.isEmpty else { return nil }
 			return GitRemoteBranch(
 				name: branchName,
 				fullName: fullName,
@@ -250,6 +247,7 @@ enum GitOutputParser {
 	}
 
 	static func parseStashes(_ output: String) -> [GitStash] {
+		var occurrences: [String: Int] = [:]
 		let formatter = DateFormatter()
 		formatter.locale = Locale(identifier: "en_US_POSIX")
 		formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
@@ -264,11 +262,15 @@ enum GitOutputParser {
 					omittingEmptySubsequences: false
 				).map(String.init)
 				guard fields.count == 4 else { return nil }
+				let key = "\(fields[1]):\(fields[2])"
+				let occurrence = occurrences[key, default: 0]
+				occurrences[key] = occurrence + 1
 				return GitStash(
 					reference: fields[0].trimmingCharacters(in: .whitespacesAndNewlines),
 					hash: fields[1],
 					subject: fields[2],
-					date: formatter.date(from: fields[3].trimmingCharacters(in: .newlines))
+					date: formatter.date(from: fields[3].trimmingCharacters(in: .newlines)),
+					occurrence: occurrence
 				)
 			}
 	}

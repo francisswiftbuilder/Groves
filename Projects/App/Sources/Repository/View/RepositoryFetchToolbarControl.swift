@@ -2,15 +2,15 @@ import FeatureRepositoryOperations
 import SwiftUI
 
 struct RepositoryFetchToolbarControl: View {
-	@ObservedObject private var syncViewModel: RepositorySyncViewModel
-	@ObservedObject private var remotesViewModel: RemotesViewModel
+	private let syncViewModel: RepositorySyncViewModel
+	private let remotesViewModel: RemotesViewModel
 
 	init(
 		syncViewModel: RepositorySyncViewModel,
 		remotesViewModel: RemotesViewModel
 	) {
-		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
-		_remotesViewModel = ObservedObject(wrappedValue: remotesViewModel)
+		self.syncViewModel = syncViewModel
+		self.remotesViewModel = remotesViewModel
 	}
 
 	var body: some View {

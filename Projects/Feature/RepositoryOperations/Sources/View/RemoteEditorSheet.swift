@@ -3,6 +3,8 @@ import SwiftUI
 struct RemoteEditorSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	let presentation: RemoteEditorPresentation
+	let isLoading: Bool
+	let errorMessage: String?
 	let onSave: (String, String, String?) -> Void
 	@State private var name: String
 	@State private var fetchURL: String
@@ -10,9 +12,13 @@ struct RemoteEditorSheet: View {
 
 	init(
 		presentation: RemoteEditorPresentation,
+		isLoading: Bool = false,
+		errorMessage: String? = nil,
 		onSave: @escaping (String, String, String?) -> Void
 	) {
 		self.presentation = presentation
+		self.isLoading = isLoading
+		self.errorMessage = errorMessage
 		self.onSave = onSave
 		switch presentation {
 		case .add:
@@ -36,14 +42,26 @@ struct RemoteEditorSheet: View {
 					.font(.caption)
 					.foregroundStyle(.red)
 			}
+			if hasMultipleURLs {
+				Text("This remote has multiple URLs. Edit them with Git to preserve all destinations.")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
+			if let errorMessage {
+				Label(errorMessage, systemImage: "exclamationmark.triangle")
+					.font(.caption)
+					.foregroundStyle(.red)
+			}
 		}
+		.disabled(isLoading)
 		.formStyle(.grouped)
 		.padding(16)
-		.frame(width: 500, height: 220)
+		.frame(width: 500, height: 320)
 		.safeAreaInset(edge: .bottom) {
 			HStack {
 				Spacer()
 				Button("Cancel", role: .cancel) { dismiss() }
+					.disabled(isLoading)
 				Button(isEditing ? "Save" : "Add Remote") {
 					onSave(
 						name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -52,15 +70,21 @@ struct RemoteEditorSheet: View {
 					)
 				}
 				.buttonStyle(.borderedProminent)
-				.disabled(!isValid)
+				.disabled(!isValid || isLoading || hasMultipleURLs)
 			}
 			.padding(12)
 			.background(.bar)
 		}
+		.interactiveDismissDisabled(isLoading)
 	}
 
 	private var isEditing: Bool {
 		if case .edit = presentation { return true }
+		return false
+	}
+
+	private var hasMultipleURLs: Bool {
+		if case .edit(let remote) = presentation { return remote.hasMultipleURLs }
 		return false
 	}
 

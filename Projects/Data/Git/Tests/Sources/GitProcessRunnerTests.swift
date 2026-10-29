@@ -1,10 +1,52 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import DataGit
 
-final class GitProcessRunnerTests: XCTestCase {
+struct GitProcessRunnerTests {
+	@Test
+	func testCancelledSuccessfulExitDoesNotCommitCredentials() async throws {
+		let directoryURL = try makeTemporaryDirectory()
+		defer { try? FileManager.default.removeItem(at: directoryURL) }
+		let executableURL = directoryURL.appending(path: "test-git")
+		let markerURL = directoryURL.appending(path: "started")
+		let escapedMarkerPath = markerURL.path.replacingOccurrences(of: "'", with: "'\\''")
+		try """
+		#!/bin/sh
+		trap 'exit 0' TERM
+		touch '\(escapedMarkerPath)'
+		while :; do sleep 0.01; done
+		""".write(to: executableURL, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes(
+			[.posixPermissions: 0o700], ofItemAtPath: executableURL.path)
+		let store = GitCredentialPersistingStub()
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(executableURL: executableURL),
+			credentialStore: store
+		)
+		let task = Task {
+			try await runner.requestRun(arguments: [], at: directoryURL, isNetworkOperation: true)
+		}
+		defer { task.cancel() }
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while !FileManager.default.fileExists(atPath: markerURL.path), clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(FileManager.default.fileExists(atPath: markerURL.path))
+
+		task.cancel()
+		do {
+			_ = try await task.value
+			Issue.record("A cancelled operation must not succeed even when the process exits with zero")
+		} catch is CancellationError {}
+
+		#expect(store.commitCount == 0)
+		#expect(store.discardCount == 1)
+	}
+
+	@Test
 	func testRunnerReturnsOutputAndClassifiesCommandFailure() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -12,17 +54,18 @@ final class GitProcessRunnerTests: XCTestCase {
 
 		let result = try await runner.requestRun(
 			arguments: ["rev-parse", "--is-inside-work-tree"], at: repositoryURL)
-		XCTAssertEqual(result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines), "true")
+		#expect(result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines) == "true")
 
 		do {
 			_ = try await runner.requestRun(arguments: ["not-a-command"], at: repositoryURL)
-			XCTFail("Expected command failure")
+			Issue.record("Expected command failure")
 		} catch GitRepositoryError.commandFailed {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 
+	@Test
 	func testRunnerTimesOutNetworkOperation() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -39,13 +82,14 @@ final class GitProcessRunnerTests: XCTestCase {
 				at: repositoryURL,
 				isNetworkOperation: true
 			)
-			XCTFail("Expected timeout")
+			Issue.record("Expected timeout")
 		} catch GitRepositoryError.timeout {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 
+	@Test
 	func testRunnerCancellationTerminatesCommand() async throws {
 		let repositoryURL = try makeRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -64,10 +108,10 @@ final class GitProcessRunnerTests: XCTestCase {
 
 		do {
 			_ = try await task.value
-			XCTFail("Expected cancellation")
+			Issue.record("Expected cancellation")
 		} catch is CancellationError {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 

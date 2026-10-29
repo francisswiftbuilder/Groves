@@ -1,10 +1,12 @@
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import FeatureRepositoryChanges
 
 @MainActor
-final class ChangesViewModelTests: XCTestCase {
+struct ChangesViewModelTests {
+	@Test
 	func testApplyingSnapshotSelectsConflictBeforeWorkingTreeChanges() {
 		let conflict = GitConflict(
 			path: "Sources/Conflict.swift",
@@ -36,11 +38,12 @@ final class ChangesViewModelTests: XCTestCase {
 			)
 		)
 
-		XCTAssertEqual(viewModel.selectedChangeIDs, [.conflict(conflict.path)])
-		XCTAssertEqual(selectedConflict, conflict)
-		XCTAssertNil(selectedDiff)
+		#expect(viewModel.selectedChangeIDs == [.conflict(conflict.path)])
+		#expect(selectedConflict == conflict)
+		#expect(selectedDiff == nil)
 	}
 
+	@Test
 	func testSelectingStagedAndUnstagedRowsProducesTheMatchingDiffSource() async {
 		let change = WorkingTreeChange(
 			path: "Sources/App.swift",
@@ -53,14 +56,15 @@ final class ChangesViewModelTests: XCTestCase {
 		viewModel.apply(makeSnapshot(changes: [change]))
 
 		await viewModel.didSelectChanges([.unstaged(change.id)])
-		XCTAssertEqual(selectedDiff?.source, .unstaged)
-		XCTAssertEqual(selectedDiff?.workingTreeChange, change)
+		#expect(selectedDiff?.source == .unstaged)
+		#expect(selectedDiff?.workingTreeChange == change)
 
 		await viewModel.didSelectChanges([.staged(change.id)])
-		XCTAssertEqual(selectedDiff?.source, .staged)
-		XCTAssertEqual(selectedDiff?.workingTreeChange, change)
+		#expect(selectedDiff?.source == .staged)
+		#expect(selectedDiff?.workingTreeChange == change)
 	}
 
+	@Test
 	func testResetClearsSelectionAndPresentationOutputs() {
 		let change = WorkingTreeChange(
 			path: "Sources/App.swift",
@@ -84,12 +88,13 @@ final class ChangesViewModelTests: XCTestCase {
 
 		viewModel.reset()
 
-		XCTAssertTrue(viewModel.selectedChangeIDs.isEmpty)
-		XCTAssertTrue(viewModel.changes.isEmpty)
-		XCTAssertNil(selectedConflict)
-		XCTAssertNil(selectedDiff)
+		#expect(viewModel.selectedChangeIDs.isEmpty)
+		#expect(viewModel.changes.isEmpty)
+		#expect(selectedConflict == nil)
+		#expect(selectedDiff == nil)
 	}
 
+	@Test
 	func testApplyingConflictOnlySnapshotChangePublishesConflictState() {
 		let change = WorkingTreeChange(
 			path: "Sources/App.swift",
@@ -117,9 +122,10 @@ final class ChangesViewModelTests: XCTestCase {
 			)
 		)
 
-		XCTAssertEqual(viewModel.conflicts, [conflict])
+		#expect(viewModel.conflicts == [conflict])
 	}
 
+	@Test
 	func testApplyingIdenticalSnapshotDoesNotReloadSelectedDiff() {
 		let change = WorkingTreeChange(
 			path: "Sources/App.swift",
@@ -139,7 +145,7 @@ final class ChangesViewModelTests: XCTestCase {
 
 		viewModel.apply(snapshot, revalidatesSelectedDiff: false)
 
-		XCTAssertTrue(reloadRequests.isEmpty)
+		#expect(reloadRequests.isEmpty)
 	}
 
 	private func makeViewModel(

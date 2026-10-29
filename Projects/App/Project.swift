@@ -21,11 +21,11 @@ let project = Project(
 		.target(
 			name: GrovesProduct.askPassTargetName,
 			destinations: environment.destinations,
-			product: .commandLineTool,
+			product: .app,
 			productName: GrovesProduct.askPassTargetName,
 			bundleId: environment.organizationName + ".AskPass",
 			deploymentTargets: environment.deploymentTargets,
-			infoPlist: .default,
+			infoPlist: .extendingDefault(with: ["LSUIElement": .boolean(true)]),
 			sources: GrovesProduct.askPassSources,
 			entitlements: Permissions.appEntitlements,
 			dependencies: [

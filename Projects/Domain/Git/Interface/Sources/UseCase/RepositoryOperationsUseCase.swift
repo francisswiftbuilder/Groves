@@ -36,6 +36,7 @@ public protocol RepositoryOperationsUseCase: Sendable {
 	func reset(
 		to commitHash: String,
 		mode: GitResetMode,
+		expecting context: GitResetContext,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot
 }

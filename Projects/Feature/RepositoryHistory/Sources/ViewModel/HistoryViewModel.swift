@@ -1,10 +1,11 @@
-import Combine
 import CoreRepositoryDiff
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class HistoryViewModel: ObservableObject {
+@Observable
+public final class HistoryViewModel {
 	public struct Actions {
 		public let didReceiveError: @MainActor (String) -> Void
 		public let didRequestPresentation: @MainActor () -> Void
@@ -40,17 +41,17 @@ public final class HistoryViewModel: ObservableObject {
 		}
 	}
 
-	@Published var selectedCommitID: String?
-	@Published var selectedCommitFileID: CommitDiffFile.ID?
-	@Published var searchText = ""
-	@Published var commitGraphItems: [CommitGraphItem] = []
-	@Published var displayedCommitGraphItems: [CommitGraphItem] = []
-	@Published var selectedCommitFiles: [CommitDiffFile] = []
-	@Published var commitImageDiff: GitImageDiff?
-	@Published var historyFocusRequest: HistoryFocusRequest?
-	@Published var isLoadingCommitDiff = false
-	@Published var isLoadingCommitImageDiff = false
-	public let checkoutAvailability = HistoryCheckoutAvailability()
+	var selectedCommitID: String?
+	var selectedCommitFileID: CommitDiffFile.ID?
+	var searchText = ""
+	var commitGraphItems: [CommitGraphItem] = []
+	var displayedCommitGraphItems: [CommitGraphItem] = []
+	var selectedCommitFiles: [CommitDiffFile] = []
+	var commitImageDiff: GitImageDiff?
+	var historyFocusRequest: HistoryFocusRequest?
+	var isLoadingCommitDiff = false
+	var isLoadingCommitImageDiff = false
+	public private(set) var hasWorkingTreeChanges = false
 	private var displayedCommitDiffID: String?
 	private var requestedCommitDiffID: String?
 	private var activeCommitDiffRequestID: Int?
@@ -59,16 +60,12 @@ public final class HistoryViewModel: ObservableObject {
 	private var commitImageDiffRequestSequence = 0
 	private var commits: [GitCommit] = []
 	private var snapshotRevision = 0
-	private var commitDiffTask: Task<Void, Never>?
-	private var commitImageDiffTask: Task<Void, Never>?
-	private var layoutTask: Task<Void, Never>?
-	private var searchTask: Task<Void, Never>?
+	@ObservationIgnored private var commitDiffTask: Task<Void, Never>?
+	@ObservationIgnored private var commitImageDiffTask: Task<Void, Never>?
+	@ObservationIgnored private var layoutTask: Task<Void, Never>?
+	@ObservationIgnored private var searchTask: Task<Void, Never>?
 	private let dependencies: Dependencies
 	private let actions: Actions
-
-	public var selectedCommitIDChanges: AnyPublisher<Void, Never> {
-		$selectedCommitID.map { _ in () }.eraseToAnyPublisher()
-	}
 
 	public init(
 		dependencies: Dependencies,
@@ -114,7 +111,10 @@ public final class HistoryViewModel: ObservableObject {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		checkoutAvailability.apply(hasWorkingTreeChanges: !snapshot.changes.isEmpty)
+		let hasChanges = !snapshot.changes.isEmpty
+		if hasWorkingTreeChanges != hasChanges {
+			hasWorkingTreeChanges = hasChanges
+		}
 		guard commits != snapshot.commits else { return }
 		commits = snapshot.commits
 		requestLayout()
@@ -161,7 +161,9 @@ public final class HistoryViewModel: ObservableObject {
 		cancelTasks()
 		snapshotRevision += 1
 		commits = []
-		checkoutAvailability.apply(hasWorkingTreeChanges: false)
+		if hasWorkingTreeChanges {
+			hasWorkingTreeChanges = false
+		}
 		selectedCommitID = nil
 		selectedCommitFileID = nil
 		commitGraphItems = []

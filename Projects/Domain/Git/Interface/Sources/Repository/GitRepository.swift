@@ -119,7 +119,10 @@ public protocol GitRepository: Sendable {
 		for operation: RepositoryOperationKind,
 		at repositoryURL: URL
 	) async throws
-	func requestReset(to commitHash: String, mode: GitResetMode, at repositoryURL: URL) async throws
+	func requestReset(
+		to commitHash: String, mode: GitResetMode, expecting context: GitResetContext,
+		at repositoryURL: URL
+	) async throws
 	func requestCreateTag(
 		named name: String,
 		message: String,
@@ -127,14 +130,17 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	) async throws
 	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws
-	func requestCreateStash(
+	@discardableResult func requestCreateStash(
 		message: String,
 		includeUntracked: Bool,
 		at repositoryURL: URL
-	) async throws
-	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
-	func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws
-	func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
+	) async throws -> RepositoryStashOutcome
+	@discardableResult func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
+		-> RepositoryStashOutcome
+	@discardableResult func requestPopStash(_ stash: GitStash, at repositoryURL: URL) async throws
+		-> RepositoryStashOutcome
+	@discardableResult func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
+		-> RepositoryStashOutcome
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws
 	func requestFetchAll(at repositoryURL: URL) async throws
 	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome

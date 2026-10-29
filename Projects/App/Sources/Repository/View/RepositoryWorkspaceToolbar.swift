@@ -2,10 +2,10 @@ import FeatureRepositoryOperations
 import SwiftUI
 
 struct RepositoryWorkspaceToolbar: ToolbarContent {
-	@ObservedObject var viewModel: WorkspaceViewModel
-	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
-	@ObservedObject private var referencesViewModel: RepositoryReferencesViewModel
-	@ObservedObject private var syncViewModel: RepositorySyncViewModel
+	let viewModel: WorkspaceViewModel
+	private let operationViewModel: RepositoryOperationViewModel
+	private let referencesViewModel: RepositoryReferencesViewModel
+	private let syncViewModel: RepositorySyncViewModel
 	private let remotesViewModel: RemotesViewModel
 	let onCreateBranch: () -> Void
 
@@ -18,9 +18,9 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 		onCreateBranch: @escaping () -> Void
 	) {
 		self.viewModel = viewModel
-		_operationViewModel = ObservedObject(wrappedValue: operationViewModel)
-		_referencesViewModel = ObservedObject(wrappedValue: referencesViewModel)
-		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
+		self.operationViewModel = operationViewModel
+		self.referencesViewModel = referencesViewModel
+		self.syncViewModel = syncViewModel
 		self.remotesViewModel = remotesViewModel
 		self.onCreateBranch = onCreateBranch
 	}

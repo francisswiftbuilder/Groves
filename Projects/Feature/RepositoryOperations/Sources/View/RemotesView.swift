@@ -3,14 +3,14 @@ import DomainGitInterface
 import SwiftUI
 
 public struct RemotesView: View {
-	@ObservedObject private var viewModel: RemotesViewModel
+	private let viewModel: RemotesViewModel
 	private let syncViewModel: RepositorySyncViewModel
 
 	public init(
 		viewModel: RemotesViewModel,
 		syncViewModel: RepositorySyncViewModel
 	) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 		self.syncViewModel = syncViewModel
 	}
 

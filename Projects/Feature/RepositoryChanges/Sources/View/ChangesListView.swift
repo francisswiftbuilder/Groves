@@ -3,7 +3,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct ChangesListView: View {
-	@ObservedObject private var viewModel: ChangesViewModel
+	@Bindable private var viewModel: ChangesViewModel
 	private let conflictViewModel: ConflictViewModel
 	let repositoryURL: URL?
 
@@ -12,7 +12,7 @@ struct ChangesListView: View {
 		conflictViewModel: ConflictViewModel,
 		repositoryURL: URL?
 	) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		_viewModel = Bindable(wrappedValue: viewModel)
 		self.conflictViewModel = conflictViewModel
 		self.repositoryURL = repositoryURL
 	}

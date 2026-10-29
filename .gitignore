@@ -16,6 +16,7 @@ xcuserdata/
 *.xcuserdatad/
 *.xcuserstate
 DerivedData/
+Projects/**/build/
 dist/
 *.moved-aside
 *.xccheckout

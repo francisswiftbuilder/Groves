@@ -1,10 +1,11 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import Groves
 
-final class RepositoryFileSystemMonitorTests: XCTestCase {
+struct RepositoryFileSystemMonitorTests {
+	@Test
 	func testEventsReturnsWhileStartupQueueIsSuspended() async throws {
 		let directoryURL = FileManager.default.temporaryDirectory
 			.appending(path: "GrovesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -26,7 +27,7 @@ final class RepositoryFileSystemMonitorTests: XCTestCase {
 		let elapsed = start.duration(to: .now)
 		startupQueue.resume()
 
-		XCTAssertLessThan(elapsed, .milliseconds(100))
+		#expect(elapsed < .milliseconds(100))
 
 		let eventTask = Task {
 			for await _ in events {}
@@ -36,6 +37,7 @@ final class RepositoryFileSystemMonitorTests: XCTestCase {
 		startupQueue.sync {}
 	}
 
+	@Test
 	func testEventsEmitsWhenNestedFileChanges() async throws {
 		let directoryURL = FileManager.default.temporaryDirectory
 			.appending(path: "GrovesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -48,32 +50,35 @@ final class RepositoryFileSystemMonitorTests: XCTestCase {
 			try? FileManager.default.removeItem(at: directoryURL)
 		}
 
-		let eventExpectation = expectation(description: "Receives a recursive file system event")
 		let monitorQueue = DispatchQueue(label: "dev.groves.repository-monitor-event-tests")
 		let events = RepositoryFileSystemMonitor.events(
 			at: directoryURL,
 			queue: monitorQueue
 		)
-		let eventTask = Task {
-			var didFulfillExpectation = false
-			for await paths in events {
-				guard !didFulfillExpectation else { continue }
-				let expectedDirectoryPath = directoryURL.standardizedFileURL.path
-				XCTAssertTrue(
-					paths.contains {
-						URL(fileURLWithPath: $0).standardizedFileURL.path
-							.hasPrefix(expectedDirectoryPath)
-					}
-				)
-				didFulfillExpectation = true
-				eventExpectation.fulfill()
+		try await confirmation("Receives a recursive file system event") { eventReceived in
+			let eventTask = Task {
+				for await paths in events {
+					let expectedDirectoryPath = directoryURL.standardizedFileURL.path
+					#expect(
+						paths.contains {
+							URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(expectedDirectoryPath)
+						})
+					eventReceived()
+					return
+				}
 			}
+			let timeoutTask = Task {
+				try await Task.sleep(for: .seconds(3))
+				eventTask.cancel()
+			}
+			defer {
+				eventTask.cancel()
+				timeoutTask.cancel()
+			}
+			monitorQueue.sync {}
+			try Data("updated".utf8).write(to: nestedDirectoryURL.appending(path: "File.txt"))
+			await eventTask.value
 		}
-
-		try Data("updated".utf8).write(to: nestedDirectoryURL.appending(path: "File.txt"))
-		await fulfillment(of: [eventExpectation], timeout: 3)
-		eventTask.cancel()
-		await eventTask.value
 		monitorQueue.sync {}
 	}
 }

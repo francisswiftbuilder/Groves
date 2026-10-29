@@ -4,8 +4,8 @@ import DomainGitInterface
 import SwiftUI
 
 struct ConflictPreview: View {
-	@ObservedObject private var viewModel: ConflictViewModel
-	@StateObject private var searchModel = RepositorySearchViewModel()
+	private let viewModel: ConflictViewModel
+	@State private var searchModel = RepositorySearchViewModel()
 	let repositoryURL: URL?
 	let conflict: GitConflict
 
@@ -14,7 +14,7 @@ struct ConflictPreview: View {
 		repositoryURL: URL?,
 		conflict: GitConflict
 	) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 		self.repositoryURL = repositoryURL
 		self.conflict = conflict
 	}

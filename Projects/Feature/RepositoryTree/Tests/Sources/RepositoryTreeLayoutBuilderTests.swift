@@ -1,9 +1,11 @@
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import FeatureRepositoryTree
 
-final class RepositoryTreeLayoutBuilderTests: XCTestCase {
+struct RepositoryTreeLayoutBuilderTests {
+	@Test
 	func testRepositoryTreeLayoutIncludesChildrenOfExpandedDirectories() {
 		let source = RepositoryTreeNode(
 			name: "Sources",
@@ -23,8 +25,8 @@ final class RepositoryTreeLayoutBuilderTests: XCTestCase {
 			expandedNodeIDs: [source.id]
 		)
 
-		XCTAssertEqual(items.map(\.node.name), ["Sources", "App.swift", "README.md"])
-		XCTAssertEqual(items.map(\.depth), [0, 1, 0])
-		XCTAssertEqual(items[1].ancestorHasFollowingSibling, [true])
+		#expect(items.map(\.node.name) == ["Sources", "App.swift", "README.md"])
+		#expect(items.map(\.depth) == [0, 1, 0])
+		#expect(items[1].ancestorHasFollowingSibling == [true])
 	}
 }

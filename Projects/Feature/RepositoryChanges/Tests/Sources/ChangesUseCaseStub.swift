@@ -2,6 +2,14 @@ import DomainGitInterface
 import Foundation
 
 struct ChangesUseCaseStub: RepositoryChangesUseCase {
+	var commitOperation: @Sendable (String, String, Bool, URL) async throws -> RepositorySnapshot = {
+		_, _, _, _ in
+		fatalError()
+	}
+	var amendOperation: @Sendable (URL) async throws -> RepositorySnapshot = { _ in
+		fatalError()
+	}
+
 	func loadDiff(
 		for change: WorkingTreeChange,
 		source: GitDiffSource,
@@ -100,10 +108,10 @@ struct ChangesUseCaseStub: RepositoryChangesUseCase {
 		amend: Bool,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await commitOperation(subject, body, amend, repositoryURL)
 	}
 
 	func amendWithoutEditingMessage(at repositoryURL: URL) async throws -> RepositorySnapshot {
-		fatalError()
+		try await amendOperation(repositoryURL)
 	}
 }

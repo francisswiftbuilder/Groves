@@ -4,8 +4,8 @@ import UniformTypeIdentifiers
 
 struct RepositoryTabsView: View {
 	@Environment(\.windowTabCoordinator) private var coordinator
-	@ObservedObject var viewModel: RepositoryTabsViewModel
-	@ObservedObject var windowViewModel: RepositoryWindowViewModel
+	let viewModel: RepositoryTabsViewModel
+	let windowViewModel: RepositoryWindowViewModel
 	@Binding var repositoryID: RepositoryTab.ID?
 
 	var body: some View {
@@ -134,6 +134,7 @@ struct RepositoryTabsView: View {
 	}
 
 	private func restoreRepositoryWindows() {
+		guard let coordinator else { return }
 		guard
 			let restoration = viewModel.requestWindowRestoration(
 				currentRepositoryID: repositoryID
@@ -145,22 +146,21 @@ struct RepositoryTabsView: View {
 
 		repositoryID = restoration.primaryRepositoryID
 		activateRepository(repositoryID)
-		for id in restoration.additionalRepositoryIDs {
-			coordinator?.openNewTab(repositoryID: id, from: nil)
-		}
+		coordinator.restoreRepositoryWindows(restoration)
 	}
 
 	private func activateRepository(_ id: RepositoryTab.ID?) {
 		Task { @MainActor in
 			await Task.yield()
+			guard repositoryID == id else { return }
 			guard let id, viewModel.tab(id: id) != nil else {
-				await windowViewModel.didSelectSidebarItem(nil)
+				windowViewModel.selectSidebarItem(nil)
 				return
 			}
 
-			viewModel.didSelectTab(id)
+			viewModel.didPrepareTab(id)
 			if windowViewModel.sidebarSelection?.repositoryID != id {
-				await windowViewModel.didSelectSidebarItem(
+				windowViewModel.selectSidebarItem(
 					viewModel.defaultSidebarSelection(repositoryID: id)
 				)
 			}

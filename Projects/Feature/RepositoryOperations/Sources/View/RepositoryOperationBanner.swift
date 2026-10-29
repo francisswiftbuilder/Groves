@@ -2,10 +2,10 @@ import DomainGitInterface
 import SwiftUI
 
 public struct RepositoryOperationBanner: View {
-	@ObservedObject private var operationViewModel: RepositoryOperationViewModel
+	private let operationViewModel: RepositoryOperationViewModel
 
 	public init(viewModel: RepositoryOperationViewModel) {
-		_operationViewModel = ObservedObject(wrappedValue: viewModel)
+		self.operationViewModel = viewModel
 	}
 
 	public var body: some View {

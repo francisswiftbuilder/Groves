@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositorySyncViewModel: ObservableObject {
+@Observable
+public final class RepositorySyncViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -97,18 +98,18 @@ public final class RepositorySyncViewModel: ObservableObject {
 		}
 	}
 
-	@Published var pendingPullDivergence: RepositoryPullDivergence?
-	@Published var pendingConfirmation: RepositorySyncConfirmation?
-	@Published public private(set) var activity: Activity?
-	@Published public private(set) var presentedActivity: Activity?
-	@Published private var state = RepositorySyncState.empty
+	var pendingPullDivergence: RepositoryPullDivergence?
+	var pendingConfirmation: RepositorySyncConfirmation?
+	public private(set) var activity: Activity?
+	public private(set) var presentedActivity: Activity?
+	private var state = RepositorySyncState.empty
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var currentBranch: GitBranch?
 	private var operationState: RepositoryOperationState = .normal
-	private var networkTask: Task<Void, Never>?
-	private var activityPresentationTask: Task<Void, Never>?
+	@ObservationIgnored private var networkTask: Task<Void, Never>?
+	@ObservationIgnored private var activityPresentationTask: Task<Void, Never>?
 	private var activeNetworkRequestID: Int?
 	private var networkRequestSequence = 0
 
@@ -194,9 +195,11 @@ public final class RepositorySyncViewModel: ObservableObject {
 		networkTask = Task { [weak self] in
 			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let preparation = try await referencesUseCase.preparePull(
 					at: repositoryURL
 				)
+				try Task.checkCancellation()
 				guard let self, self.activeNetworkRequestID == requestID else { return }
 				actions.didProduceSnapshot(preparation.snapshot)
 				if case .diverged(let divergence) = preparation.outcome {
@@ -205,9 +208,11 @@ public final class RepositorySyncViewModel: ObservableObject {
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, self.activeNetworkRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID else {
+					return
+				}
 				actions.didReceiveError(error.localizedDescription)
-				await restoreSnapshot(at: repositoryURL)
+				await restoreSnapshot(at: repositoryURL, requestID: requestID)
 			}
 		}
 	}
@@ -215,7 +220,8 @@ public final class RepositorySyncViewModel: ObservableObject {
 	public func didResolvePull(using resolution: RepositoryPullResolution) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
-			let divergence = pendingPullDivergence
+			let divergence = pendingPullDivergence,
+			!isLoading
 		else { return }
 		pendingPullDivergence = nil
 		let referencesUseCase = dependencies.referencesUseCase
@@ -334,21 +340,25 @@ public final class RepositorySyncViewModel: ObservableObject {
 		activity: Activity,
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
 	) {
-		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
+		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		networkTask?.cancel()
 		let requestID = beginNetworkRequest(activity: activity)
 		networkTask = Task { [weak self] in
 			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let snapshot = try await operation()
+				try Task.checkCancellation()
 				guard let self, self.activeNetworkRequestID == requestID else { return }
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, self.activeNetworkRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID else {
+					return
+				}
 				actions.didReceiveError(error.localizedDescription)
-				await restoreSnapshot(at: expectedRepositoryURL)
+				await restoreSnapshot(at: expectedRepositoryURL, requestID: requestID)
 			}
 		}
 	}
@@ -363,6 +373,7 @@ public final class RepositorySyncViewModel: ObservableObject {
 
 	private func finishNetworkRequest(id: Int) {
 		guard activeNetworkRequestID == id else { return }
+		networkTask = nil
 		activityPresentationTask?.cancel()
 		activityPresentationTask = nil
 		activeNetworkRequestID = nil
@@ -389,8 +400,9 @@ public final class RepositorySyncViewModel: ObservableObject {
 		}
 	}
 
-	private func restoreSnapshot(at repositoryURL: URL) async {
+	private func restoreSnapshot(at repositoryURL: URL, requestID: Int) async {
 		if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(at: repositoryURL) {
+			guard !Task.isCancelled, activeNetworkRequestID == requestID else { return }
 			actions.didProduceSnapshot(snapshot)
 		}
 	}

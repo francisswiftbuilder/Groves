@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct DiffViewer: View {
-	@ObservedObject var searchModel: RepositorySearchViewModel
+	let searchModel: RepositorySearchViewModel
 	let document: DiffDocument
 	let sideBySideRows: [DiffSideBySideRow]
 	let presentationMode: DiffPresentationMode

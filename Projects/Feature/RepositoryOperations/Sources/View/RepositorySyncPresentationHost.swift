@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct RepositorySyncPresentationHost<Content: View>: View {
-	@ObservedObject private var viewModel: RepositorySyncViewModel
+	private let viewModel: RepositorySyncViewModel
 	private let content: Content
 
 	public init(

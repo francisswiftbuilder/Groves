@@ -1,11 +1,13 @@
 import Foundation
+import Observation
 
 @MainActor
-final class RepositoryWindowViewModel: ObservableObject {
-	@Published private(set) var folderImportRequest: RepositoryFolderImportRequest?
-	@Published private(set) var isFolderImporterPresented = false
-	@Published var sidebarSelection: RepositorySidebarSelection?
-	@Published var cloneRemoteURL = ""
+@Observable
+final class RepositoryWindowViewModel {
+	private(set) var folderImportRequest: RepositoryFolderImportRequest?
+	private(set) var isFolderImporterPresented = false
+	var sidebarSelection: RepositorySidebarSelection?
+	var cloneRemoteURL = ""
 
 	var trimmedCloneRemoteURL: String {
 		cloneRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines)

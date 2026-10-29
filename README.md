@@ -88,11 +88,16 @@ Browse the contents of your repository from inside Groves.
 
 ### Authentication
 
-Groves integrates with the macOS security system for Git authentication.
+On first launch, connect a GitHub account using a personal access token and choose your commit name and email. You can also continue locally and configure an account later in **Settings → Accounts**.
 
-- Credentials stored in Keychain
-- `GrovesAskPass` authentication helper
-- Secure credential prompts for remote Git operations
+- Tokens are verified with GitHub and stored in a separate Groves Keychain service.
+- Settings supports replacing a token and signing out. Earlier Groves credentials are not imported or deleted.
+- Git uses the bundled Git runtime, an app-specific global configuration at `~/Library/Application Support/Groves/Git/config`, and the `GrovesAskPass` helper. A missing runtime produces an error instead of falling back to system Git.
+- System/global Git configuration and inherited Git environment overrides are excluded. Network operations use a private home directory so personal `.netrc` files and curl home configuration are not used.
+- Repository-local author identity and normal repository settings still apply. HTTP extra headers, saved cookies, credential usernames, and credential helpers are overridden per command without modifying `.git/config`. Existing remotes and URL rewrites containing embedded credentials are rejected. Repository TLS client-certificate authentication is not supported in isolated mode.
+- Use HTTPS remote URLs. SSH authentication is not available in this isolated configuration; change SSH remotes to HTTPS in the repository's Remotes view.
+
+This separates Git configuration and authentication; it does not enable macOS App Sandbox. System Git and Homebrew are not required by the bundled runtime. Repository-local hooks, filters, and optional external tools may still need software installed separately. Network hooks inherit the private Git home directory. A verified GitHub account does not guarantee access to every repository: token permissions and organization approval still apply. Fine-grained tokens need Contents read access to fetch and write access to push, with additional permissions where required.
 
 ## Requirements
 
@@ -102,6 +107,10 @@ Groves integrates with the macOS security system for Git authentication.
 - Tuist 4.166.0
 
 ## Development
+
+Run `make bundled-git` before the first Xcode build. This downloads checksum-pinned Git source and builds an arm64/x86_64 runtime for macOS 26 with Apple's command-line tools. Subsequent builds reuse the local runtime. The build/run and release scripts perform this step automatically. Run `./script/test_bundled_git.sh .build/bundled-git/runtime` for an isolated local clone/commit/push/pull smoke test.
+
+Git source, build scripts, and license notices are included inside `Groves.app/Contents/Resources/Git/share/groves-source`. See [third-party notices](THIRD_PARTY_NOTICES.md). Git GUI, Perl/Python tools, translations, and legacy WebDAV push are excluded.
 
 Groves uses Tuist to manage its modular project structure.
 
@@ -192,14 +201,18 @@ Repository access is restored between launches using macOS security-scoped bookm
 
 ## Testing
 
-Individual modules expose their own test schemes. Run the complete test suite with the `Groves-Workspace` scheme:
+Individual modules expose their own test schemes. Run the complete test suite using the same schemes as CI:
 
 ```bash
-xcodebuild test \
-  -workspace Groves.xcworkspace \
-  -scheme Groves-Workspace \
-  -destination 'platform=macOS' \
-  CODE_SIGNING_ALLOWED=NO
+for SCHEME in AppTests CoreGitCredential CoreRepositoryDiff DataGit \
+  FeatureRepositoryChanges FeatureRepositoryHistory FeatureRepositoryOperations \
+  FeatureRepositoryStashes FeatureRepositoryTree; do
+  xcodebuild test \
+    -workspace Groves.xcworkspace \
+    -scheme "$SCHEME" \
+    -destination 'platform=macOS' \
+    CODE_SIGNING_ALLOWED=NO || break
+done
 ```
 
 ## Roadmap
@@ -216,3 +229,5 @@ Groves is still evolving. Planned areas include:
 ## License
 
 Groves is available under the [MIT License](LICENSE).
+
+Bundled Git retains its own license; see [third-party notices](THIRD_PARTY_NOTICES.md).

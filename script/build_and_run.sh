@@ -8,6 +8,7 @@ ACCESS_GROUP_SUFFIX="io.github.francisswiftbuilder.Groves.GitCredential"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$ROOT_DIR/Groves.xcworkspace"
+"$ROOT_DIR/script/build_bundled_git.sh"
 
 BUILD_SETTINGS="$(
 	xcodebuild \
@@ -47,7 +48,7 @@ TARGET_BUILD_DIR="$(
 )"
 APP_BUNDLE="$TARGET_BUILD_DIR/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/GrovesAskPass"
+HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/GrovesAskPass.app/Contents/MacOS/GrovesAskPass"
 
 team_identifier() {
 	/usr/bin/codesign -dv "$1" 2>&1 \
@@ -80,6 +81,8 @@ if [[ "$APP_GROUP" != "$HELPER_GROUP" || "$APP_GROUP" != *.$ACCESS_GROUP_SUFFIX 
 		"${APP_GROUP:-missing}" "${HELPER_GROUP:-missing}" >&2
 	exit 1
 fi
+
+printf 'protocol=file\n\n' | "$HELPER_BINARY" credential get
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 

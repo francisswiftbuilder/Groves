@@ -15,7 +15,7 @@ public final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
 		var repositories = try store.requestRepositories()
 		let selectedRepositoryID =
 			repositories.first(where: { $0.isSelected })?.id ?? repositories.first?.id
-		if repositories.contains(where: { $0.isSelected }) == false {
+		if selectedRepositoryID != nil, repositories.contains(where: { $0.isSelected }) == false {
 			try store.requestSelectRepository(id: selectedRepositoryID)
 			repositories = try store.requestRepositories()
 		}
@@ -55,18 +55,17 @@ public final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
 			return try loadTabs()
 		}
 		let wasSelected = repositories[removedIndex].isSelected
-		try store.requestRemoveRepository(id: id)
-		let remainingRepositories = try store.requestRepositories()
+		let remainingRepositories = repositories.filter { $0.id != id }
 		let selectedRepositoryID: SavedRepository.ID?
 		if wasSelected {
 			let nextIndex = min(removedIndex, remainingRepositories.count - 1)
 			selectedRepositoryID = nextIndex >= 0 ? remainingRepositories[nextIndex].id : nil
-			try store.requestSelectRepository(id: selectedRepositoryID)
 		} else {
 			selectedRepositoryID =
 				remainingRepositories.first(where: { $0.isSelected })?.id
 				?? remainingRepositories.first?.id
 		}
+		try store.requestRemoveRepository(id: id, selecting: selectedRepositoryID)
 		return RepositoryTabsSnapshot(
 			repositories: try store.requestRepositories(),
 			selectedRepositoryID: selectedRepositoryID

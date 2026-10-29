@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class CommitViewModel: ObservableObject {
+@Observable
+public final class CommitViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -36,16 +37,18 @@ public final class CommitViewModel: ObservableObject {
 		}
 	}
 
-	@Published var subject = ""
-	@Published var body = ""
-	@Published private(set) var isAmendingCommit = false
-	@Published public private(set) var isLoading = false
-	@Published private var availability = CommitAvailability.empty
+	var subject = ""
+	var body = ""
+	private(set) var isAmendingCommit = false
+	public private(set) var isLoading = false
+	private var availability = CommitAvailability.empty
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var commits: [GitCommit] = []
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
+	private var activeMutationRequestID: Int?
+	private var mutationRequestSequence = 0
 
 	public init(
 		dependencies: Dependencies,
@@ -98,8 +101,7 @@ public final class CommitViewModel: ObservableObject {
 	}
 
 	public func reset() {
-		mutationTask?.cancel()
-		mutationTask = nil
+		onDisappear()
 		subject = ""
 		body = ""
 		commits = []
@@ -110,11 +112,14 @@ public final class CommitViewModel: ObservableObject {
 	public func onDisappear() {
 		mutationTask?.cancel()
 		mutationTask = nil
+		activeMutationRequestID = nil
 		isLoading = false
 	}
 
 	func didRequestCommit() {
 		guard let repositoryURL = dependencies.repositoryURL(), canCommit else { return }
+		let submittedSubject = subject
+		let submittedBody = body
 		let subject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
 		let trimmedBody = body.trimmingCharacters(in: .newlines)
 		let body =
@@ -122,17 +127,21 @@ public final class CommitViewModel: ObservableObject {
 			? ""
 			: trimmedBody
 		let amend = isAmendingCommit
+		let changesUseCase = dependencies.changesUseCase
 		requestMutation {
-			let snapshot = try await self.dependencies.changesUseCase.commit(
+			try await changesUseCase.commit(
 				subject: subject,
 				body: body,
 				amend: amend,
 				at: repositoryURL
 			)
-			self.subject = ""
-			self.body = ""
+		} didSucceed: { [weak self] in
+			guard let self else { return }
+			if self.subject == submittedSubject, self.body == submittedBody {
+				self.subject = ""
+				self.body = ""
+			}
 			self.setAmendingCommit(false)
-			return snapshot
 		}
 	}
 
@@ -140,11 +149,11 @@ public final class CommitViewModel: ObservableObject {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
 			hasStagedChanges,
-			!isDetached,
-			!isLoading
+			canAmendCommit
 		else { return }
+		let changesUseCase = dependencies.changesUseCase
 		requestMutation {
-			try await self.dependencies.changesUseCase.amendWithoutEditingMessage(
+			try await changesUseCase.amendWithoutEditingMessage(
 				at: repositoryURL
 			)
 		}
@@ -176,27 +185,49 @@ public final class CommitViewModel: ObservableObject {
 	}
 
 	private func requestMutation(
-		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
+		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot,
+		didSucceed: @escaping @MainActor () -> Void = {}
 	) {
-		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
+		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		mutationTask?.cancel()
-		mutationTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		let requestID = beginMutation()
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let snapshot = try await operation()
 				try Task.checkCancellation()
+				guard let self, self.activeMutationRequestID == requestID else { return }
+				didSucceed()
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID else {
+					return
+				}
 				actions.didReceiveError(error.localizedDescription)
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: expectedRepositoryURL
 				) {
+					guard !Task.isCancelled, activeMutationRequestID == requestID else { return }
 					actions.didProduceSnapshot(snapshot)
 				}
 			}
 		}
+	}
+
+	private func beginMutation() -> Int {
+		mutationRequestSequence += 1
+		activeMutationRequestID = mutationRequestSequence
+		isLoading = true
+		return mutationRequestSequence
+	}
+
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isLoading = false
 	}
 }

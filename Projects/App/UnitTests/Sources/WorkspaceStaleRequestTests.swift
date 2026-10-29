@@ -1,12 +1,14 @@
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryStashes
 @testable import Groves
 
 @MainActor
-final class WorkspaceStaleRequestTests: XCTestCase {
+struct WorkspaceStaleRequestTests {
+	@Test
 	func testIdenticalSnapshotRevalidatesSelectedWorkingTreeDiff() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -33,13 +35,14 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		workspace.viewModel.didProduceSnapshot(makeSnapshot(changes: [change]))
 		try await waitUntilCallCount(2, of: label, in: gate)
 
-		XCTAssertEqual(workspace.changesDiffViewModel.diff, "first read")
-		XCTAssertTrue(workspace.changesDiffViewModel.isLoading)
+		#expect(workspace.changesDiffViewModel.diff == "first read")
+		#expect(workspace.changesDiffViewModel.isLoading)
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.changesDiffViewModel.diff == "second read" }
-		XCTAssertFalse(workspace.changesDiffViewModel.isLoading)
+		#expect(!(workspace.changesDiffViewModel.isLoading))
 	}
 
+	@Test
 	func testChangedWorkingTreePayloadReloadsSelectedDiff() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -67,6 +70,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		try await waitUntilCallCount(2, of: label, in: gate)
 	}
 
+	@Test
 	func testIdenticalSnapshotRevalidatesSelectedConflictContent() async throws {
 		let conflict = makeConflict()
 		let operationState = makeOperationState(conflicts: [conflict])
@@ -103,13 +107,14 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		workspace.viewModel.didProduceSnapshot(makeSnapshot(operationState: operationState))
 		try await waitUntilCallCount(2, of: label, in: gate)
 
-		XCTAssertEqual(workspace.conflictViewModel.content, firstContent)
-		XCTAssertTrue(workspace.conflictViewModel.isLoadingContent)
+		#expect(workspace.conflictViewModel.content == firstContent)
+		#expect(workspace.conflictViewModel.isLoadingContent)
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.conflictViewModel.content == secondContent }
-		XCTAssertFalse(workspace.conflictViewModel.isLoadingContent)
+		#expect(!(workspace.conflictViewModel.isLoadingContent))
 	}
 
+	@Test
 	func testChangedConflictPayloadReloadsSelectedContent() async throws {
 		let conflict = makeConflict()
 		let refreshedConflict = GitConflict(
@@ -138,6 +143,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		try await waitUntilCallCount(2, of: label, in: gate)
 	}
 
+	@Test
 	func testRemovingSelectedConflictClearsSelectionAndContent() async throws {
 		let conflict = makeConflict()
 		let workspace = makeRepositoryWorkspace(
@@ -151,11 +157,12 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 
 		workspace.viewModel.didProduceSnapshot(makeSnapshot())
 
-		XCTAssertTrue(workspace.changesViewModel.selectedChangeIDs.isEmpty)
-		XCTAssertNil(workspace.changesViewModel.selectedConflict)
-		XCTAssertNil(workspace.conflictViewModel.content)
+		#expect(workspace.changesViewModel.selectedChangeIDs.isEmpty)
+		#expect(workspace.changesViewModel.selectedConflict == nil)
+		#expect(workspace.conflictViewModel.content == nil)
 	}
 
+	@Test
 	func testRepositoryChangeResetsChangesStateAndInvalidatesMutation() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -187,31 +194,32 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		workspace.changesViewModel.didPresentDiscardConfirmation(for: [change])
 		workspace.changesViewModel.didRequestStage([change])
 		try await waitUntilTotalCallCount(1, in: mutationGate)
-		XCTAssertTrue(workspace.changesViewModel.isLoading)
+		#expect(workspace.changesViewModel.isLoading)
 
 		workspace.viewModel.didChooseRepository(secondRepository)
 		try await waitUntilTotalCallCount(2, in: contentGate)
 		try await waitUntil { workspace.viewModel.repositoryURL == secondRepository }
 
-		XCTAssertEqual(workspace.changesViewModel.filterText, "")
-		XCTAssertNil(workspace.changesViewModel.pendingConfirmation)
-		XCTAssertTrue(workspace.changesViewModel.selectedChangeIDs.isEmpty)
-		XCTAssertTrue(workspace.changesViewModel.changes.isEmpty)
-		XCTAssertTrue(workspace.changesViewModel.conflicts.isEmpty)
-		XCTAssertFalse(workspace.changesViewModel.isLoading)
-		XCTAssertNil(workspace.conflictViewModel.content)
-		XCTAssertFalse(workspace.conflictViewModel.isLoading)
-		XCTAssertFalse(workspace.changesDiffViewModel.isLoading)
-		XCTAssertFalse(workspace.changesDiffViewModel.isApplyingAction)
+		#expect(workspace.changesViewModel.filterText == "")
+		#expect(workspace.changesViewModel.pendingConfirmation == nil)
+		#expect(workspace.changesViewModel.selectedChangeIDs.isEmpty)
+		#expect(workspace.changesViewModel.changes.isEmpty)
+		#expect(workspace.changesViewModel.conflicts.isEmpty)
+		#expect(!(workspace.changesViewModel.isLoading))
+		#expect(workspace.conflictViewModel.content == nil)
+		#expect(!(workspace.conflictViewModel.isLoading))
+		#expect(!(workspace.changesDiffViewModel.isLoading))
+		#expect(!(workspace.changesDiffViewModel.isApplyingAction))
 
 		await contentGate.resumeCall(1)
 		await mutationGate.resumeCall(0)
 		try await waitUntilTotalCallCount(3, in: contentGate)
 		await contentGate.resumeCall(2)
 		try await Task.sleep(for: .milliseconds(150))
-		XCTAssertFalse(workspace.changesViewModel.isLoading)
+		#expect(!(workspace.changesViewModel.isLoading))
 	}
 
+	@Test
 	func testStaleStashDiffDoesNotOverwriteNewerOptions() async throws {
 		let stash = GitStash(
 			reference: "stash@{0}",
@@ -240,13 +248,12 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		await gate.resumeCall(0)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertEqual(
-			workspace.stashesViewModel.diff,
-			GitDiffGateLabel.stashDiff(options: newerOptions),
-			"A stale stash diff must not overwrite the newer options result"
-		)
+		#expect(
+			workspace.stashesViewModel.diff == GitDiffGateLabel.stashDiff(options: newerOptions),
+			"A stale stash diff must not overwrite the newer options result")
 	}
 
+	@Test
 	func testStaleDiffRequestDoesNotFinishNewerLoadingState() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -261,7 +268,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 
 		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
 		try await waitUntilTotalCallCount(1, in: gate)
-		XCTAssertTrue(workspace.changesDiffViewModel.isLoading)
+		#expect(workspace.changesDiffViewModel.isLoading)
 
 		workspace.diffPreferences.options = GitDiffOptions(ignoresWhitespace: true)
 		workspace.viewModel.didChangeDiffOptions()
@@ -270,14 +277,14 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		await gate.resumeCall(0)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertTrue(
+		#expect(
 			workspace.changesDiffViewModel.isLoading,
-			"A stale diff request must not end the newer request's loading state"
-		)
+			"A stale diff request must not end the newer request's loading state")
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.changesDiffViewModel.isLoading == false }
 	}
 
+	@Test
 	func testStaleChangesMutationDoesNotFinishNewerLoadingState() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -301,11 +308,12 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		await gate.resumeCall(0)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertTrue(workspace.changesViewModel.isLoading)
+		#expect(workspace.changesViewModel.isLoading)
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.changesViewModel.isLoading == false }
 	}
 
+	@Test
 	func testStaleDiffMutationDoesNotFinishNewerApplyingState() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -334,11 +342,12 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		await gate.resumeCall(0)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertTrue(workspace.changesDiffViewModel.isApplyingAction)
+		#expect(workspace.changesDiffViewModel.isApplyingAction)
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.changesDiffViewModel.isApplyingAction == false }
 	}
 
+	@Test
 	func testStaleConflictMutationDoesNotFinishNewerLoadingState() async throws {
 		let conflict = makeConflict()
 		let hunk = GitConflictHunk(index: 0, base: nil, current: "ours", incoming: "theirs")
@@ -361,7 +370,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		await gate.resumeCall(0)
 		try await Task.sleep(for: .milliseconds(150))
 
-		XCTAssertTrue(workspace.conflictViewModel.isLoading)
+		#expect(workspace.conflictViewModel.isLoading)
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.conflictViewModel.isLoading == false }
 	}
@@ -412,7 +421,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while await gate.callCount(of: label) < count {
 			guard clock.now < deadline else {
-				XCTFail(message)
+				Issue.record(Comment(rawValue: message))
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
@@ -428,7 +437,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while await gate.totalCallCount() < count {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for gated requests")
+				Issue.record("Timed out waiting for gated requests")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
@@ -443,7 +452,7 @@ final class WorkspaceStaleRequestTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

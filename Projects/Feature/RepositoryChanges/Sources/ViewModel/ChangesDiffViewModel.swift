@@ -1,10 +1,11 @@
-import Combine
 import CoreRepositoryDiff
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class ChangesDiffViewModel: ObservableObject {
+@Observable
+public final class ChangesDiffViewModel {
 	public struct Actions {
 		public let didApplyMutation:
 			@MainActor ([WorkingTreeChange], WorkingTreeChange, GitDiffSource) -> Void
@@ -38,11 +39,11 @@ public final class ChangesDiffViewModel: ObservableObject {
 		}
 	}
 
-	@Published private(set) var diff = ""
-	@Published private(set) var imageDiff: GitImageDiff?
-	@Published public private(set) var isLoading = false
-	@Published public private(set) var isApplyingAction = false
-	@Published var pendingConfirmation: ChangesDiffConfirmation?
+	private(set) var diff = ""
+	private(set) var imageDiff: GitImageDiff?
+	public private(set) var isLoading = false
+	public private(set) var isApplyingAction = false
+	var pendingConfirmation: ChangesDiffConfirmation?
 
 	var preferences: WorkspaceDiffPreferences {
 		dependencies.preferences
@@ -56,8 +57,8 @@ public final class ChangesDiffViewModel: ObservableObject {
 	private var loadRequestSequence = 0
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
-	private var loadTask: Task<Void, Never>?
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var loadTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 
 	public init(
 		dependencies: Dependencies,

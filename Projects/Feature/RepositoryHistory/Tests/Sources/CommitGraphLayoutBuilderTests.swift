@@ -1,23 +1,25 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import FeatureRepositoryHistory
 
-final class CommitGraphLayoutBuilderTests: XCTestCase {
+struct CommitGraphLayoutBuilderTests {
+	@Test
 	func testBuildPlacesLinearHistoryInSingleLane() {
 		let child = makeCommit(hash: "child", parents: ["parent"])
 		let parent = makeCommit(hash: "parent", parents: [])
 
 		let items = CommitGraphLayoutBuilder.build(commits: [child, parent])
 
-		XCTAssertEqual(items.map(\.lane), [0, 0])
-		XCTAssertEqual(items.first?.bottomColumns.map(\.targetHash), ["parent"])
-		XCTAssertEqual(items.map(\.visibleLaneCount), [1, 1])
-		XCTAssertEqual(items[0].topColumns[0].id, items[0].bottomColumns[0].id)
-		XCTAssertEqual(items[0].nodeColorIndex, items[1].nodeColorIndex)
+		#expect(items.map(\.lane) == [0, 0])
+		#expect(items.first?.bottomColumns.map(\.targetHash) == ["parent"])
+		#expect(items.map(\.visibleLaneCount) == [1, 1])
+		#expect(items[0].topColumns[0].id == items[0].bottomColumns[0].id)
+		#expect(items[0].nodeColorIndex == items[1].nodeColorIndex)
 	}
 
+	@Test
 	func testBuildPreservesParentLanesForMergeCommit() {
 		let merge = makeCommit(hash: "merge", parents: ["left", "right"])
 		let left = makeCommit(hash: "left", parents: ["base"])
@@ -26,19 +28,20 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 
 		let items = CommitGraphLayoutBuilder.build(commits: [merge, left, right, base])
 
-		XCTAssertEqual(items[0].topColumns.map(\.targetHash), ["merge"])
-		XCTAssertEqual(items[0].bottomColumns.map(\.targetHash), ["left", "right"])
-		XCTAssertEqual(items[0].topColumns.map(\.colorIndex), [0])
-		XCTAssertEqual(items[0].bottomColumns.map(\.colorIndex), [0, 1])
-		XCTAssertEqual(items[1].topColumns.map(\.targetHash), ["left", "right"])
-		XCTAssertEqual(items[1].topColumns.map(\.colorIndex), [0, 1])
-		XCTAssertEqual(items[1].visibleLaneCount, 2)
-		XCTAssertEqual(items[2].lane, 1)
+		#expect(items[0].topColumns.map(\.targetHash) == ["merge"])
+		#expect(items[0].bottomColumns.map(\.targetHash) == ["left", "right"])
+		#expect(items[0].topColumns.map(\.colorIndex) == [0])
+		#expect(items[0].bottomColumns.map(\.colorIndex) == [0, 1])
+		#expect(items[1].topColumns.map(\.targetHash) == ["left", "right"])
+		#expect(items[1].topColumns.map(\.colorIndex) == [0, 1])
+		#expect(items[1].visibleLaneCount == 2)
+		#expect(items[2].lane == 1)
 		for index in items.indices.dropLast() {
-			XCTAssertEqual(items[index].bottomColumns, items[index + 1].topColumns)
+			#expect(items[index].bottomColumns == items[index + 1].topColumns)
 		}
 	}
 
+	@Test
 	func testBuildKeepsExistingColumnColorWhenParentAlreadyHasLane() {
 		let firstChild = makeCommit(hash: "first-child", parents: ["parent"])
 		let secondChild = makeCommit(hash: "second-child", parents: ["parent"])
@@ -55,11 +58,12 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 			$0.columnID == parentColumn?.id
 		}
 
-		XCTAssertNotEqual(parentColumn?.colorIndex, currentColor)
-		XCTAssertEqual(parentSegment?.colorIndex, parentColumn?.colorIndex)
-		XCTAssertEqual(items[2].nodeColorIndex, parentColumn?.colorIndex)
+		#expect(parentColumn?.colorIndex != currentColor)
+		#expect(parentSegment?.colorIndex == parentColumn?.colorIndex)
+		#expect(items[2].nodeColorIndex == parentColumn?.colorIndex)
 	}
 
+	@Test
 	func testBuildMaintainsSegmentColorAcrossRowBoundaries() {
 		let merge = makeCommit(hash: "merge", parents: ["left", "right"])
 		let left = makeCommit(hash: "left", parents: ["base"])
@@ -77,13 +81,14 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 					$0.columnID == column.id
 				}
 
-				XCTAssertFalse(outgoingSegments.isEmpty)
-				XCTAssertTrue(outgoingSegments.allSatisfy { $0.colorIndex == column.colorIndex })
-				XCTAssertEqual(incomingSegments.map(\.colorIndex), [column.colorIndex])
+				#expect(!(outgoingSegments.isEmpty))
+				#expect(outgoingSegments.allSatisfy { $0.colorIndex == column.colorIndex })
+				#expect(incomingSegments.map(\.colorIndex) == [column.colorIndex])
 			}
 		}
 	}
 
+	@Test
 	func testBuildStartsUnrelatedHistoryWithoutReplacingAnExistingLane() throws {
 		let firstHead = makeCommit(hash: "first-head", parents: ["first-parent"])
 		let secondHead = makeCommit(hash: "second-head", parents: ["second-parent"])
@@ -94,33 +99,31 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 			commits: [firstHead, secondHead, firstParent, secondParent]
 		)
 
-		let firstBottomColumn = try XCTUnwrap(items[0].bottomColumns.first)
+		let firstBottomColumn = try #require(items[0].bottomColumns.first)
 		let secondItem = items[1]
 
-		XCTAssertEqual(secondItem.lane, 1)
-		XCTAssertEqual(secondItem.topColumns[0], firstBottomColumn)
-		XCTAssertEqual(
-			secondItem.incomingSegments.map(\.columnID),
-			[firstBottomColumn.id]
-		)
-		XCTAssertFalse(
-			secondItem.incomingSegments.contains {
+		#expect(secondItem.lane == 1)
+		#expect(secondItem.topColumns[0] == firstBottomColumn)
+		#expect(secondItem.incomingSegments.map(\.columnID) == [firstBottomColumn.id])
+		#expect(
+			!(secondItem.incomingSegments.contains {
 				$0.columnID == secondItem.topColumns[secondItem.lane].id
-			}
-		)
+			}))
 	}
 
+	@Test
 	func testBuildDoesNotDrawIncomingLineAboveFirstVisibleCommit() {
 		let head = makeCommit(hash: "head", parents: ["parent"])
 		let parent = makeCommit(hash: "parent", parents: [])
 
 		let items = CommitGraphLayoutBuilder.build(commits: [head, parent])
 
-		XCTAssertTrue(items[0].incomingSegments.isEmpty)
-		XCTAssertEqual(items[0].outgoingSegments.map(\.colorIndex), [0])
-		XCTAssertEqual(items[1].incomingSegments.map(\.colorIndex), [0])
+		#expect(items[0].incomingSegments.isEmpty)
+		#expect(items[0].outgoingSegments.map(\.colorIndex) == [0])
+		#expect(items[1].incomingSegments.map(\.colorIndex) == [0])
 	}
 
+	@Test
 	func testCancellableBuildStopsWhenTaskIsCancelled() async {
 		let commits = (0..<10_000).map {
 			makeCommit(hash: "commit-\($0)", parents: [])
@@ -133,10 +136,10 @@ final class CommitGraphLayoutBuilderTests: XCTestCase {
 
 		do {
 			_ = try await task.value
-			XCTFail("Cancelled graph layout completed")
+			Issue.record("Cancelled graph layout completed")
 		} catch is CancellationError {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 

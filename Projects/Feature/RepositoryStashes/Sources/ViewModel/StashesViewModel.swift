@@ -1,10 +1,11 @@
-import Combine
 import CoreRepositoryDiff
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class StashesViewModel: ObservableObject {
+@Observable
+public final class StashesViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -34,29 +35,32 @@ public final class StashesViewModel: ObservableObject {
 		}
 	}
 
-	@Published public private(set) var selectedStashID: String?
-	@Published public private(set) var selectedFileID: CommitDiffFile.ID?
-	@Published var newStashMessage = ""
-	@Published var includeUntrackedInStash = true
-	@Published public private(set) var stashes: [GitStash] = []
-	@Published private(set) var files: [CommitDiffFile] = []
-	@Published private(set) var diff = ""
-	@Published private(set) var imageDiff: GitImageDiff?
-	@Published private(set) var isLoadingDiff = false
-	@Published private(set) var isLoadingImageDiff = false
-	@Published private(set) var isLoading = false
-	@Published private(set) var hasChanges = false
-	@Published var pendingDrop: GitStash?
+	public private(set) var selectedStashID: String?
+	public private(set) var selectedFileID: CommitDiffFile.ID?
+	var newStashMessage = ""
+	var includeUntrackedInStash = true
+	public private(set) var stashes: [GitStash] = []
+	private(set) var files: [CommitDiffFile] = []
+	private(set) var diff = ""
+	private(set) var imageDiff: GitImageDiff?
+	private(set) var isLoadingDiff = false
+	private(set) var isLoadingImageDiff = false
+	private(set) var isLoading = false
+	private(set) var hasChanges = false
+	var pendingDrop: StashDropConfirmation?
+	private(set) var mutationMessage: String?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
-	private var mutationTask: Task<Void, Never>?
-	private var diffTask: Task<Void, Never>?
-	private var imageDiffTask: Task<Void, Never>?
-	private var activeDiffRequest: StashDiffRequest?
-	private var activeImageDiffRequest: StashImageDiffRequest?
-	private var displayedStashID: String?
-	private var requestSequence = 0
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var diffTask: Task<Void, Never>?
+	@ObservationIgnored private var imageDiffTask: Task<Void, Never>?
+	@ObservationIgnored private var activeDiffRequest: StashDiffRequest?
+	@ObservationIgnored private var activeImageDiffRequest: StashImageDiffRequest?
+	@ObservationIgnored private var displayedStashHash: String?
+	@ObservationIgnored private var activeMutationRequestID: Int?
+	@ObservationIgnored private var mutationSequence = 0
+	@ObservationIgnored private var requestSequence = 0
 
 	public init(
 		dependencies: Dependencies,
@@ -101,36 +105,39 @@ public final class StashesViewModel: ObservableObject {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
-		let snapshotHasChanges = snapshot.changes.isEmpty == false
-		if hasChanges != snapshotHasChanges {
-			hasChanges = snapshotHasChanges
+		let previousSelection = selectedStash
+		hasChanges = !snapshot.changes.isEmpty
+		stashes = snapshot.stashes
+		let selection =
+			stashes.first { $0.id == selectedStashID }
+			?? previousSelection.flatMap { previous in
+				stashes.first { $0.hash == previous.hash && $0.subject == previous.subject }
+			}
+			?? stashes.first
+		if let previousSelection, let selection,
+			previousSelection.hash == selection.hash
+		{
+			selectedStashID = selection.id
+			return
 		}
-		if stashes != snapshot.stashes {
-			stashes = snapshot.stashes
-		}
-		let keepsSelection = stashes.contains { $0.id == selectedStashID }
-		guard keepsSelection == false else { return }
-		guard selectedStashID != nil || stashes.isEmpty == false else { return }
-		didSelectStash(stashes.first?.id)
+		guard selectedStashID != selection?.id else { return }
+		didSelectStash(selection?.id)
 	}
 
 	public func reset() {
-		mutationTask?.cancel()
-		diffTask?.cancel()
-		imageDiffTask?.cancel()
-		activeDiffRequest = nil
-		activeImageDiffRequest = nil
+		onDisappear()
 		selectedStashID = nil
 		newStashMessage = ""
+		includeUntrackedInStash = true
 		stashes = []
-		isLoading = false
 		hasChanges = false
+		mutationMessage = nil
 		clearDiffState()
 	}
 
 	public func onAppear() {
 		guard !isLoadingDiff else { return }
-		if let selectedStash, displayedStashID != selectedStash.id {
+		if let selectedStash, displayedStashHash != selectedStash.hash {
 			requestDiff()
 		} else if let selectedFile,
 			DiffImageFileSupport.isSupported(path: selectedFile.path),
@@ -146,6 +153,8 @@ public final class StashesViewModel: ObservableObject {
 		diffTask?.cancel()
 		imageDiffTask?.cancel()
 		mutationTask = nil
+		activeMutationRequestID = nil
+		pendingDrop = nil
 		diffTask = nil
 		imageDiffTask = nil
 		activeDiffRequest = nil
@@ -161,22 +170,26 @@ public final class StashesViewModel: ObservableObject {
 
 	func didRequestCreateStash() {
 		guard let repositoryURL = repositoryURL(), hasChanges else { return }
-		let message = newStashMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+		let submittedMessage = newStashMessage
+		let includeUntracked = includeUntrackedInStash
+		let message = submittedMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+		let useCase = useCase
 		requestMutation {
-			let snapshot = try await self.useCase.createStash(
-				message: message,
-				includeUntracked: self.includeUntrackedInStash,
-				at: repositoryURL
-			)
+			try await useCase.createStash(
+				message: message, includeUntracked: includeUntracked, at: repositoryURL)
+		} didSucceed: { [weak self] in
+			guard let self, self.newStashMessage == submittedMessage,
+				self.includeUntrackedInStash == includeUntracked
+			else { return }
 			self.newStashMessage = ""
-			return snapshot
 		}
 	}
 
 	public func didRequestApplyStash() {
 		guard let repositoryURL = repositoryURL(), let stash = selectedStash else { return }
+		let useCase = useCase
 		requestMutation {
-			try await self.useCase.applyStash(stash, at: repositoryURL)
+			try await useCase.applyStash(stash, at: repositoryURL)
 		}
 	}
 
@@ -201,7 +214,7 @@ public final class StashesViewModel: ObservableObject {
 		imageDiffTask?.cancel()
 		activeDiffRequest = nil
 		activeImageDiffRequest = nil
-		displayedStashID = nil
+		displayedStashHash = nil
 		selectedFileID = nil
 		files = []
 		diff = ""
@@ -217,20 +230,17 @@ public final class StashesViewModel: ObservableObject {
 		guard let repositoryURL = repositoryURL(), let stash = selectedStash else { return }
 		requestSequence += 1
 		let request = StashDiffRequest(
-			id: requestSequence,
-			repositoryURL: repositoryURL,
-			stashID: stash.id
-		)
+			id: requestSequence, repositoryURL: repositoryURL, stashHash: stash.hash)
 		activeDiffRequest = request
 		let options = preferences.options
+		let useCase = useCase
 		isLoadingDiff = true
-		diffTask = Task {
+		diffTask = Task { [weak self] in
+			defer { self?.finishDiff(request) }
 			do {
 				let requestedDiff = try await useCase.loadDiff(
-					for: stash,
-					options: options,
-					at: repositoryURL
-				)
+					for: stash, options: options, at: repositoryURL)
+				try Task.checkCancellation()
 				let parseWorker = Task.detached(priority: .userInitiated) {
 					try CommitDiffFileParser.parseCancellable(requestedDiff)
 				}
@@ -239,25 +249,31 @@ public final class StashesViewModel: ObservableObject {
 				} onCancel: {
 					parseWorker.cancel()
 				}
-				guard activeDiffRequest == request else { return }
-				activeDiffRequest = nil
-				isLoadingDiff = false
+				try Task.checkCancellation()
+				guard let self, self.activeDiffRequest == request,
+					self.repositoryURL() == repositoryURL, self.selectedStash?.hash == stash.hash
+				else { return }
 				diff = requestedDiff
 				files = parsedFiles
-				displayedStashID = stash.id
+				displayedStashHash = stash.hash
 				selectedFileID =
 					parsedFiles.contains { $0.id == selectedFileID }
 					? selectedFileID : parsedFiles.first?.id
 				requestImageDiff()
-			} catch is CancellationError {
-				return
-			} catch {
-				guard activeDiffRequest == request else { return }
-				activeDiffRequest = nil
-				isLoadingDiff = false
+			} catch is CancellationError { return } catch {
+				guard let self, !Task.isCancelled, self.activeDiffRequest == request,
+					self.repositoryURL() == repositoryURL
+				else { return }
 				didReceiveError(error.localizedDescription)
 			}
 		}
+	}
+
+	private func finishDiff(_ request: StashDiffRequest) {
+		guard activeDiffRequest == request else { return }
+		activeDiffRequest = nil
+		diffTask = nil
+		isLoadingDiff = false
 	}
 
 	private func requestImageDiff() {
@@ -265,91 +281,118 @@ public final class StashesViewModel: ObservableObject {
 		activeImageDiffRequest = nil
 		imageDiff = nil
 		isLoadingImageDiff = false
-		guard
-			let repositoryURL = repositoryURL(),
-			let stash = selectedStash,
-			let file = selectedFile,
-			DiffImageFileSupport.isSupported(path: file.path)
+		guard let repositoryURL = repositoryURL(), let stash = selectedStash,
+			let file = selectedFile, DiffImageFileSupport.isSupported(path: file.path)
 		else { return }
-
 		requestSequence += 1
 		let request = StashImageDiffRequest(
-			id: requestSequence,
-			repositoryURL: repositoryURL,
-			stashID: stash.id,
-			fileID: file.id
-		)
+			id: requestSequence, repositoryURL: repositoryURL,
+			stashHash: stash.hash, fileID: file.id)
 		activeImageDiffRequest = request
+		let useCase = useCase
 		isLoadingImageDiff = true
-		imageDiffTask = Task {
+		imageDiffTask = Task { [weak self] in
+			defer { self?.finishImageDiff(request) }
 			do {
-				let requestedImageDiff = try await useCase.loadImageDiff(
-					for: stash,
-					path: file.path,
-					previousPath: file.previousPath,
-					at: repositoryURL
-				)
-				guard activeImageDiffRequest == request else { return }
-				activeImageDiffRequest = nil
-				isLoadingImageDiff = false
-				imageDiff = requestedImageDiff
-			} catch is CancellationError {
-				return
-			} catch {
-				guard activeImageDiffRequest == request else { return }
-				activeImageDiffRequest = nil
-				isLoadingImageDiff = false
+				let requested = try await useCase.loadImageDiff(
+					for: stash, path: file.path,
+					previousPath: file.previousPath, at: repositoryURL)
+				try Task.checkCancellation()
+				guard let self, self.activeImageDiffRequest == request,
+					self.repositoryURL() == repositoryURL, self.selectedStash?.hash == stash.hash
+				else { return }
+				imageDiff = requested
+			} catch is CancellationError { return } catch {
+				guard let self, !Task.isCancelled, self.activeImageDiffRequest == request,
+					self.repositoryURL() == repositoryURL
+				else { return }
 				didReceiveError(error.localizedDescription)
 			}
 		}
+	}
+
+	private func finishImageDiff(_ request: StashImageDiffRequest) {
+		guard activeImageDiffRequest == request else { return }
+		activeImageDiffRequest = nil
+		imageDiffTask = nil
+		isLoadingImageDiff = false
 	}
 
 	public func didRequestPopStash() {
 		guard let repositoryURL = repositoryURL(), let stash = selectedStash else { return }
-		requestMutation {
-			try await self.useCase.popStash(stash, at: repositoryURL)
-		}
+		let useCase = useCase
+		requestMutation { try await useCase.popStash(stash, at: repositoryURL) }
 	}
 
 	public func didPresentStashDrop(_ stash: GitStash) {
-		guard !isLoading else { return }
-		pendingDrop = stash
+		guard !isLoading, let repositoryURL = repositoryURL() else { return }
+		pendingDrop = StashDropConfirmation(stash: stash, repositoryURL: repositoryURL)
 	}
 
-	func didDismissStashDrop() {
-		pendingDrop = nil
-	}
+	func didDismissStashDrop() { pendingDrop = nil }
 
 	func didConfirmStashDrop() {
-		guard let stash = pendingDrop else { return }
+		guard !isLoading, let confirmation = pendingDrop else { return }
 		pendingDrop = nil
-		didConfirmDrop(stash)
-	}
-
-	func didConfirmDrop(_ stash: GitStash) {
-		guard let repositoryURL = repositoryURL() else { return }
+		guard repositoryURL() == confirmation.repositoryURL,
+			stashes.contains(where: {
+				$0.hash == confirmation.stash.hash && $0.subject == confirmation.stash.subject
+			})
+		else {
+			didReceiveError("The repository or stash list has changed. Select the stash again.")
+			return
+		}
+		let useCase = useCase
 		requestMutation {
-			try await self.useCase.dropStash(stash, at: repositoryURL)
+			try await useCase.dropStash(confirmation.stash, at: confirmation.repositoryURL)
 		}
 	}
 
 	private func requestMutation(
-		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
+		_ operation: @escaping @MainActor () async throws -> RepositoryStashMutationResult,
+		didSucceed: @escaping @MainActor () -> Void = {}
 	) {
-		guard !isLoading else { return }
-		mutationTask?.cancel()
+		guard !isLoading, let expectedRepositoryURL = repositoryURL() else { return }
+		mutationSequence += 1
+		let requestID = mutationSequence
+		activeMutationRequestID = requestID
 		isLoading = true
-		mutationTask = Task {
-			defer { isLoading = false }
+		mutationMessage = nil
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
-				let snapshot = try await operation()
 				try Task.checkCancellation()
-				didProduceSnapshot(snapshot)
-			} catch is CancellationError {
-				return
-			} catch {
+				let result = try await operation()
+				try Task.checkCancellation()
+				guard let self, self.activeMutationRequestID == requestID,
+					self.repositoryURL() == expectedRepositoryURL
+				else { return }
+				if result.outcome == .completed { didSucceed() }
+				didProduceSnapshot(result.snapshot)
+				switch result.outcome {
+				case .completed: break
+				case .nothingToSave:
+					mutationMessage = "No changes matched the stash options. Your message has been kept."
+				case .conflicted:
+					mutationMessage = "The changes have conflicts. The stash was kept for recovery."
+				case .failed(let message):
+					mutationMessage = message
+					didReceiveError(message)
+				}
+			} catch is CancellationError { return } catch {
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.repositoryURL() == expectedRepositoryURL
+				else { return }
+				mutationMessage = error.localizedDescription
 				didReceiveError(error.localizedDescription)
 			}
 		}
+	}
+
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isLoading = false
 	}
 }

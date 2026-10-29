@@ -1,6 +1,6 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryHistory
@@ -8,7 +8,8 @@ import XCTest
 @testable import Groves
 
 @MainActor
-final class WorkspaceChildViewModelTests: XCTestCase {
+struct WorkspaceChildViewModelTests {
+	@Test
 	func testRepositoryWorkspaceOwnsChildViewModelLifetime() {
 		var workspace: RepositoryWorkspace? = makeRepositoryWorkspace()
 		let viewModel = workspace?.viewModel
@@ -28,22 +29,23 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 
 		workspace = nil
 
-		XCTAssertNotNil(viewModel)
-		XCTAssertNil(changesViewModel)
-		XCTAssertNil(changesDiffViewModel)
-		XCTAssertNil(commitViewModel)
-		XCTAssertNil(conflictViewModel)
-		XCTAssertNil(historyViewModel)
-		XCTAssertNil(operationViewModel)
-		XCTAssertNil(referencesViewModel)
-		XCTAssertNil(syncViewModel)
-		XCTAssertNil(remotesViewModel)
-		XCTAssertNil(stashesViewModel)
-		XCTAssertNil(treeViewModel)
-		XCTAssertNil(diffPreferences)
-		XCTAssertNil(focusedActionsViewModel)
+		#expect(viewModel != nil)
+		#expect(changesViewModel == nil)
+		#expect(changesDiffViewModel == nil)
+		#expect(commitViewModel == nil)
+		#expect(conflictViewModel == nil)
+		#expect(historyViewModel == nil)
+		#expect(operationViewModel == nil)
+		#expect(referencesViewModel == nil)
+		#expect(syncViewModel == nil)
+		#expect(remotesViewModel == nil)
+		#expect(stashesViewModel == nil)
+		#expect(treeViewModel == nil)
+		#expect(diffPreferences == nil)
+		#expect(focusedActionsViewModel == nil)
 	}
 
+	@Test
 	func testSnapshotIsDistributedAcrossChildViewModels() async throws {
 		let workspace = makeRepositoryWorkspace()
 		let preferences = workspace.diffPreferences
@@ -88,12 +90,13 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		workspace.viewModel.didProduceSnapshot(snapshot)
 		try await waitUntil { historyViewModel.commitGraphItems.isEmpty == false }
 
-		XCTAssertEqual(changesViewModel.changes, [change])
-		XCTAssertEqual(historyViewModel.commitGraphItems.map(\.commit), [commit])
-		XCTAssertEqual(referencesViewModel.branches, [branch])
-		XCTAssertTrue(changesDiffViewModel.preferences === preferences)
+		#expect(changesViewModel.changes == [change])
+		#expect(historyViewModel.commitGraphItems.map(\.commit) == [commit])
+		#expect(referencesViewModel.branches == [branch])
+		#expect(changesDiffViewModel.preferences === preferences)
 	}
 
+	@Test
 	func testWorkspaceDisappearCancelsPendingDebouncedSearch() async throws {
 		let workspace = makeRepositoryWorkspace()
 		let historyViewModel = workspace.historyViewModel
@@ -138,9 +141,10 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		workspace.onDisappear()
 		try await Task.sleep(for: .milliseconds(200))
 
-		XCTAssertEqual(historyViewModel.displayedCommitGraphItems.count, commits.count)
+		#expect(historyViewModel.displayedCommitGraphItems.count == commits.count)
 	}
 
+	@Test
 	func testWorkspaceAppearResumesIncompleteHistoryLayout() async throws {
 		let workspace = makeRepositoryWorkspace()
 		let historyViewModel = workspace.historyViewModel
@@ -175,9 +179,10 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 
 		try await waitUntil { historyViewModel.commitGraphItems.count == commits.count }
 
-		XCTAssertEqual(historyViewModel.commitGraphItems.map(\.commit), commits)
+		#expect(historyViewModel.commitGraphItems.map(\.commit) == commits)
 	}
 
+	@Test
 	func testStashesViewModelTracksWorkingTreeStateWithoutTheChangesViewModel() {
 		let workspace = makeRepositoryWorkspace()
 		let stashesViewModel = workspace.stashesViewModel
@@ -188,25 +193,26 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 			workingTreeState: .unchanged
 		)
 
-		XCTAssertFalse(stashesViewModel.hasChanges)
+		#expect(!(stashesViewModel.hasChanges))
 
 		workspace.viewModel.didProduceSnapshot(makeSnapshot(changes: [change]))
 
-		XCTAssertTrue(stashesViewModel.hasChanges)
+		#expect(stashesViewModel.hasChanges)
 
 		workspace.viewModel.didProduceSnapshot(makeSnapshot(changes: []))
 
-		XCTAssertFalse(stashesViewModel.hasChanges)
+		#expect(!(stashesViewModel.hasChanges))
 
 		stashesViewModel.didChangeWorkingTreeState(hasChanges: true)
 
-		XCTAssertTrue(stashesViewModel.hasChanges)
+		#expect(stashesViewModel.hasChanges)
 
 		stashesViewModel.reset()
 
-		XCTAssertFalse(stashesViewModel.hasChanges)
+		#expect(!(stashesViewModel.hasChanges))
 	}
 
+	@Test
 	func testFocusedActionsFollowLifecycleAndSelectionState() async {
 		let workspace = makeRepositoryWorkspace()
 		let branch = GitBranch(
@@ -232,15 +238,15 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		workspace.onAppear()
 		await Task.yield()
 
-		XCTAssertNotNil(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch)
+		#expect(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch != nil)
 
 		workspace.onDisappear()
 		workspace.referencesViewModel.selectedBranchID = nil
 		await Task.yield()
-		XCTAssertNotNil(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch)
+		#expect(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch == nil)
 
 		workspace.onAppear()
-		XCTAssertNil(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch)
+		#expect(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch == nil)
 	}
 
 	private func waitUntil(
@@ -251,7 +257,7 @@ final class WorkspaceChildViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

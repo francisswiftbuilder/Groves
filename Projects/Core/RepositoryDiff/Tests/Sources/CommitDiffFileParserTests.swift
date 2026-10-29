@@ -1,8 +1,10 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import CoreRepositoryDiff
 
-final class CommitDiffFileParserTests: XCTestCase {
+struct CommitDiffFileParserTests {
+	@Test
 	func testCommitDiffFileParserSeparatesChangedFiles() {
 		let diff = """
 			diff --git a/Sources/First.swift b/Sources/First.swift
@@ -22,11 +24,12 @@ final class CommitDiffFileParserTests: XCTestCase {
 
 		let files = CommitDiffFileParser.parse(diff)
 
-		XCTAssertEqual(files.map(\.path), ["Sources/First.swift", "README.md"])
-		XCTAssertEqual(files.map(\.additions), [1, 1])
-		XCTAssertEqual(files.map(\.deletions), [1, 0])
+		#expect(files.map(\.path) == ["Sources/First.swift", "README.md"])
+		#expect(files.map(\.additions) == [1, 1])
+		#expect(files.map(\.deletions) == [1, 0])
 	}
 
+	@Test
 	func testCancellableParserStopsWhenTaskIsCancelled() async {
 		let section = """
 			diff --git a/File.swift b/File.swift
@@ -45,10 +48,10 @@ final class CommitDiffFileParserTests: XCTestCase {
 
 		do {
 			_ = try await task.value
-			XCTFail("Cancelled diff parsing completed")
+			Issue.record("Cancelled diff parsing completed")
 		} catch is CancellationError {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 }

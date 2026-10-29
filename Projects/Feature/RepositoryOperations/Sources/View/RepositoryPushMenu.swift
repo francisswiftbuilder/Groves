@@ -1,14 +1,14 @@
 import SwiftUI
 
 public struct RepositoryPushMenu: View {
-	@ObservedObject private var viewModel: RepositorySyncViewModel
+	private let viewModel: RepositorySyncViewModel
 	public var preferredRemoteName: String?
 
 	public init(
 		viewModel: RepositorySyncViewModel,
 		preferredRemoteName: String? = nil
 	) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 		self.preferredRemoteName = preferredRemoteName
 	}
 

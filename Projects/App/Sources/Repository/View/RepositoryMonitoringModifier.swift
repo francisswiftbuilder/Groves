@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 
 struct RepositoryMonitoringModifier: ViewModifier {
@@ -13,7 +12,7 @@ struct RepositoryMonitoringModifier: ViewModifier {
 			.onChange(of: scenePhase) { _, _ in
 				viewModel.didChangeSceneActivation(scenePhase == .active)
 			}
-			.onReceive(viewModel.$repositoryURL.removeDuplicates()) { _ in
+			.onChange(of: viewModel.repositoryURL) { _, _ in
 				viewModel.didChangeMonitoredRepository()
 			}
 			.onDisappear {

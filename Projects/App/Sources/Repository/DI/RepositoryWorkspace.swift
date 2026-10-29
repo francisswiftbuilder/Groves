@@ -75,7 +75,6 @@ final class RepositoryWorkspace {
 		changesDiffSearchViewModel.onAppear()
 		historyDiffSearchViewModel.onAppear()
 		stashesDiffSearchViewModel.onAppear()
-		focusedActionsViewModel.onAppear()
 	}
 
 	func onDisappear() {
@@ -93,6 +92,5 @@ final class RepositoryWorkspace {
 		changesDiffSearchViewModel.onDisappear()
 		historyDiffSearchViewModel.onDisappear()
 		stashesDiffSearchViewModel.onDisappear()
-		focusedActionsViewModel.onDisappear()
 	}
 }
