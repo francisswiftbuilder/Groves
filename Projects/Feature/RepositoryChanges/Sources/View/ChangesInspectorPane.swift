@@ -3,12 +3,12 @@ import Foundation
 import SwiftUI
 
 struct ChangesInspectorPane: View {
-	@ObservedObject private var viewModel: ChangesViewModel
-	@ObservedObject private var diffViewModel: ChangesDiffViewModel
+	private let viewModel: ChangesViewModel
+	private let diffViewModel: ChangesDiffViewModel
 
 	init(viewModel: ChangesViewModel, diffViewModel: ChangesDiffViewModel) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
-		_diffViewModel = ObservedObject(wrappedValue: diffViewModel)
+		self.viewModel = viewModel
+		self.diffViewModel = diffViewModel
 	}
 
 	var body: some View {

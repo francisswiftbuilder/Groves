@@ -18,7 +18,7 @@ public struct GitCredentialHelper: Sendable {
 		operationID: String?
 	) throws -> String? {
 		let fields = Self.fields(in: input)
-		guard fields["protocol"] == "https" || fields["protocol"] == "http",
+		guard fields["protocol"] == "https",
 			let host = fields["host"]
 		else { return nil }
 
@@ -41,7 +41,7 @@ public struct GitCredentialHelper: Sendable {
 
 	private func respondToGet(host: String, username: String?) throws -> String? {
 		let descriptor: GitCredentialDescriptor?
-		if let username {
+		if let username, !username.isEmpty {
 			descriptor = GitCredentialDescriptor(kind: .https, host: host, account: username)
 		} else {
 			descriptor = try store.descriptors().first { $0.kind == .https && $0.host == host }

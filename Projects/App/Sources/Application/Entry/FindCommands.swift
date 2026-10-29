@@ -1,4 +1,5 @@
 import AppKit
+import CoreRepositoryDiff
 import SwiftUI
 
 struct FindCommands: Commands {

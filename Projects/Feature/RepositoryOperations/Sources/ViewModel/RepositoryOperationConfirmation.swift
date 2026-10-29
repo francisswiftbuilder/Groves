@@ -2,7 +2,7 @@ import DomainGitInterface
 
 enum RepositoryOperationConfirmation {
 	case operation(RepositoryOperationAction, RepositoryOperationKind)
-	case hardReset(GitCommit)
+	case hardReset(RepositoryResetPresentation)
 
 	var title: String {
 		switch self {
@@ -25,9 +25,9 @@ enum RepositoryOperationConfirmation {
 			case .continue:
 				return "The \(operationDisplayName(operation).lowercased()) will continue."
 			}
-		case .hardReset(let commit):
+		case .hardReset(let presentation):
 			return
-				"Tracked changes after \(commit.shortHash) will be discarded. Untracked files are preserved."
+				"The branch “\(presentation.context.branchName)” will move to \(presentation.commit.shortHash), discarding tracked changes. The reset will stop if untracked or ignored files would be overwritten."
 		}
 	}
 

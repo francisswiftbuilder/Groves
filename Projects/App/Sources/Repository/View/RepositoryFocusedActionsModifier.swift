@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct RepositoryFocusedActionsModifier: ViewModifier {
-	@ObservedObject private var viewModel: RepositoryFocusedActionsViewModel
+	private let viewModel: RepositoryFocusedActionsViewModel
 
 	init(viewModel: RepositoryFocusedActionsViewModel) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 	}
 
 	func body(content: Content) -> some View {

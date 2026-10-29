@@ -1,3 +1,4 @@
+import CoreGitCredential
 import DataGit
 import DomainGit
 import DomainGitInterface
@@ -7,16 +8,24 @@ import SwiftUI
 @MainActor
 final class AppDIContainer {
 	static let shared = AppDIContainer()
+	let accountViewModel: GitAccountViewModel
 	let windowTabCoordinator: any RepositoryWindowTabCoordinating
 	private let noticeCenter: RepositoryNoticeCenter
 	private let viewModelResult: Result<RepositoryTabsViewModel, Error>
 
 	private init() {
 		let noticeCenter = RepositoryNoticeCenter()
+		let accountViewModel = GitAccountViewModel()
+		let isRunningTests =
+			ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 		self.noticeCenter = noticeCenter
+		self.accountViewModel = accountViewModel
 		let repository = LocalGitRepository(
 			configuration: GitProcessConfiguration(
+				executableURL: Bundle.main.bundleURL.appending(path: "Contents/Resources/Git/bin/git"),
+				runtimeURL: Bundle.main.bundleURL.appending(path: "Contents/Resources/Git"),
 				askPassHelperURL: GrovesAskPassLocator.bundledHelperURL,
+				globalConfigurationURL: GitIdentityConfiguration.defaultURL,
 				noticeHandler: { notice in noticeCenter.post(notice) }
 			)
 		)
@@ -48,7 +57,9 @@ final class AppDIContainer {
 				dependencies: .init(
 					useCase: DefaultRepositoryTabsUseCase(
 						repository: repository,
-						store: try SwiftDataSavedRepositoryStore()
+						store: try SwiftDataSavedRepositoryStore(
+							isStoredInMemoryOnly: isRunningTests
+						)
 					),
 					makeWorkspace: { repositoryURL in
 						workspaceAssembly.makeWorkspace(repositoryURL: repositoryURL)
@@ -57,31 +68,46 @@ final class AppDIContainer {
 			)
 		}
 		viewModelResult = result
-		var coordinator: NativeWindowTabCoordinator?
-		coordinator = NativeWindowTabCoordinator { [weak coordinator] repositoryID in
-			AppDIContainer.makeRepositoryRootView(
-				viewModelResult: result,
-				noticeCenter: noticeCenter,
-				windowTabCoordinator: coordinator,
-				repositoryID: repositoryID
-			)
-		}
-		windowTabCoordinator = coordinator!
+		windowTabCoordinator = NativeWindowTabCoordinator(
+			actions: .init(
+				didSelectRepository: { id in
+					if case .success(let viewModel) = result {
+						viewModel.didSelectTab(id)
+					}
+				},
+				didCloseRepository: { id in
+					if case .success(let viewModel) = result {
+						viewModel.didRequestCloseTab(id)
+					}
+				}
+			),
+			makeRootView: { repositoryID in
+				AppDIContainer.makeRepositoryRootView(
+					viewModelResult: result,
+					noticeCenter: noticeCenter,
+					accountViewModel: accountViewModel,
+					repositoryID: repositoryID
+				)
+			}
+		)
 	}
 
 	func makeRepositoryRootView(repositoryID: Binding<UUID?>) -> AnyView {
-		Self.makeRepositoryRootView(
-			viewModelResult: viewModelResult,
-			noticeCenter: noticeCenter,
-			windowTabCoordinator: windowTabCoordinator,
-			repositoryID: repositoryID
+		AnyView(
+			Self.makeRepositoryRootView(
+				viewModelResult: viewModelResult,
+				noticeCenter: noticeCenter,
+				accountViewModel: accountViewModel,
+				repositoryID: repositoryID
+			)
+			.environment(\.windowTabCoordinator, windowTabCoordinator)
 		)
 	}
 
 	private static func makeRepositoryRootView(
 		viewModelResult: Result<RepositoryTabsViewModel, Error>,
 		noticeCenter: RepositoryNoticeCenter,
-		windowTabCoordinator: (any RepositoryWindowTabCoordinating)?,
+		accountViewModel: GitAccountViewModel,
 		repositoryID: Binding<UUID?>
 	) -> AnyView {
 		switch viewModelResult {
@@ -90,9 +116,9 @@ final class AppDIContainer {
 				RepositoryRootView(
 					viewModel: viewModel,
 					noticeCenter: noticeCenter,
+					accountViewModel: accountViewModel,
 					repositoryID: repositoryID
 				)
-				.environment(\.windowTabCoordinator, windowTabCoordinator)
 			)
 		case .failure(let error):
 			return AnyView(

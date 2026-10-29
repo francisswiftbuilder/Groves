@@ -1,11 +1,13 @@
 import AppKit
-import XCTest
+import Foundation
+import Testing
 
 @testable import CoreRepositoryDiff
 
-final class DiffImageDecoderTests: XCTestCase {
+struct DiffImageDecoderTests {
+	@Test
 	func testDecodeFallsBackToNSImageForSVG() async throws {
-		let data = try XCTUnwrap(
+		let data = try #require(
 			"""
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24">
 			  <rect width="48" height="24" fill="#000000"/>
@@ -15,12 +17,13 @@ final class DiffImageDecoderTests: XCTestCase {
 
 		let image = await DiffImageDecoder.decode(data)
 
-		XCTAssertEqual(image?.size, CGSize(width: 48, height: 24))
+		#expect(image?.size == CGSize(width: 48, height: 24))
 	}
 
+	@Test
 	func testDecodeReturnsNilForInvalidImageData() async {
 		let image = await DiffImageDecoder.decode(Data("invalid".utf8))
 
-		XCTAssertNil(image)
+		#expect(image == nil)
 	}
 }

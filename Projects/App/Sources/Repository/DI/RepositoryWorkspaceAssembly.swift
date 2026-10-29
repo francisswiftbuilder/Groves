@@ -1,4 +1,3 @@
-import Combine
 import CoreRepositoryDiff
 import DomainGitInterface
 import FeatureRepositoryChanges
@@ -83,7 +82,10 @@ final class RepositoryWorkspaceAssembly {
 				contentUseCase: dependencies.contentUseCase,
 				operationsUseCase: dependencies.operationsUseCase,
 				openExternalEditor: openExternalEditor,
-				repositoryURL: { output.workspaceViewModel?.repositoryURL }
+				repositoryURL: { output.workspaceViewModel?.repositoryURL },
+				externalEditorBundleIdentifier: {
+					UserDefaults.standard.string(forKey: ExternalEditorPreferenceKey.bundleIdentifier)
+				}
 			),
 			actions: .init(
 				didProduceSnapshot: { snapshot in
@@ -352,18 +354,8 @@ final class RepositoryWorkspaceAssembly {
 			createTag: referencesViewModel.didPresentNewTag,
 			reset: operationViewModel.didPresentReset
 		)
-		let focusedActionsStateChanges = Publishers.MergeMany(
-			operationViewModel.$operationState.map { _ in () }.eraseToAnyPublisher(),
-			historyViewModel.selectedCommitIDChanges,
-			referencesViewModel.$selectedBranchID.map { _ in () }.eraseToAnyPublisher(),
-			referencesViewModel.$branches.map { _ in () }.eraseToAnyPublisher(),
-			remotesViewModel.$selectedRemoteID.map { _ in () }.eraseToAnyPublisher(),
-			remotesViewModel.$remotes.map { _ in () }.eraseToAnyPublisher()
-		)
-		.eraseToAnyPublisher()
 		let focusedActionsViewModel = RepositoryFocusedActionsViewModel(
 			dependencies: .init(
-				stateChanges: focusedActionsStateChanges,
 				operationState: { operationViewModel.operationState },
 				selectedBranch: { referencesViewModel.selectedBranch },
 				selectedCommit: { historyViewModel.selectedCommit },

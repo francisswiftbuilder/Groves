@@ -1,9 +1,11 @@
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import CoreRepositoryDiff
 
-final class DiffParserTests: XCTestCase {
+struct DiffParserTests {
+	@Test
 	func testDiffParserPairsReplacementLinesWithSourceCoordinates() throws {
 		let diff = """
 			diff --git a/tracked.txt b/tracked.txt
@@ -17,22 +19,20 @@ final class DiffParserTests: XCTestCase {
 			"""
 
 		let lines = DiffParser.parse(diff)
-		let deletion = try XCTUnwrap(lines.first { $0.kind == .deletion })
-		let addition = try XCTUnwrap(lines.first { $0.kind == .addition })
+		let deletion = try #require(lines.first { $0.kind == .deletion })
+		let addition = try #require(lines.first { $0.kind == .addition })
 
-		XCTAssertEqual(deletion.oldLineNumber, 2)
-		XCTAssertNil(deletion.newLineNumber)
-		XCTAssertNil(addition.oldLineNumber)
-		XCTAssertEqual(addition.newLineNumber, 2)
-		XCTAssertEqual(
-			deletion.selection,
-			GitDiffLineSelection(oldLineNumber: 2, newLineNumber: 2)
-		)
-		XCTAssertEqual(addition.selection, deletion.selection)
-		XCTAssertTrue(deletion.showsAction)
-		XCTAssertFalse(addition.showsAction)
+		#expect(deletion.oldLineNumber == 2)
+		#expect(deletion.newLineNumber == nil)
+		#expect(addition.oldLineNumber == nil)
+		#expect(addition.newLineNumber == 2)
+		#expect(deletion.selection == GitDiffLineSelection(oldLineNumber: 2, newLineNumber: 2))
+		#expect(addition.selection == deletion.selection)
+		#expect(deletion.showsAction)
+		#expect(!(addition.showsAction))
 	}
 
+	@Test
 	func testDiffParserTreatsTriplePrefixInsideHunkAsChangedContent() {
 		let diff = """
 			diff --git a/tracked.txt b/tracked.txt
@@ -45,10 +45,11 @@ final class DiffParserTests: XCTestCase {
 
 		let lines = DiffParser.parse(diff)
 
-		XCTAssertEqual(lines.filter { $0.kind == .deletion }.count, 1)
-		XCTAssertEqual(lines.filter { $0.kind == .addition }.count, 1)
+		#expect(lines.filter { $0.kind == .deletion }.count == 1)
+		#expect(lines.filter { $0.kind == .addition }.count == 1)
 	}
 
+	@Test
 	func testDiffParserReturnsOnlySourceLinesForPresentation() {
 		let diff = """
 			diff --git a/tracked.txt b/tracked.txt
@@ -63,10 +64,11 @@ final class DiffParserTests: XCTestCase {
 
 		let lines = DiffParser.parseSourceLines(diff)
 
-		XCTAssertEqual(lines.map(\.kind), [.deletion, .addition, .context])
-		XCTAssertEqual(lines.map(\.sourceText), ["old", "new", "context"])
+		#expect(lines.map(\.kind) == [.deletion, .addition, .context])
+		#expect(lines.map(\.sourceText) == ["old", "new", "context"])
 	}
 
+	@Test
 	func testDiffParserPreservesHunkSelectionAndIntraLineRanges() throws {
 		let diff = """
 			diff --git a/App.swift b/App.swift
@@ -79,15 +81,12 @@ final class DiffParserTests: XCTestCase {
 			"""
 
 		let lines = DiffParser.parse(diff)
-		let hunk = try XCTUnwrap(lines.first { $0.kind == .hunk })
-		let deletion = try XCTUnwrap(lines.first { $0.kind == .deletion })
-		let addition = try XCTUnwrap(lines.first { $0.kind == .addition })
+		let hunk = try #require(lines.first { $0.kind == .hunk })
+		let deletion = try #require(lines.first { $0.kind == .deletion })
+		let addition = try #require(lines.first { $0.kind == .addition })
 
-		XCTAssertEqual(
-			hunk.hunkSelection,
-			GitDiffHunkSelection(oldStartLine: 40, newStartLine: 40)
-		)
-		XCTAssertEqual(deletion.changedRange, DiffTextRange(location: 14, length: 1))
-		XCTAssertEqual(addition.changedRange, DiffTextRange(location: 14, length: 1))
+		#expect(hunk.hunkSelection == GitDiffHunkSelection(oldStartLine: 40, newStartLine: 40))
+		#expect(deletion.changedRange == DiffTextRange(location: 14, length: 1))
+		#expect(addition.changedRange == DiffTextRange(location: 14, length: 1))
 	}
 }

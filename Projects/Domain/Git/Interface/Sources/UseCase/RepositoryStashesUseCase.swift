@@ -10,11 +10,11 @@ public protocol RepositoryStashesUseCase: Sendable {
 		at repositoryURL: URL
 	) async throws -> GitImageDiff
 	func createStash(message: String, includeUntracked: Bool, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	func applyStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	func popStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 	func dropStash(_ stash: GitStash, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryStashMutationResult
 }

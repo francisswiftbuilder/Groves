@@ -1,20 +1,21 @@
-import Combine
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositorySearchViewModel: ObservableObject, RepositoryFindActions {
-	@Published public var query = "" {
+@Observable
+public final class RepositorySearchViewModel: RepositoryFindActions {
+	public var query = "" {
 		didSet {
 			guard query != oldValue else { return }
 			requestSearch(preservingCurrentMatch: false)
 		}
 	}
-	@Published public var isPresented = false
-	@Published private(set) var matches: [RepositorySearchMatch] = []
-	@Published private(set) var currentIndex: Int?
+	public var isPresented = false
+	private(set) var matches: [RepositorySearchMatch] = []
+	private(set) var currentIndex: Int?
 
 	private var sources: [RepositorySearchSource] = []
-	private var searchTask: Task<Void, Never>?
+	@ObservationIgnored private var searchTask: Task<Void, Never>?
 
 	public init() {}
 

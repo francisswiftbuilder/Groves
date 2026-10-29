@@ -23,6 +23,7 @@ private var appTargetSettings: SettingsDictionary {
 	var settings: SettingsDictionary = [
 		"ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "",
 		"CODE_SIGN_ENTITLEMENTS": .string(Permissions.appEntitlementsBuildSetting),
+		"ENABLE_USER_SCRIPT_SANDBOXING": "NO",
 		"PRODUCT_NAME": "Groves",
 	]
 	settings.merge(developmentSigningSettings) { _, signing in signing }
@@ -54,7 +55,10 @@ public var appTestsSettings: Settings {
 }
 
 public var askPassSettings: Settings {
-	.settings(base: baseSettings.merging(developmentSigningSettings) { _, signing in signing })
+	var settings = baseSettings.merging(developmentSigningSettings) { _, signing in signing }
+	settings["SKIP_INSTALL"] = "YES"
+	settings["ENABLE_DEBUG_DYLIB"] = "NO"
+	return .settings(base: settings)
 }
 
 extension Settings: TargetSettings {

@@ -1,9 +1,11 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import CoreRepositoryDiff
 
 @MainActor
-final class RepositorySearchViewModelTests: XCTestCase {
+struct RepositorySearchViewModelTests {
+	@Test
 	func testSearchCountsOccurrencesAndWrapsNextPrevious() async throws {
 		let model = RepositorySearchViewModel()
 		model.update(
@@ -15,15 +17,16 @@ final class RepositorySearchViewModelTests: XCTestCase {
 		model.query = "tree"
 		try await waitUntil { model.matches.count == 3 }
 
-		XCTAssertEqual(model.statusText, "1 of 3")
-		XCTAssertEqual(model.currentMatch?.sourceID, 1)
+		#expect(model.statusText == "1 of 3")
+		#expect(model.currentMatch?.sourceID == 1)
 		model.previous()
-		XCTAssertEqual(model.statusText, "3 of 3")
-		XCTAssertEqual(model.currentMatch?.sourceID, 2)
+		#expect(model.statusText == "3 of 3")
+		#expect(model.currentMatch?.sourceID == 2)
 		model.next()
-		XCTAssertEqual(model.statusText, "1 of 3")
+		#expect(model.statusText == "1 of 3")
 	}
 
+	@Test
 	func testSearchPreservesCurrentOccurrenceWhenSourcesAreRebuilt() async throws {
 		let model = RepositorySearchViewModel()
 		let sources = [RepositorySearchSource(id: 10, text: "one match and match")]
@@ -36,10 +39,11 @@ final class RepositorySearchViewModelTests: XCTestCase {
 		model.update(sources: sources + [RepositorySearchSource(id: 11, text: "match")])
 		try await waitUntil { model.matches.count == 3 }
 
-		XCTAssertEqual(model.currentMatch, selectedMatch)
-		XCTAssertEqual(model.statusText, "2 of 3")
+		#expect(model.currentMatch == selectedMatch)
+		#expect(model.statusText == "2 of 3")
 	}
 
+	@Test
 	func testTenThousandLineSearchStartsWithinMainActorBudget() async throws {
 		let model = RepositorySearchViewModel()
 		let sources = (0..<10_000).map {
@@ -52,10 +56,11 @@ final class RepositorySearchViewModelTests: XCTestCase {
 		model.query = "needle"
 
 		let elapsed = start.duration(to: clock.now)
-		XCTAssertLessThan(elapsed, .milliseconds(100))
+		#expect(elapsed < .milliseconds(100))
 		try await waitUntil(timeout: .seconds(2)) { model.matches.count == sources.count }
 	}
 
+	@Test
 	func testRunningSearchDoesNotRetainViewModel() {
 		weak var weakModel: RepositorySearchViewModel?
 		autoreleasepool {
@@ -69,7 +74,7 @@ final class RepositorySearchViewModelTests: XCTestCase {
 			weakModel = model
 		}
 
-		XCTAssertNil(weakModel)
+		#expect(weakModel == nil)
 	}
 
 	private func waitUntil(
@@ -80,7 +85,7 @@ final class RepositorySearchViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			if clock.now >= deadline {
-				XCTFail("Condition timed out")
+				Issue.record("Condition timed out")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

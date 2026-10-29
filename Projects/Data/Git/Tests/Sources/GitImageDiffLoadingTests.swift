@@ -1,10 +1,11 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import DataGit
 
-final class GitImageDiffLoadingTests: XCTestCase {
+struct GitImageDiffLoadingTests {
+	@Test
 	func testRequestImageDiffRejectsOversizedWorkingTreeAndIndexData() async throws {
 		let repositoryURL = try makeTemporaryRepository(
 			name: "GrovesImageDiffLoadingTests"
@@ -17,32 +18,32 @@ final class GitImageDiffLoadingTests: XCTestCase {
 		let repository = LocalGitRepository()
 
 		let unstagedChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let unstagedChange = try XCTUnwrap(unstagedChanges.first)
+		let unstagedChange = try #require(unstagedChanges.first)
 		do {
 			_ = try await repository.requestImageDiff(
 				for: unstagedChange,
 				source: .unstaged,
 				at: repositoryURL
 			)
-			XCTFail("Expected the working tree image to exceed the preview limit")
+			Issue.record("Expected the working tree image to exceed the preview limit")
 		} catch GitRepositoryError.fileTooLarge {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 
 		try runGit(arguments: ["add", "oversized.png"], at: repositoryURL)
 		let stagedChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
-		let stagedChange = try XCTUnwrap(stagedChanges.first)
+		let stagedChange = try #require(stagedChanges.first)
 		do {
 			_ = try await repository.requestImageDiff(
 				for: stagedChange,
 				source: .staged,
 				at: repositoryURL
 			)
-			XCTFail("Expected the index image to exceed the preview limit")
+			Issue.record("Expected the index image to exceed the preview limit")
 		} catch GitRepositoryError.fileTooLarge {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 
@@ -52,6 +53,6 @@ final class GitImageDiffLoadingTests: XCTestCase {
 		process.arguments = ["git", "-C", repositoryURL.path] + arguments
 		try process.run()
 		process.waitUntilExit()
-		XCTAssertEqual(process.terminationStatus, 0)
+		#expect(process.terminationStatus == 0)
 	}
 }

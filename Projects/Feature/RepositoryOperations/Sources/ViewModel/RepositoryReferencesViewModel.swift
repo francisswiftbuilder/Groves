@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositoryReferencesViewModel: ObservableObject {
+@Observable
+public final class RepositoryReferencesViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -33,25 +34,31 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 		}
 	}
 
-	@Published public var selectedBranchID: String?
-	@Published public private(set) var branches: [GitBranch] = []
-	@Published public private(set) var tags: [GitTag] = []
-	@Published public private(set) var operationState: RepositoryOperationState = .normal
-	@Published public private(set) var isLoading = false
-	@Published var newBranchName = ""
-	@Published var isPresentingNewBranch = false
-	@Published private(set) var pendingBranchStartCommit: GitCommit?
-	@Published var branchRenameName = ""
-	@Published var pendingBranchRename: GitBranch?
-	@Published var newTagName = ""
-	@Published var newTagMessage = ""
-	@Published private(set) var pendingTagCommit: GitCommit?
-	@Published var pendingConfirmation: RepositoryReferenceConfirmation?
+	public var selectedBranchID: String?
+	public private(set) var branches: [GitBranch] = []
+	public private(set) var tags: [GitTag] = []
+	public private(set) var operationState: RepositoryOperationState = .normal
+	public private(set) var isLoading = false
+	private(set) var mutationErrorMessage: String?
+	var newBranchName = ""
+	var isPresentingNewBranch = false
+	private(set) var pendingBranchStartCommit: GitCommit?
+	var branchRenameName = ""
+	var pendingBranchRename: GitBranch?
+	var newTagName = ""
+	var newTagMessage = ""
+	private(set) var pendingTagCommit: GitCommit?
+	var pendingConfirmation: RepositoryReferenceConfirmation?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var changes: [WorkingTreeChange] = []
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
+	private var activeMutationRequestID: Int?
+	private var mutationRequestSequence = 0
+	private var branchPresentationID = UUID()
+	private var tagPresentationID = UUID()
+	private var renamePresentationID = UUID()
 
 	public init(
 		dependencies: Dependencies,
@@ -115,8 +122,7 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 	}
 
 	public func reset() {
-		mutationTask?.cancel()
-		mutationTask = nil
+		onDisappear()
 		selectedBranchID = nil
 		branches = []
 		tags = []
@@ -127,21 +133,26 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 		didDismissNewTag()
 		didDismissBranchRename()
 		pendingConfirmation = nil
+		mutationErrorMessage = nil
 	}
 
 	public func onDisappear() {
 		mutationTask?.cancel()
 		mutationTask = nil
+		activeMutationRequestID = nil
 		isLoading = false
 	}
 
 	public func didPresentNewBranch(from commit: GitCommit? = nil) {
+		branchPresentationID = UUID()
+		mutationErrorMessage = nil
 		newBranchName = ""
 		pendingBranchStartCommit = commit
 		isPresentingNewBranch = true
 	}
 
 	public func didDismissNewBranch() {
+		branchPresentationID = UUID()
 		newBranchName = ""
 		pendingBranchStartCommit = nil
 		isPresentingNewBranch = false
@@ -152,32 +163,42 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 		let name = newBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !name.isEmpty else { return }
 		let startCommit = pendingBranchStartCommit
+		let presentationID = branchPresentationID
+		let submittedName = newBranchName
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
 			let snapshot: RepositorySnapshot
 			if let startCommit {
-				snapshot = try await self.dependencies.referencesUseCase.createBranch(
+				snapshot = try await referencesUseCase.createBranch(
 					named: name,
 					from: startCommit.hash,
 					at: repositoryURL
 				)
 			} else {
-				snapshot = try await self.dependencies.referencesUseCase.createBranch(
+				snapshot = try await referencesUseCase.createBranch(
 					named: name,
 					at: repositoryURL
 				)
 			}
-			self.didDismissNewBranch()
 			return snapshot
+		} didSucceed: { [weak self] in
+			guard let self, self.branchPresentationID == presentationID,
+				self.newBranchName == submittedName
+			else { return }
+			self.didDismissNewBranch()
 		}
 	}
 
 	public func didPresentNewTag(for commit: GitCommit) {
+		tagPresentationID = UUID()
+		mutationErrorMessage = nil
 		newTagName = ""
 		newTagMessage = ""
 		pendingTagCommit = commit
 	}
 
 	public func didDismissNewTag() {
+		tagPresentationID = UUID()
 		newTagName = ""
 		newTagMessage = ""
 		pendingTagCommit = nil
@@ -190,19 +211,28 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 		let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
 		let message = newTagMessage.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !name.isEmpty else { return }
+		let presentationID = tagPresentationID
+		let submittedName = newTagName
+		let submittedMessage = newTagMessage
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			let snapshot = try await self.dependencies.referencesUseCase.createTag(
+			let snapshot = try await referencesUseCase.createTag(
 				named: name,
 				message: message,
 				commitHash: commit.hash,
 				at: repositoryURL
 			)
-			self.didDismissNewTag()
 			return snapshot
+		} didSucceed: { [weak self] in
+			guard let self, self.tagPresentationID == presentationID,
+				self.newTagName == submittedName, self.newTagMessage == submittedMessage
+			else { return }
+			self.didDismissNewTag()
 		}
 	}
 
 	public func didPresentTagDeletion(_ tag: GitTag) {
+		guard !isLoading else { return }
 		pendingConfirmation = .deleteTag(tag)
 	}
 
@@ -217,8 +247,9 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 			!branch.isCurrent,
 			operationState.isIdle
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.switchBranch(
+			try await referencesUseCase.switchBranch(
 				named: branch.name,
 				at: repositoryURL
 			)
@@ -236,8 +267,9 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 			!branches.contains(where: { $0.name == remoteBranch.name }),
 			operationState.isIdle
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.createTrackingBranch(
+			try await referencesUseCase.createTrackingBranch(
 				named: remoteBranch.name,
 				tracking: remoteBranch.fullName,
 				at: repositoryURL
@@ -252,11 +284,14 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 
 	public func didPresentBranchRename(_ branch: GitBranch) {
 		guard operationState.isIdle, !isLoading else { return }
+		renamePresentationID = UUID()
+		mutationErrorMessage = nil
 		branchRenameName = branch.name
 		pendingBranchRename = branch
 	}
 
 	func didDismissBranchRename() {
+		renamePresentationID = UUID()
 		pendingBranchRename = nil
 		branchRenameName = ""
 	}
@@ -267,16 +302,22 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 			let branch = pendingBranchRename
 		else { return }
 		let name = branchRenameName.trimmingCharacters(in: .whitespacesAndNewlines)
-		didDismissBranchRename()
-		guard !name.isEmpty, name != branch.name else { return }
+		guard !name.isEmpty, name != branch.name, !isLoading else { return }
+		let presentationID = renamePresentationID
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			let snapshot = try await self.dependencies.referencesUseCase.renameBranch(
+			let snapshot = try await referencesUseCase.renameBranch(
 				named: branch.name,
 				to: name,
 				at: repositoryURL
 			)
-			self.selectedBranchID = name
 			return snapshot
+		} didSucceed: { [weak self] in
+			guard let self else { return }
+			self.selectedBranchID = name
+			if self.renamePresentationID == presentationID {
+				self.didDismissBranchRename()
+			}
 		}
 	}
 
@@ -285,7 +326,7 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 	}
 
 	func didConfirmPendingConfirmation() {
-		guard let confirmation = pendingConfirmation else { return }
+		guard !isLoading, let confirmation = pendingConfirmation else { return }
 		pendingConfirmation = nil
 		switch confirmation {
 		case .deleteBranch(let branch):
@@ -303,8 +344,9 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 			operationState.isIdle,
 			changes.isEmpty
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.checkoutCommit(
+			try await referencesUseCase.checkoutCommit(
 				commit.hash,
 				at: repositoryURL
 			)
@@ -317,8 +359,9 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 			!branch.isCurrent,
 			operationState.isIdle
 		else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.deleteBranch(
+			try await referencesUseCase.deleteBranch(
 				named: branch.name,
 				at: repositoryURL
 			)
@@ -327,8 +370,9 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 
 	private func requestDeleteTag(_ tag: GitTag) {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await self.dependencies.referencesUseCase.deleteTag(
+			try await referencesUseCase.deleteTag(
 				named: tag.name,
 				at: repositoryURL
 			)
@@ -336,28 +380,52 @@ public final class RepositoryReferencesViewModel: ObservableObject {
 	}
 
 	private func requestMutation(
-		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
+		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot,
+		didSucceed: @escaping @MainActor () -> Void = {}
 	) {
-		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
+		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		mutationTask?.cancel()
-		mutationTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		mutationRequestSequence += 1
+		let requestID = mutationRequestSequence
+		activeMutationRequestID = requestID
+		isLoading = true
+		mutationErrorMessage = nil
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let snapshot = try await operation()
 				try Task.checkCancellation()
+				guard let self, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
+				didSucceed()
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
+				mutationErrorMessage = error.localizedDescription
 				actions.didReceiveError(error.localizedDescription)
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: expectedRepositoryURL
 				) {
+					guard !Task.isCancelled, activeMutationRequestID == requestID,
+						dependencies.repositoryURL() == expectedRepositoryURL
+					else { return }
 					actions.didProduceSnapshot(snapshot)
 				}
 			}
 		}
+	}
+
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isLoading = false
 	}
 
 	private func preserveSelection() {

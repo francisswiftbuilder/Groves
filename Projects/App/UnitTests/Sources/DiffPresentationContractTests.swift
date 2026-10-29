@@ -1,12 +1,14 @@
 import DomainGitInterface
-import XCTest
+import Foundation
+import Testing
 
 @testable import CoreRepositoryDiff
 @testable import FeatureRepositoryChanges
 @testable import Groves
 
 @MainActor
-final class DiffPresentationContractTests: XCTestCase {
+struct DiffPresentationContractTests {
+	@Test
 	func testLayoutChangeDoesNotRequestTheDiffAgain() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -39,28 +41,25 @@ final class DiffPresentationContractTests: XCTestCase {
 		try await Task.sleep(for: .milliseconds(150))
 
 		let callCount = await gate.callCount(of: label)
-		XCTAssertEqual(
-			callCount,
-			1,
-			"Switching layout must not reload the diff"
-		)
-		XCTAssertEqual(searchModel.query, "search")
-		XCTAssertEqual(searchModel.currentMatch, selectedMatch)
+		#expect(callCount == 1, "Switching layout must not reload the diff")
+		#expect(searchModel.query == "search")
+		#expect(searchModel.currentMatch == selectedMatch)
 	}
 
+	@Test
 	func testSingleParseProducesBothLayouts() async throws {
 		let model = DiffViewerViewModel()
 
 		await model.update(diff: Self.diff(lineCount: 40))
 
-		XCTAssertFalse(model.isParsing)
-		XCTAssertFalse(model.presentation?.document.lines.isEmpty == true)
-		XCTAssertFalse(
-			model.presentation?.sideBySideRows.isEmpty == true,
-			"Both layouts must be ready after one parse, so switching layout needs no work"
-		)
+		#expect(!(model.isParsing))
+		#expect(!(model.presentation?.document.lines.isEmpty == true))
+		#expect(
+			!(model.presentation?.sideBySideRows.isEmpty == true),
+			"Both layouts must be ready after one parse, so switching layout needs no work")
 	}
 
+	@Test
 	func testParsingPublishesTheExactCompletedPresentation() async {
 		let model = DiffViewerViewModel()
 		let input = DiffViewerViewModel.Input(
@@ -69,18 +68,19 @@ final class DiffPresentationContractTests: XCTestCase {
 			diff: Self.diff(lineCount: 20)
 		)
 
-		XCTAssertFalse(model.hasParsed(input))
-		XCTAssertNil(model.presentation)
+		#expect(!(model.hasParsed(input)))
+		#expect(model.presentation == nil)
 
 		await model.update(input: input)
 
-		XCTAssertTrue(model.hasParsed(input))
-		XCTAssertTrue(model.canInteract(with: input))
-		XCTAssertEqual(model.presentation?.input, input)
-		XCTAssertFalse(model.presentation?.document.lines.isEmpty == true)
-		XCTAssertFalse(model.presentation?.sideBySideRows.isEmpty == true)
+		#expect(model.hasParsed(input))
+		#expect(model.canInteract(with: input))
+		#expect(model.presentation?.input == input)
+		#expect(!(model.presentation?.document.lines.isEmpty == true))
+		#expect(!(model.presentation?.sideBySideRows.isEmpty == true))
 	}
 
+	@Test
 	func testMetadataOnlyInputBecomesEmptyOnlyAfterParseCompletes() async {
 		let model = DiffViewerViewModel()
 		let input = DiffViewerViewModel.Input(
@@ -88,14 +88,15 @@ final class DiffPresentationContractTests: XCTestCase {
 			diff: "diff --git a/Binary.dat b/Binary.dat\nindex 111..222 100644"
 		)
 
-		XCTAssertFalse(model.hasParsed(input))
+		#expect(!(model.hasParsed(input)))
 
 		await model.update(input: input)
 
-		XCTAssertTrue(model.hasParsed(input))
-		XCTAssertTrue(model.presentation?.document.lines.isEmpty == true)
+		#expect(model.hasParsed(input))
+		#expect(model.presentation?.document.lines.isEmpty == true)
 	}
 
+	@Test
 	func testParsingAReplacementKeepsTheLastPresentationReadOnly() async throws {
 		let model = DiffViewerViewModel()
 		let initialInput = DiffViewerViewModel.Input(
@@ -117,16 +118,17 @@ final class DiffPresentationContractTests: XCTestCase {
 
 		try await waitUntil { model.isParsing }
 
-		XCTAssertEqual(model.presentation, initialPresentation)
-		XCTAssertTrue(model.canInteract(with: initialInput))
-		XCTAssertFalse(model.canInteract(with: replacementInput))
+		#expect(model.presentation == initialPresentation)
+		#expect(model.canInteract(with: initialInput))
+		#expect(!(model.canInteract(with: replacementInput)))
 		await replacementTask.value
-		XCTAssertNotEqual(model.presentation, initialPresentation)
-		XCTAssertNotEqual(model.presentation?.revision, initialRevision)
-		XCTAssertEqual(model.presentation?.input, replacementInput)
-		XCTAssertTrue(model.canInteract(with: replacementInput))
+		#expect(model.presentation != initialPresentation)
+		#expect(model.presentation?.revision != initialRevision)
+		#expect(model.presentation?.input == replacementInput)
+		#expect(model.canInteract(with: replacementInput))
 	}
 
+	@Test
 	func testAutomaticSnapshotRefreshKeepsTheSelectedDiffVisible() async throws {
 		let change = WorkingTreeChange(
 			path: "README.md",
@@ -165,16 +167,17 @@ final class DiffPresentationContractTests: XCTestCase {
 		)
 		try await waitUntil { await gate.callCount(of: label) == 2 }
 
-		XCTAssertEqual(workspace.changesDiffViewModel.diff, diff)
-		XCTAssertTrue(workspace.changesDiffViewModel.isLoading)
+		#expect(workspace.changesDiffViewModel.diff == diff)
+		#expect(workspace.changesDiffViewModel.isLoading)
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.changesDiffViewModel.isLoading == false }
 
 		let callCount = await gate.callCount(of: label)
-		XCTAssertEqual(callCount, 2)
-		XCTAssertEqual(workspace.changesDiffViewModel.diff, diff)
+		#expect(callCount == 2)
+		#expect(workspace.changesDiffViewModel.diff == diff)
 	}
 
+	@Test
 	func testSearchStateSurvivesAnIdenticalSourceUpdate() async throws {
 		let model = RepositorySearchViewModel()
 		let sources = [
@@ -190,15 +193,14 @@ final class DiffPresentationContractTests: XCTestCase {
 		model.update(sources: sources)
 		try await Task.sleep(for: .milliseconds(50))
 
-		XCTAssertEqual(model.query, "timeout")
-		XCTAssertEqual(model.matches.count, 3)
-		XCTAssertEqual(
-			model.currentMatch,
-			selectedMatch,
-			"Re-rendering the same diff must not reset the find selection"
-		)
+		#expect(model.query == "timeout")
+		#expect(model.matches.count == 3)
+		#expect(
+			model.currentMatch == selectedMatch,
+			"Re-rendering the same diff must not reset the find selection")
 	}
 
+	@Test
 	func testLayoutChangeKeepsCallerOwnedSearchState() async throws {
 		let searchModel = RepositorySearchViewModel()
 		let document = DiffDocument(lines: DiffParser.parse(Self.diff(lineCount: 8)))
@@ -238,16 +240,18 @@ final class DiffPresentationContractTests: XCTestCase {
 			onApplyHunk: { _, _ in }
 		)
 
-		XCTAssertTrue(sideBySide.searchModel === searchModel)
-		XCTAssertTrue(unified.searchModel === searchModel)
-		XCTAssertEqual(searchModel.query, "added")
-		XCTAssertEqual(searchModel.currentMatch, selectedMatch)
+		#expect(sideBySide.searchModel === searchModel)
+		#expect(unified.searchModel === searchModel)
+		#expect(searchModel.query == "added")
+		#expect(searchModel.currentMatch == selectedMatch)
 	}
 
+	@Test
 	func testTenThousandLineDiffParsesOnce() async throws {
 		try await assertLargeDiffParses(lineCount: 10_000)
 	}
 
+	@Test
 	func testFiftyThousandLineDiffParsesOnce() async throws {
 		try await assertLargeDiffParses(lineCount: 50_000)
 	}
@@ -275,10 +279,10 @@ final class DiffPresentationContractTests: XCTestCase {
 		await model.update(diff: diff)
 		try await waitUntil(timeout: .seconds(20)) { model.isParsing == false }
 
-		XCTAssertEqual(model.presentation?.document.lines.count, lineCount + 1)
-		XCTAssertFalse(model.presentation?.sideBySideRows.isEmpty == true)
+		#expect(model.presentation?.document.lines.count == lineCount + 1)
+		#expect(!(model.presentation?.sideBySideRows.isEmpty == true))
 		let callCount = await gate.callCount(of: label)
-		XCTAssertEqual(callCount, 1, "A single selection must issue a single diff request")
+		#expect(callCount == 1, "A single selection must issue a single diff request")
 	}
 
 	private static func diff(lineCount: Int) -> String {
@@ -301,7 +305,7 @@ final class DiffPresentationContractTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while await condition() == false {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))

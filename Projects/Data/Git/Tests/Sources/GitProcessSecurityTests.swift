@@ -1,10 +1,11 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import DataGit
 
-final class GitProcessSecurityTests: XCTestCase {
+struct GitProcessSecurityTests {
+	@Test
 	func testPreCancelledTaskDoesNotStartProcess() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -26,17 +27,17 @@ final class GitProcessSecurityTests: XCTestCase {
 
 		do {
 			_ = try await task.value
-			XCTFail("Expected cancellation")
+			Issue.record("Expected cancellation")
 		} catch is CancellationError {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
-		XCTAssertFalse(
-			FileManager.default.fileExists(atPath: markerURL.path),
-			"A cancelled task must not start the git process"
-		)
+		#expect(
+			!(FileManager.default.fileExists(atPath: markerURL.path)),
+			"A cancelled task must not start the git process")
 	}
 
+	@Test
 	func testLowSpeedFailureIsClassifiedAsTimeout() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -51,13 +52,14 @@ final class GitProcessSecurityTests: XCTestCase {
 				at: repositoryURL,
 				isNetworkOperation: true
 			)
-			XCTFail("Expected timeout")
+			Issue.record("Expected timeout")
 		} catch GitRepositoryError.timeout {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 
+	@Test
 	func testLargeStandardOutputIsCollectedWithoutDeadlock() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -75,10 +77,11 @@ final class GitProcessSecurityTests: XCTestCase {
 			at: repositoryURL
 		)
 
-		XCTAssertGreaterThan(result.standardOutput.utf8.count, 5_000_000)
-		XCTAssertTrue(result.standardOutput.contains("line 199999 of a very large staged file"))
+		#expect(result.standardOutput.utf8.count > 5_000_000)
+		#expect(result.standardOutput.contains("line 199999 of a very large staged file"))
 	}
 
+	@Test
 	func testUnusableKnownHostsFileStopsTheNetworkOperation() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -102,18 +105,18 @@ final class GitProcessSecurityTests: XCTestCase {
 				isNetworkOperation: true,
 				requiresSSHTrustScope: true
 			)
-			XCTFail("Expected hostVerification")
+			Issue.record("Expected hostVerification")
 		} catch GitRepositoryError.hostVerification {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 
-		XCTAssertFalse(
-			FileManager.default.fileExists(atPath: markerURL.path),
-			"An unusable trust scope must not fall back to the user's known_hosts"
-		)
+		#expect(
+			!(FileManager.default.fileExists(atPath: markerURL.path)),
+			"An unusable trust scope must not fall back to the user's known_hosts")
 	}
 
+	@Test
 	func testHTTPSNetworkOperationRunsWithoutAnSSHTrustScope() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -135,9 +138,10 @@ final class GitProcessSecurityTests: XCTestCase {
 			isNetworkOperation: true
 		)
 
-		XCTAssertTrue(result.standardOutput.contains("true"))
+		#expect(result.standardOutput.contains("true"))
 	}
 
+	@Test
 	func testLocalOperationsRunWithoutATrustScope() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -158,9 +162,10 @@ final class GitProcessSecurityTests: XCTestCase {
 			at: repositoryURL
 		)
 
-		XCTAssertTrue(result.standardOutput.contains("true"))
+		#expect(result.standardOutput.contains("true"))
 	}
 
+	@Test
 	func testEmbeddedCredentialRemoteURLIsRejected() async throws {
 		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
@@ -171,15 +176,14 @@ final class GitProcessSecurityTests: XCTestCase {
 				from: "https://user:token@127.0.0.1:1/secret.git",
 				into: directoryURL
 			)
-			XCTFail("Expected the embedded credential URL to be rejected")
+			Issue.record("Expected the embedded credential URL to be rejected")
 		} catch GitRepositoryError.invalidRemoteURL {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
-		XCTAssertFalse(
-			FileManager.default.fileExists(
+		#expect(
+			!(FileManager.default.fileExists(
 				atPath: directoryURL.appending(path: "secret").path
-			)
-		)
+			)))
 	}
 }

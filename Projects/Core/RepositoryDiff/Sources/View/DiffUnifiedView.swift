@@ -5,7 +5,7 @@ struct DiffUnifiedView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	let document: DiffDocument
 	let filePath: String?
-	@ObservedObject var searchModel: RepositorySearchViewModel
+	let searchModel: RepositorySearchViewModel
 	let lineAction: GitDiffLineAction?
 	let hunkActions: [GitDiffHunkAction]
 	let isApplyingAction: Bool

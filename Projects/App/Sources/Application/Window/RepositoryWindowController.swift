@@ -2,15 +2,12 @@ import AppKit
 
 final class RepositoryWindowController: NSWindowController, NSWindowDelegate {
 	private weak var coordinator: (any RepositoryWindowTabCoordinating)?
-	private let onWindowWillClose: ((RepositoryWindowController) -> Void)?
 
 	init(
 		window: NSWindow,
-		coordinator: any RepositoryWindowTabCoordinating,
-		onWindowWillClose: ((RepositoryWindowController) -> Void)? = nil
+		coordinator: any RepositoryWindowTabCoordinating
 	) {
 		self.coordinator = coordinator
-		self.onWindowWillClose = onWindowWillClose
 		super.init(window: window)
 		window.delegate = self
 	}
@@ -22,9 +19,5 @@ final class RepositoryWindowController: NSWindowController, NSWindowDelegate {
 
 	override func newWindowForTab(_ sender: Any?) {
 		coordinator?.openNewTab(repositoryID: nil, from: window)
-	}
-
-	func windowWillClose(_ notification: Notification) {
-		onWindowWillClose?(self)
 	}
 }

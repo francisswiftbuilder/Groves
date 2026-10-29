@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class RepositoryOperationViewModel: ObservableObject {
+@Observable
+public final class RepositoryOperationViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -39,18 +40,21 @@ public final class RepositoryOperationViewModel: ObservableObject {
 		}
 	}
 
-	@Published public private(set) var operationState: RepositoryOperationState = .normal
-	@Published public private(set) var isLoading = false
-	@Published var pendingMainlineAction: PendingMainlineAction?
-	@Published var pendingResetCommit: GitCommit?
-	@Published var resetMode: GitResetMode = .mixed
-	@Published var pendingConfirmation: RepositoryOperationConfirmation?
+	public private(set) var operationState: RepositoryOperationState = .normal
+	public private(set) var isLoading = false
+	var pendingMainlineAction: PendingMainlineAction?
+	var pendingReset: RepositoryResetPresentation?
+	var resetMode: GitResetMode = .mixed
+	var pendingConfirmation: RepositoryOperationConfirmation?
+	private(set) var mutationErrorMessage: String?
 
 	private let dependencies: Dependencies
 	private let actions: Actions
 	private var changes: [WorkingTreeChange] = []
 	private var currentBranch: GitBranch?
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
+	private var activeMutationRequestID: Int?
+	private var mutationRequestSequence = 0
 
 	public init(
 		dependencies: Dependencies,
@@ -121,22 +125,32 @@ public final class RepositoryOperationViewModel: ObservableObject {
 		currentBranch = nil
 		changes = []
 		operationState = .normal
+		pendingMainlineAction = nil
+		pendingReset = nil
+		pendingConfirmation = nil
+		resetMode = .mixed
+		mutationErrorMessage = nil
 	}
 
 	func cancelTasks() {
 		mutationTask?.cancel()
 		mutationTask = nil
+		activeMutationRequestID = nil
 		isLoading = false
 	}
 
 	public func onDisappear() {
 		cancelTasks()
+		pendingReset = nil
+		pendingConfirmation = nil
+		pendingMainlineAction = nil
 	}
 
 	public func didRequestMergeBranch(_ branch: GitBranch) {
 		guard let repositoryURL = repositoryURL(), canMergeBranch(branch) else { return }
+		let referencesUseCase = referencesUseCase
 		requestMutation {
-			try await self.referencesUseCase.mergeBranch(named: branch.name, at: repositoryURL)
+			try await referencesUseCase.mergeBranch(named: branch.name, at: repositoryURL)
 		}
 	}
 
@@ -181,32 +195,58 @@ public final class RepositoryOperationViewModel: ObservableObject {
 	}
 
 	public func didPresentReset(_ commit: GitCommit) {
-		guard operationState.isIdle, !operationState.isDetached, !isLoading else { return }
+		guard operationState.isIdle, !operationState.isDetached, !isLoading,
+			let repositoryURL = repositoryURL(), let currentBranch
+		else { return }
 		resetMode = .mixed
-		pendingResetCommit = commit
+		mutationErrorMessage = nil
+		pendingReset = RepositoryResetPresentation(
+			commit: commit, repositoryURL: repositoryURL,
+			context: GitResetContext(branchName: currentBranch.name, headHash: currentBranch.hash))
 	}
 
 	public func didConfirmReset() {
-		guard let commit = pendingResetCommit else { return }
+		guard !isLoading, let presentation = pendingReset else { return }
+		guard validateResetPresentation(presentation) else { return }
 		let mode = resetMode
-		pendingResetCommit = nil
 		if mode == .hard {
-			didPresentHardReset(commit)
+			pendingReset = nil
+			pendingConfirmation = .hardReset(presentation)
 		} else {
-			didRequestReset(commit, mode: mode)
+			requestReset(presentation, mode: mode)
 		}
 	}
 
-	func didRequestReset(_ commit: GitCommit, mode: GitResetMode) {
+	private func requestReset(_ presentation: RepositoryResetPresentation, mode: GitResetMode) {
 		guard
-			let repositoryURL = repositoryURL(),
+			!isLoading,
 			operationState.isIdle,
 			!operationState.isDetached,
 			let operationsUseCase
 		else { return }
+		guard validateResetPresentation(presentation) else { return }
 		requestMutation {
-			try await operationsUseCase.reset(to: commit.hash, mode: mode, at: repositoryURL)
+			try await operationsUseCase.reset(
+				to: presentation.commit.hash, mode: mode, expecting: presentation.context,
+				at: presentation.repositoryURL)
+		} didSucceed: { [weak self] in
+			guard self?.pendingReset?.id == presentation.id else { return }
+			self?.pendingReset = nil
 		}
+	}
+
+	private func validateResetPresentation(_ presentation: RepositoryResetPresentation) -> Bool {
+		guard repositoryURL() == presentation.repositoryURL,
+			currentBranch?.name == presentation.context.branchName,
+			currentBranch?.hash == presentation.context.headHash
+		else {
+			pendingReset = nil
+			pendingConfirmation = nil
+			didReceiveError(
+				"The repository, branch or HEAD has changed. Open Reset again to review the target.")
+			return false
+		}
+		return true
 	}
 
 	public func didPerformOperationAction(_ action: RepositoryOperationAction) {
@@ -235,8 +275,8 @@ public final class RepositoryOperationViewModel: ObservableObject {
 		switch confirmation {
 		case .operation(let action, let operation):
 			requestOperationAction(action, operation: operation)
-		case .hardReset(let commit):
-			didRequestReset(commit, mode: .hard)
+		case .hardReset(let presentation):
+			requestReset(presentation, mode: .hard)
 		}
 	}
 
@@ -245,7 +285,7 @@ public final class RepositoryOperationViewModel: ObservableObject {
 	}
 
 	public func didConfirmPendingConfirmation() {
-		guard let confirmation = pendingConfirmation else { return }
+		guard !isLoading, let confirmation = pendingConfirmation else { return }
 		pendingConfirmation = nil
 		didConfirm(confirmation)
 	}
@@ -262,11 +302,6 @@ public final class RepositoryOperationViewModel: ObservableObject {
 		requestMutation {
 			try await operationsUseCase.perform(action, for: operation, at: repositoryURL)
 		}
-	}
-
-	func didPresentHardReset(_ commit: GitCommit) {
-		guard operationState.isIdle, !operationState.isDetached, !isLoading else { return }
-		pendingConfirmation = .hardReset(commit)
 	}
 
 	private func didPerformCommitAction(_ action: PendingMainlineAction, mainline: Int?) {
@@ -295,30 +330,49 @@ public final class RepositoryOperationViewModel: ObservableObject {
 	}
 
 	private func requestMutation(
-		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
+		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot,
+		didSucceed: @escaping @MainActor () -> Void = {}
 	) {
-		guard let expectedRepositoryURL = repositoryURL() else { return }
-		mutationTask?.cancel()
-		mutationTask = Task {
-			isLoading = true
-			defer { isLoading = false }
+		guard !isLoading, let expectedRepositoryURL = repositoryURL() else { return }
+		mutationRequestSequence += 1
+		let requestID = mutationRequestSequence
+		activeMutationRequestID = requestID
+		isLoading = true
+		mutationErrorMessage = nil
+		let contentUseCase = contentUseCase
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
 			do {
+				try Task.checkCancellation()
 				let snapshot = try await operation()
 				try Task.checkCancellation()
+				guard let self, self.activeMutationRequestID == requestID,
+					self.repositoryURL() == expectedRepositoryURL
+				else { return }
+				didSucceed()
 				didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
-				didReceiveError(error.localizedDescription)
-				await restoreSnapshot(at: expectedRepositoryURL)
+				guard !Task.isCancelled, self?.activeMutationRequestID == requestID,
+					self?.repositoryURL() == expectedRepositoryURL
+				else { return }
+				self?.mutationErrorMessage = error.localizedDescription
+				self?.didReceiveError(error.localizedDescription)
+				if let snapshot = try? await contentUseCase.loadSnapshot(at: expectedRepositoryURL) {
+					guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+						self.repositoryURL() == expectedRepositoryURL
+					else { return }
+					didProduceSnapshot(snapshot)
+				}
 			}
 		}
 	}
 
-	private func restoreSnapshot(at repositoryURL: URL) async {
-		if let snapshot = try? await contentUseCase.loadSnapshot(at: repositoryURL) {
-			didProduceSnapshot(snapshot)
-		}
+	private func finishMutation(id: Int) {
+		guard activeMutationRequestID == id else { return }
+		activeMutationRequestID = nil
+		mutationTask = nil
+		isLoading = false
 	}
-
 }

@@ -1,9 +1,10 @@
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-public final class ConflictViewModel: ObservableObject {
+@Observable
+public final class ConflictViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
@@ -22,25 +23,28 @@ public final class ConflictViewModel: ObservableObject {
 		public let operationsUseCase: any RepositoryOperationsUseCase
 		public let openExternalEditor: (@MainActor (URL, String?) throws -> Void)?
 		public let repositoryURL: @MainActor () -> URL?
+		public let externalEditorBundleIdentifier: @MainActor () -> String?
 
 		public init(
 			contentUseCase: any RepositoryContentUseCase,
 			operationsUseCase: any RepositoryOperationsUseCase,
 			openExternalEditor: (@MainActor (URL, String?) throws -> Void)?,
-			repositoryURL: @escaping @MainActor () -> URL?
+			repositoryURL: @escaping @MainActor () -> URL?,
+			externalEditorBundleIdentifier: @escaping @MainActor () -> String?
 		) {
 			self.contentUseCase = contentUseCase
 			self.operationsUseCase = operationsUseCase
 			self.openExternalEditor = openExternalEditor
 			self.repositoryURL = repositoryURL
+			self.externalEditorBundleIdentifier = externalEditorBundleIdentifier
 		}
 	}
 
-	@Published private(set) var content: GitConflictContent?
-	@Published private(set) var isLoadingContent = false
-	@Published public private(set) var isLoading = false
-	@Published var pendingConfirmation: ConflictConfirmation?
-	@Published private(set) var operationState: RepositoryOperationState = .normal
+	private(set) var content: GitConflictContent?
+	private(set) var isLoadingContent = false
+	public private(set) var isLoading = false
+	var pendingConfirmation: ConflictConfirmation?
+	private(set) var operationState: RepositoryOperationState = .normal
 
 	private let dependencies: Dependencies
 	private let actions: Actions
@@ -49,8 +53,8 @@ public final class ConflictViewModel: ObservableObject {
 	private var contentRequestSequence = 0
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
-	private var contentTask: Task<Void, Never>?
-	private var mutationTask: Task<Void, Never>?
+	@ObservationIgnored private var contentTask: Task<Void, Never>?
+	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 
 	public init(
 		dependencies: Dependencies,
@@ -178,6 +182,7 @@ public final class ConflictViewModel: ObservableObject {
 				return
 			} catch {
 				guard activeContentRequestID == requestID else { return }
+				actions.didReceiveError(error.localizedDescription)
 			}
 		}
 	}
@@ -286,9 +291,7 @@ public final class ConflictViewModel: ObservableObject {
 		let fileURL = repositoryURL.appending(path: conflict.path)
 		guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
 		do {
-			let storedBundleIdentifier = UserDefaults.standard.string(
-				forKey: "externalEditorBundleIdentifier"
-			)
+			let storedBundleIdentifier = dependencies.externalEditorBundleIdentifier()
 			try openExternalEditor(
 				fileURL,
 				storedBundleIdentifier?.isEmpty == false ? storedBundleIdentifier : nil

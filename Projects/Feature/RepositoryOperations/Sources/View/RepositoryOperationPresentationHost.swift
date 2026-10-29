@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct RepositoryOperationPresentationHost<Content: View>: View {
-	@ObservedObject private var viewModel: RepositoryOperationViewModel
+	@Bindable private var viewModel: RepositoryOperationViewModel
 	private let content: Content
 
 	public init(
@@ -19,8 +19,12 @@ public struct RepositoryOperationPresentationHost<Content: View>: View {
 					viewModel.didPerformPendingMainlineAction(parent: parent)
 				}
 			}
-			.sheet(item: $viewModel.pendingResetCommit) { commit in
-				ResetCommitSheet(commit: commit, mode: $viewModel.resetMode) {
+			.sheet(item: $viewModel.pendingReset) { presentation in
+				ResetCommitSheet(
+					commit: presentation.commit, branchName: presentation.context.branchName,
+					mode: $viewModel.resetMode, isLoading: viewModel.isLoading,
+					errorMessage: viewModel.mutationErrorMessage
+				) {
 					viewModel.didConfirmReset()
 				}
 			}

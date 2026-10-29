@@ -20,7 +20,7 @@ WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/groves-release.XXXXXX")"
 ARCHIVE_PATH="$WORK_DIR/Groves.xcarchive"
 STAGING_DIR="$WORK_DIR/staging"
 APP_BUNDLE="$STAGING_DIR/Groves.app"
-HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/GrovesAskPass"
+HELPER_BUNDLE="$APP_BUNDLE/Contents/Helpers/GrovesAskPass.app"
 DMG_NAME="Groves-$VERSION.dmg"
 DMG_PATH="$OUTPUT_DIR/$DMG_NAME"
 CHECKSUM_PATH="$DMG_PATH.sha256"
@@ -33,6 +33,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$OUTPUT_DIR" "$STAGING_DIR"
+"$ROOT_DIR/script/build_bundled_git.sh"
 
 xcodebuild archive \
 	-workspace "$ROOT_DIR/Groves.xcworkspace" \
@@ -47,8 +48,9 @@ xcodebuild archive \
 /usr/bin/ditto "$ARCHIVE_PATH/Products/Applications/Groves.app" "$APP_BUNDLE"
 /usr/bin/plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP_BUNDLE/Contents/Info.plist"
 /usr/bin/plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$APP_BUNDLE/Contents/Info.plist"
+"$ROOT_DIR/script/verify_bundled_git.sh" "$APP_BUNDLE/Contents/Resources/Git"
 
-/usr/bin/codesign --force --sign - "$HELPER_BINARY"
+/usr/bin/codesign --force --sign - "$HELPER_BUNDLE"
 /usr/bin/codesign --force --sign - "$APP_BUNDLE"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 

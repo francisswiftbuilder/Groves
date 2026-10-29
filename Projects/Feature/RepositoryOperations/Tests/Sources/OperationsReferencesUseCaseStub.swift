@@ -2,6 +2,30 @@ import DomainGitInterface
 import Foundation
 
 struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
+	var createBranchOperation: @Sendable (String, String?, URL) async throws -> RepositorySnapshot = {
+		_, _, _ in fatalError()
+	}
+	var createTagOperation:
+		@Sendable (String, String, String, URL) async throws -> RepositorySnapshot = { _, _, _, _ in
+			fatalError()
+		}
+	var renameBranchOperation: @Sendable (String, String, URL) async throws -> RepositorySnapshot = {
+		_, _, _ in fatalError()
+	}
+	var addRemoteOperation:
+		@Sendable (String, String, String?, URL) async throws -> RepositorySnapshot = { _, _, _, _ in
+			fatalError()
+		}
+	var updateRemoteOperation:
+		@Sendable (String, String, String?, URL) async throws -> RepositorySnapshot = { _, _, _, _ in
+			fatalError()
+		}
+	var renameRemoteOperation: @Sendable (String, String, URL) async throws -> RepositorySnapshot = {
+		_, _, _ in fatalError()
+	}
+	var pushOperation: @Sendable (URL) async throws -> RepositorySnapshot = { _ in
+		fatalError()
+	}
 	let fetchAllOperation: @Sendable (URL) async throws -> RepositorySnapshot
 	let pushActionOperation:
 		@Sendable (GitBranch?, [GitRemote], RepositoryOperationState) -> RepositoryPushAction
@@ -38,7 +62,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 	func createBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		fatalError()
+		try await createBranchOperation(name, nil, repositoryURL)
 	}
 
 	func createBranch(
@@ -46,7 +70,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		from commitHash: String,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await createBranchOperation(name, commitHash, repositoryURL)
 	}
 
 	func checkoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
@@ -74,7 +98,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		to newName: String,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await renameBranchOperation(name, newName, repositoryURL)
 	}
 
 	func mergeBranch(named name: String, at repositoryURL: URL) async throws
@@ -89,7 +113,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		commitHash: String,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await createTagOperation(name, message, commitHash, repositoryURL)
 	}
 
 	func deleteTag(named name: String, at repositoryURL: URL) async throws
@@ -125,7 +149,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		selectedRemoteName: String?,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await pushOperation(repositoryURL)
 	}
 
 	func forcePush(
@@ -150,7 +174,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		pushURL: String?,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await addRemoteOperation(name, fetchURL, pushURL, repositoryURL)
 	}
 
 	func renameRemote(
@@ -158,7 +182,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		to newName: String,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await renameRemoteOperation(name, newName, repositoryURL)
 	}
 
 	func updateRemote(
@@ -167,7 +191,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		pushURL: String?,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await updateRemoteOperation(name, fetchURL, pushURL, repositoryURL)
 	}
 
 	func deleteRemote(named name: String, at repositoryURL: URL) async throws

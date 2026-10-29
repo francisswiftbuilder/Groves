@@ -1,10 +1,11 @@
 import AppKit
-import Combine
 import DomainGitInterface
 import Foundation
+import Observation
 
 @MainActor
-final class ImageDiffViewModel: ObservableObject {
+@Observable
+final class ImageDiffViewModel {
 	struct Dependencies {
 		let decode: @MainActor (Data?) async -> NSImage?
 
@@ -26,65 +27,38 @@ final class ImageDiffViewModel: ObservableObject {
 		case loaded(Presentation)
 	}
 
-	@Published private(set) var state: State = .idle
+	private(set) var state: State = .idle
 
 	private let dependencies: Dependencies
 	private var displayedDiff: GitImageDiff?
-	private var requestedDiff: GitImageDiff?
 	private var requestSequence = 0
-	private var loadTask: Task<Void, Never>?
 
 	init(dependencies: Dependencies) {
 		self.dependencies = dependencies
 	}
 
-	deinit {
-		loadTask?.cancel()
-	}
-
-	func onAppear(diff: GitImageDiff) {
-		requestPresentation(for: diff)
-	}
-
-	func onDisappear() {
-		loadTask?.cancel()
-		loadTask = nil
-		requestedDiff = nil
-		if case .loading = state {
-			state = .idle
-		}
-	}
-
-	func didChangeDiff(_ diff: GitImageDiff) {
-		requestPresentation(for: diff)
-	}
-
-	private func requestPresentation(for diff: GitImageDiff) {
-		guard displayedDiff != diff, requestedDiff != diff else { return }
-		loadTask?.cancel()
-		requestedDiff = diff
+	func update(diff: GitImageDiff) async {
+		if displayedDiff == diff, case .loaded = state { return }
 		requestSequence += 1
 		let requestID = requestSequence
 		state = .loading
-		loadTask = Task {
-			async let requestedBeforeImage = dependencies.decode(diff.before)
-			async let requestedAfterImage = dependencies.decode(diff.after)
-			let beforeImage = await requestedBeforeImage
-			let afterImage = await requestedAfterImage
-			guard !Task.isCancelled, requestID == requestSequence, requestedDiff == diff else {
-				return
-			}
-			displayedDiff = diff
-			requestedDiff = nil
-			loadTask = nil
-			state = .loaded(
-				Presentation(
-					beforeImage: beforeImage,
-					afterImage: afterImage,
-					beforeDecodingFailed: diff.before != nil && beforeImage == nil,
-					afterDecodingFailed: diff.after != nil && afterImage == nil
-				)
-			)
+		async let requestedBeforeImage = dependencies.decode(diff.before)
+		async let requestedAfterImage = dependencies.decode(diff.after)
+		let beforeImage = await requestedBeforeImage
+		let afterImage = await requestedAfterImage
+		guard requestID == requestSequence else { return }
+		guard !Task.isCancelled else {
+			if case .loading = state { state = .idle }
+			return
 		}
+		displayedDiff = diff
+		state = .loaded(
+			Presentation(
+				beforeImage: beforeImage,
+				afterImage: afterImage,
+				beforeDecodingFailed: diff.before != nil && beforeImage == nil,
+				afterDecodingFailed: diff.after != nil && afterImage == nil
+			)
+		)
 	}
 }

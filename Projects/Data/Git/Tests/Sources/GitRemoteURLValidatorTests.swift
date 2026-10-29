@@ -1,9 +1,10 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import DataGit
 
-final class GitRemoteURLValidatorTests: XCTestCase {
+struct GitRemoteURLValidatorTests {
+	@Test
 	func testWebSchemeUserInfoIsRejected() {
 		let remoteURLs = [
 			"https://user@github.com/owner/repo.git",
@@ -16,13 +17,13 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertTrue(
+			#expect(
 				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) embeds credentials in its userinfo"
-			)
+				"\(remoteURL) embeds credentials in its userinfo")
 		}
 	}
 
+	@Test
 	func testWebSchemeWithoutUserInfoIsAccepted() {
 		let remoteURLs = [
 			"https://github.com/owner/repo.git",
@@ -31,13 +32,13 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertFalse(
-				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) carries no credentials"
-			)
+			#expect(
+				!(GitRemoteURLValidator.containsEmbeddedCredential(remoteURL)),
+				"\(remoteURL) carries no credentials")
 		}
 	}
 
+	@Test
 	func testCredentialQueryItemsAreRejected() {
 		let remoteURLs = [
 			"https://github.com/owner/repo.git?token=secret",
@@ -47,13 +48,13 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertTrue(
+			#expect(
 				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) embeds a credential query item"
-			)
+				"\(remoteURL) embeds a credential query item")
 		}
 	}
 
+	@Test
 	func testPercentEncodedCredentialQueryItemsAreRejected() {
 		let remoteURLs = [
 			"https://github.com/owner/repo.git?to%6ben=secret",
@@ -63,13 +64,13 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertTrue(
+			#expect(
 				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) embeds an encoded credential query item"
-			)
+				"\(remoteURL) embeds an encoded credential query item")
 		}
 	}
 
+	@Test
 	func testQueryItemsWithoutCredentialsAreAccepted() {
 		let remoteURLs = [
 			"https://github.com/owner/repo.git?ref=main",
@@ -77,13 +78,13 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertFalse(
-				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) carries no credential value"
-			)
+			#expect(
+				!(GitRemoteURLValidator.containsEmbeddedCredential(remoteURL)),
+				"\(remoteURL) carries no credential value")
 		}
 	}
 
+	@Test
 	func testSecureShellUserNameIsAccepted() {
 		let remoteURLs = [
 			"ssh://git@github.com/owner/repo.git",
@@ -93,13 +94,13 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertFalse(
-				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) uses an SSH user name rather than a credential"
-			)
+			#expect(
+				!(GitRemoteURLValidator.containsEmbeddedCredential(remoteURL)),
+				"\(remoteURL) uses an SSH user name rather than a credential")
 		}
 	}
 
+	@Test
 	func testSecureShellPasswordIsRejected() {
 		let remoteURLs = [
 			"ssh://git:token@github.com/owner/repo.git",
@@ -107,13 +108,13 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertTrue(
+			#expect(
 				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) embeds a password in its userinfo"
-			)
+				"\(remoteURL) embeds a password in its userinfo")
 		}
 	}
 
+	@Test
 	func testLocalPathsAreAccepted() {
 		let remoteURLs = [
 			"/Users/groves/repo",
@@ -123,26 +124,25 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in remoteURLs {
-			XCTAssertFalse(
-				GitRemoteURLValidator.containsEmbeddedCredential(remoteURL),
-				"\(remoteURL) is a local path"
-			)
+			#expect(
+				!(GitRemoteURLValidator.containsEmbeddedCredential(remoteURL)),
+				"\(remoteURL) is a local path")
 		}
 	}
 
+	@Test
 	func testSurroundingWhitespaceIsIgnored() {
-		XCTAssertTrue(
+		#expect(
 			GitRemoteURLValidator.containsEmbeddedCredential(
 				"  https://user@github.com/owner/repo.git\n"
-			)
-		)
-		XCTAssertFalse(
-			GitRemoteURLValidator.containsEmbeddedCredential(
+			))
+		#expect(
+			!(GitRemoteURLValidator.containsEmbeddedCredential(
 				"  https://github.com/owner/repo.git\n"
-			)
-		)
+			)))
 	}
 
+	@Test
 	func testSSHRemoteDetection() {
 		let sshRemoteURLs = [
 			"ssh://git@github.com/owner/repo.git",
@@ -159,10 +159,10 @@ final class GitRemoteURLValidatorTests: XCTestCase {
 		]
 
 		for remoteURL in sshRemoteURLs {
-			XCTAssertTrue(GitRemoteURLValidator.isSSHRemote(remoteURL))
+			#expect(GitRemoteURLValidator.isSSHRemote(remoteURL))
 		}
 		for remoteURL in nonSSHRemoteURLs {
-			XCTAssertFalse(GitRemoteURLValidator.isSSHRemote(remoteURL))
+			#expect(!(GitRemoteURLValidator.isSSHRemote(remoteURL)))
 		}
 	}
 }

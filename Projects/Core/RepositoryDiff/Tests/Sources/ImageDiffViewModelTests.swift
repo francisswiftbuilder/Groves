@@ -1,12 +1,14 @@
+import AppKit
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import CoreRepositoryDiff
 
 @MainActor
-final class ImageDiffViewModelTests: XCTestCase {
-	func testOnAppearLoadsBothImagesAndPublishesPresentation() async throws {
+struct ImageDiffViewModelTests {
+	@Test
+	func testUpdateLoadsBothImagesAndPublishesPresentation() async {
 		let viewModel = ImageDiffViewModel(
 			dependencies: .init { _ in
 				return nil
@@ -14,36 +16,85 @@ final class ImageDiffViewModelTests: XCTestCase {
 		)
 		let diff = GitImageDiff(before: Data("before".utf8), after: Data("after".utf8))
 
-		viewModel.onAppear(diff: diff)
-		try await waitUntil {
-			if case .loaded = viewModel.state { return true }
-			return false
-		}
+		await viewModel.update(diff: diff)
 
 		guard case .loaded(let presentation) = viewModel.state else {
-			return XCTFail("Expected loaded image presentation")
+			Issue.record("Expected loaded image presentation")
+			return
 		}
-		XCTAssertTrue(presentation.beforeDecodingFailed)
-		XCTAssertTrue(presentation.afterDecodingFailed)
+		#expect(presentation.beforeDecodingFailed)
+		#expect(presentation.afterDecodingFailed)
 	}
 
-	func testOnDisappearCancelsLoadingAndResetsTransientState() async {
+	@Test
+	func testStaleResultDoesNotOverwriteLatestPresentation() async throws {
+		let staleData = Data("stale".utf8)
+		let gate = DecodeGate()
+		let viewModel = ImageDiffViewModel(
+			dependencies: .init { data in
+				guard data == staleData else {
+					return NSImage(size: NSSize(width: 1, height: 1))
+				}
+				await gate.wait()
+				return nil
+			}
+		)
+		let staleDiff = GitImageDiff(before: staleData, after: nil)
+		let latestDiff = GitImageDiff(before: Data("latest".utf8), after: nil)
+
+		let staleTask = Task { await viewModel.update(diff: staleDiff) }
+		try await waitUntil {
+			if case .loading = viewModel.state { return true }
+			return false
+		}
+		await viewModel.update(diff: latestDiff)
+		gate.open()
+		await staleTask.value
+
+		guard case .loaded(let presentation) = viewModel.state else {
+			Issue.record("Expected loaded image presentation")
+			return
+		}
+		#expect(presentation.beforeImage != nil)
+		#expect(!presentation.beforeDecodingFailed)
+	}
+
+	@Test
+	func testCancelledUpdateResetsToIdleAndReloadPublishesPresentation() async throws {
+		let gate = DecodeGate()
+		let recorder = DecodeRecorder()
 		let viewModel = ImageDiffViewModel(
 			dependencies: .init { _ in
-				try? await Task.sleep(for: .seconds(1))
-				return nil
+				recorder.count += 1
+				await gate.wait()
+				return NSImage(size: NSSize(width: 1, height: 1))
 			}
 		)
 		let diff = GitImageDiff(before: Data("before".utf8), after: Data("after".utf8))
 
-		viewModel.onAppear(diff: diff)
-		viewModel.onDisappear()
-
-		if case .idle = viewModel.state {
-			XCTAssertTrue(true)
-		} else {
-			XCTFail("Expected idle state after disappearance")
+		let task = Task { await viewModel.update(diff: diff) }
+		try await waitUntil {
+			if case .loading = viewModel.state { return true }
+			return false
 		}
+		task.cancel()
+		gate.open()
+		await task.value
+
+		guard case .idle = viewModel.state else {
+			Issue.record("Expected idle state after cancellation")
+			return
+		}
+
+		await viewModel.update(diff: diff)
+
+		guard case .loaded(let presentation) = viewModel.state else {
+			Issue.record("Expected loaded image presentation after reload")
+			return
+		}
+		#expect(presentation.beforeImage != nil)
+		#expect(presentation.afterImage != nil)
+		#expect(recorder.count == 4)
 	}
 
 	private func waitUntil(
@@ -54,10 +105,35 @@ final class ImageDiffViewModelTests: XCTestCase {
 		let deadline = clock.now.advanced(by: timeout)
 		while !condition() {
 			guard clock.now < deadline else {
-				XCTFail("Timed out waiting for condition")
+				Issue.record("Timed out waiting for condition")
 				return
 			}
 			try await Task.sleep(for: .milliseconds(10))
 		}
+	}
+
+	@MainActor
+	private final class DecodeGate {
+		private var isOpen = false
+		private var continuations: [CheckedContinuation<Void, Never>] = []
+
+		func wait() async {
+			guard !isOpen else { return }
+			await withCheckedContinuation { continuations.append($0) }
+		}
+
+		func open() {
+			isOpen = true
+			let pending = continuations
+			continuations = []
+			for continuation in pending {
+				continuation.resume()
+			}
+		}
+	}
+
+	@MainActor
+	private final class DecodeRecorder {
+		var count = 0
 	}
 }

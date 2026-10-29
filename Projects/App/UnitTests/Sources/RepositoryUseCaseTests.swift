@@ -1,10 +1,11 @@
 import DomainGit
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @MainActor
-final class RepositoryUseCaseTests: XCTestCase {
+struct RepositoryUseCaseTests {
+	@Test
 	func testOpeningRepositoryResolvesRootAndPersistsSelection() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -17,11 +18,12 @@ final class RepositoryUseCaseTests: XCTestCase {
 		let savedRepository = try await useCase.openRepository(at: repositoryURL)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(savedRepository.url, repositoryURL)
-		XCTAssertEqual(store.selectedRepositoryID, savedRepository.id)
-		XCTAssertEqual(events, [.repositoryRoot(repositoryURL)])
+		#expect(savedRepository.url == repositoryURL)
+		#expect(store.selectedRepositoryID == savedRepository.id)
+		#expect(events == [.repositoryRoot(repositoryURL)])
 	}
 
+	@Test
 	func testStageRunsMutationBeforeReturningFreshSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -40,10 +42,11 @@ final class RepositoryUseCaseTests: XCTestCase {
 		let snapshot = try await useCase.stage([change], at: repositoryURL)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(snapshot.changes, [change])
-		XCTAssertEqual(events, [.stage(path: change.path)])
+		#expect(snapshot.changes == [change])
+		#expect(events == [.stage(path: change.path)])
 	}
 
+	@Test
 	func testPushWithoutUpstreamUsesSelectedRemoteAndReturnsSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -76,13 +79,11 @@ final class RepositoryUseCaseTests: XCTestCase {
 		)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(snapshot.branches, [branch])
-		XCTAssertEqual(
-			events,
-			[.push(.setUpstream(remoteName: "upstream", branchName: branch.name))]
-		)
+		#expect(snapshot.branches == [branch])
+		#expect(events == [.push(.setUpstream(remoteName: "upstream", branchName: branch.name))])
 	}
 
+	@Test
 	func testForcePushUsesSelectedRemoteAndReturnsSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -115,13 +116,11 @@ final class RepositoryUseCaseTests: XCTestCase {
 		)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(snapshot.branches, [branch])
-		XCTAssertEqual(
-			events,
-			[.forcePush(.setUpstream(remoteName: "origin", branchName: branch.name))]
-		)
+		#expect(snapshot.branches == [branch])
+		#expect(events == [.forcePush(.setUpstream(remoteName: "origin", branchName: branch.name))])
 	}
 
+	@Test
 	func testPushTagsUsesExplicitRemoteAndReturnsSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -144,10 +143,11 @@ final class RepositoryUseCaseTests: XCTestCase {
 		)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(snapshot.tags, [tag])
-		XCTAssertEqual(events, [.pushTags(remoteName: "origin")])
+		#expect(snapshot.tags == [tag])
+		#expect(events == [.pushTags(remoteName: "origin")])
 	}
 
+	@Test
 	func testMergeBranchRunsMutationBeforeReturningFreshSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -178,10 +178,11 @@ final class RepositoryUseCaseTests: XCTestCase {
 		)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(snapshot.branches, [currentBranch, mergeBranch])
-		XCTAssertEqual(events, [.merge(branchName: mergeBranch.name)])
+		#expect(snapshot.branches == [currentBranch, mergeBranch])
+		#expect(events == [.merge(branchName: mergeBranch.name)])
 	}
 
+	@Test
 	func testCreateTagUsesExplicitCommitBeforeReturningFreshSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -209,19 +210,18 @@ final class RepositoryUseCaseTests: XCTestCase {
 		)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(snapshot.commits, [commit])
-		XCTAssertEqual(
-			events,
-			[
+		#expect(snapshot.commits == [commit])
+		#expect(
+			events == [
 				.createTag(
 					name: "release/1.0.0",
 					message: "Release 1.0.0",
 					commitHash: commit.hash
 				)
-			]
-		)
+			])
 	}
 
+	@Test
 	func testDeleteTagReturnsFreshSnapshot() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
@@ -243,7 +243,7 @@ final class RepositoryUseCaseTests: XCTestCase {
 		)
 		let events = await recorder.recordedEvents()
 
-		XCTAssertEqual(snapshot.branches, [branch])
-		XCTAssertEqual(events, [.deleteTag(name: "release/1.0.0")])
+		#expect(snapshot.branches == [branch])
+		#expect(events == [.deleteTag(name: "release/1.0.0")])
 	}
 }

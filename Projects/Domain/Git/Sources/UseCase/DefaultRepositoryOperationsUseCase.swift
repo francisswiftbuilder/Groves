@@ -91,9 +91,11 @@ public struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 	public func reset(
 		to commitHash: String,
 		mode: GitResetMode,
+		expecting context: GitResetContext,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		try await repository.requestReset(to: commitHash, mode: mode, at: repositoryURL)
+		try await repository.requestReset(
+			to: commitHash, mode: mode, expecting: context, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 }

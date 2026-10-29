@@ -6,7 +6,7 @@ import SwiftUI
 
 struct RepositorySidebar: View {
 	let viewModel: WorkspaceViewModel
-	@ObservedObject var windowViewModel: RepositoryWindowViewModel
+	let windowViewModel: RepositoryWindowViewModel
 	let changesViewModel: ChangesViewModel
 	let operationViewModel: RepositoryOperationViewModel
 	let referencesViewModel: RepositoryReferencesViewModel
@@ -83,7 +83,8 @@ struct RepositorySidebar: View {
 						selectBranch(branch)
 						referencesViewModel.didRequestSwitchBranch()
 					}
-					.disabled(branch.isCurrent)
+					.disabled(
+						branch.isCurrent || operationViewModel.isLoading || referencesViewModel.isLoading)
 
 					if let currentBranch = referencesViewModel.currentBranch, !branch.isCurrent {
 						Button(

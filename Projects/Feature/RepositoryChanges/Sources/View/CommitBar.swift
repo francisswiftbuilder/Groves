@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct CommitBar: View {
-	@ObservedObject var viewModel: CommitViewModel
+	let viewModel: CommitViewModel
 
 	var body: some View {
 		VStack(spacing: 8) {

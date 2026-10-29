@@ -2,10 +2,10 @@ import FeatureRepositoryOperations
 import SwiftUI
 
 struct RepositoryPullToolbarControl: View {
-	@ObservedObject private var viewModel: RepositorySyncViewModel
+	private let viewModel: RepositorySyncViewModel
 
 	init(viewModel: RepositorySyncViewModel) {
-		_viewModel = ObservedObject(wrappedValue: viewModel)
+		self.viewModel = viewModel
 	}
 
 	var body: some View {

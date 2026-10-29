@@ -7,6 +7,23 @@ import Testing
 @Suite(.serialized)
 struct GitCredentialStoreTests {
 	@Test
+	func isolatedServiceDoesNotReadMigrateOrDeleteEarlierCredentials() throws {
+		let client = GitCredentialSecurityClientStub()
+		let earlierStore = makeTestCredentialStore(service: "Groves.Earlier", securityClient: client)
+		let isolatedStore = makeTestCredentialStore(service: "Groves.Isolated", securityClient: client)
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		try earlierStore.save(secret: "earlier-token", for: descriptor)
+
+		#expect(try isolatedStore.descriptors().isEmpty)
+		#expect(try isolatedStore.secret(for: descriptor) == nil)
+		try isolatedStore.save(secret: "isolated-token", for: descriptor)
+		try isolatedStore.delete(descriptor)
+
+		#expect(try earlierStore.secret(for: descriptor) == "earlier-token")
+		#expect(try isolatedStore.secret(for: descriptor) == nil)
+	}
+
+	@Test
 	func pendingCredentialCommitsOnlyAfterSuccess() throws {
 		let service = "Groves.Tests.\(UUID().uuidString)"
 		let store = makeTestCredentialStore(service: service)

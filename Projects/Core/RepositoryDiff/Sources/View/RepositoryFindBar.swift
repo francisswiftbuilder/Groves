@@ -1,12 +1,12 @@
 import SwiftUI
 
 public struct RepositoryFindBar: View {
-	@ObservedObject private var model: RepositorySearchViewModel
+	@Bindable private var model: RepositorySearchViewModel
 	let prompt: String
 	@FocusState private var isFocused: Bool
 
 	public init(model: RepositorySearchViewModel, prompt: String) {
-		_model = ObservedObject(wrappedValue: model)
+		_model = Bindable(wrappedValue: model)
 		self.prompt = prompt
 	}
 

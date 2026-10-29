@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RepositoryWelcomeView: View {
-	@ObservedObject var viewModel: RepositoryWindowViewModel
+	@Bindable var viewModel: RepositoryWindowViewModel
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
 	let onCloneRepository: () -> Void
@@ -25,6 +25,10 @@ struct RepositoryWelcomeView: View {
 						.font(.callout)
 						.foregroundStyle(.secondary)
 						.multilineTextAlignment(.center)
+
+					SettingsLink {
+						Label("Accounts & Git Settings", systemImage: "person.crop.circle")
+					}
 
 					if isWorking {
 						HStack(spacing: 8) {

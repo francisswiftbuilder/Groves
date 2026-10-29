@@ -5,7 +5,7 @@ struct DiffSideBySideView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	let rows: [DiffSideBySideRow]
 	let filePath: String?
-	@ObservedObject var searchModel: RepositorySearchViewModel
+	let searchModel: RepositorySearchViewModel
 	let lineAction: GitDiffLineAction?
 	let hunkActions: [GitDiffHunkAction]
 	let isApplyingAction: Bool

@@ -2,7 +2,7 @@ import DomainGitInterface
 import SwiftUI
 
 struct RemoteActionBar: View {
-	@ObservedObject private var syncViewModel: RepositorySyncViewModel
+	private let syncViewModel: RepositorySyncViewModel
 	let preferredRemoteName: String?
 	let onAdd: () -> Void
 
@@ -11,7 +11,7 @@ struct RemoteActionBar: View {
 		preferredRemoteName: String?,
 		onAdd: @escaping () -> Void
 	) {
-		_syncViewModel = ObservedObject(wrappedValue: syncViewModel)
+		self.syncViewModel = syncViewModel
 		self.preferredRemoteName = preferredRemoteName
 		self.onAdd = onAdd
 	}

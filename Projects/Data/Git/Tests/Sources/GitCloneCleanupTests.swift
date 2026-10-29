@@ -1,10 +1,11 @@
 import DomainGitInterface
 import Foundation
-import XCTest
+import Testing
 
 @testable import DataGit
 
-final class GitCloneCleanupTests: XCTestCase {
+struct GitCloneCleanupTests {
+	@Test
 	func testCancelledCloneLeavesNoDestinationBehind() async throws {
 		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
@@ -27,12 +28,12 @@ final class GitCloneCleanupTests: XCTestCase {
 		} catch {}
 
 		let destinationURL = directoryURL.appending(path: sourceURL.lastPathComponent)
-		XCTAssertFalse(
-			FileManager.default.fileExists(atPath: destinationURL.path),
-			"A cancelled clone must be retryable at the same location"
-		)
+		#expect(
+			!(FileManager.default.fileExists(atPath: destinationURL.path)),
+			"A cancelled clone must be retryable at the same location")
 	}
 
+	@Test
 	func testExistingDestinationIsReportedWithoutBeingRemoved() async throws {
 		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
@@ -47,18 +48,18 @@ final class GitCloneCleanupTests: XCTestCase {
 				from: "https://127.0.0.1:1/Existing.git",
 				into: directoryURL
 			)
-			XCTFail("Expected repositoryAlreadyExists")
+			Issue.record("Expected repositoryAlreadyExists")
 		} catch GitRepositoryError.repositoryAlreadyExists {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 
-		XCTAssertTrue(
+		#expect(
 			FileManager.default.fileExists(atPath: existingFileURL.path),
-			"An existing directory must never be removed by a failed clone"
-		)
+			"An existing directory must never be removed by a failed clone")
 	}
 
+	@Test
 	func testChangedHostKeyIsClassifiedAsHostVerification() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -71,13 +72,14 @@ final class GitCloneCleanupTests: XCTestCase {
 				at: repositoryURL,
 				isNetworkOperation: true
 			)
-			XCTFail("Expected hostVerification")
+			Issue.record("Expected hostVerification")
 		} catch GitRepositoryError.hostVerification {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 	}
 
+	@Test
 	func testEmbeddedCredentialRemoteURLIsRejectedWhenConfiguringRemotes() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -90,16 +92,17 @@ final class GitCloneCleanupTests: XCTestCase {
 				pushURL: nil,
 				at: repositoryURL
 			)
-			XCTFail("Expected invalidRemoteURL")
+			Issue.record("Expected invalidRemoteURL")
 		} catch GitRepositoryError.invalidRemoteURL {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 
 		let remotes = try await repository.requestRemotes(at: repositoryURL)
-		XCTAssertTrue(remotes.isEmpty)
+		#expect(remotes.isEmpty)
 	}
 
+	@Test
 	func testEmbeddedCredentialRemoteURLIsRejectedWhenUpdatingRemotes() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
@@ -118,13 +121,13 @@ final class GitCloneCleanupTests: XCTestCase {
 				pushURL: nil,
 				at: repositoryURL
 			)
-			XCTFail("Expected invalidRemoteURL")
+			Issue.record("Expected invalidRemoteURL")
 		} catch GitRepositoryError.invalidRemoteURL {
 		} catch {
-			XCTFail("Unexpected error: \(error)")
+			Issue.record("Unexpected error: \(error)")
 		}
 
 		let remotes = try await repository.requestRemotes(at: repositoryURL)
-		XCTAssertEqual(remotes.first?.fetchURL, "ssh://git@github.com/owner/repo.git")
+		#expect(remotes.first?.fetchURL == "ssh://git@github.com/owner/repo.git")
 	}
 }

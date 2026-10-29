@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct RepositoryRemotePresentationHost<Content: View>: View {
-	@ObservedObject private var viewModel: RemotesViewModel
+	@Bindable private var viewModel: RemotesViewModel
 	private let content: Content
 
 	public init(
@@ -15,7 +15,10 @@ public struct RepositoryRemotePresentationHost<Content: View>: View {
 	public var body: some View {
 		content
 			.sheet(item: $viewModel.editorPresentation) { presentation in
-				RemoteEditorSheet(presentation: presentation) { name, fetchURL, pushURL in
+				RemoteEditorSheet(
+					presentation: presentation, isLoading: viewModel.isLoading,
+					errorMessage: viewModel.mutationErrorMessage
+				) { name, fetchURL, pushURL in
 					submitEditor(
 						presentation,
 						name: name,
@@ -25,9 +28,11 @@ public struct RepositoryRemotePresentationHost<Content: View>: View {
 				}
 			}
 			.sheet(item: $viewModel.pendingRename) { remote in
-				RemoteRenameSheet(remote: remote) { newName in
+				RemoteRenameSheet(
+					remote: remote, isLoading: viewModel.isLoading,
+					errorMessage: viewModel.mutationErrorMessage
+				) { newName in
 					viewModel.didRequestRename(remote, to: newName)
-					viewModel.didDismissRename()
 				}
 			}
 			.confirmationDialog(
@@ -78,6 +83,5 @@ public struct RepositoryRemotePresentationHost<Content: View>: View {
 				pushURL: pushURL
 			)
 		}
-		viewModel.didDismissEditor()
 	}
 }
