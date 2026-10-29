@@ -3,6 +3,8 @@ import SwiftUI
 
 @main
 struct GrovesApp: App {
+	@NSApplicationDelegateAdaptor(GrovesAppDelegate.self) private var appDelegate
+
 	init() {
 		NSWindow.allowsAutomaticWindowTabbing = true
 	}
@@ -11,13 +13,6 @@ struct GrovesApp: App {
 		WindowGroup("Groves", id: "repository", for: UUID.self) { $repositoryID in
 			AppDIContainer.shared.makeRepositoryRootView(repositoryID: $repositoryID)
 				.frame(minWidth: 760, minHeight: 520)
-				.background {
-					NativeWindowTabConfigurator()
-				}
-				.environment(
-					\.windowTabCoordinator,
-					AppDIContainer.shared.windowTabCoordinator
-				)
 		}
 		.defaultSize(width: 1_280, height: 800)
 		.restorationBehavior(.disabled)

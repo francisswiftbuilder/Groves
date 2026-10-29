@@ -114,7 +114,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 	) -> RepositoryWindowRestoration? {
 		guard didRestoreRepositoryWindows == false else { return nil }
 		didRestoreRepositoryWindows = true
-		let primaryRepositoryID = currentRepositoryID ?? selectedTabID ?? tabs.first?.id
+		let primaryRepositoryID = tab(id: currentRepositoryID)?.id ?? selectedTabID ?? tabs.first?.id
 		return RepositoryWindowRestoration(
 			primaryRepositoryID: primaryRepositoryID,
 			additionalRepositoryIDs: tabs.map(\.id).filter { $0 != primaryRepositoryID }
@@ -124,14 +124,20 @@ final class RepositoryTabsViewModel: ObservableObject {
 	func didSelectTab(_ id: SavedRepository.ID) {
 		guard tabs.contains(where: { $0.id == id }) else { return }
 		if selectedTabID != id {
-			selectedTabID = id
 			do {
 				try dependencies.useCase.selectRepository(id: id)
+				selectedTabID = id
 			} catch {
 				alertMessage = error.localizedDescription
 			}
 		}
-		activateSelectedTabIfNeeded()
+		didPrepareTab(id)
+	}
+
+	func didPrepareTab(_ id: SavedRepository.ID) {
+		guard let tab = tab(id: id), tab.hasLoadedContent == false else { return }
+		tab.hasLoadedContent = true
+		tab.workspace.viewModel.didRequestRefresh()
 	}
 
 	func didActivateSidebarSelection(_ selection: RepositorySidebarSelection?) {
@@ -140,7 +146,7 @@ final class RepositoryTabsViewModel: ObservableObject {
 			let tab = tabs.first(where: { $0.id == selection.repositoryID })
 		else { return }
 
-		didSelectTab(tab.id)
+		didPrepareTab(tab.id)
 		tab.workspace.viewModel.didActivateSidebarSelection(selection)
 	}
 
@@ -181,7 +187,9 @@ final class RepositoryTabsViewModel: ObservableObject {
 		_ repository: SavedRepository,
 		actions: Actions
 	) {
-		if tabs.contains(where: { $0.id == repository.id }) == false {
+		if let index = tabs.firstIndex(where: { $0.id == repository.id }) {
+			tabs[index] = updateTab(tabs[index], with: repository)
+		} else {
 			tabs.append(makeTab(repository: repository))
 		}
 		selectedTabID = repository.id
@@ -192,14 +200,27 @@ final class RepositoryTabsViewModel: ObservableObject {
 	private func reconcileTabs(with repositories: [SavedRepository]) {
 		let existingTabs = Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0) })
 		tabs = repositories.map { repository in
-			existingTabs[repository.id] ?? makeTab(repository: repository)
+			if let tab = existingTabs[repository.id] {
+				return updateTab(tab, with: repository)
+			}
+			return makeTab(repository: repository)
 		}
 	}
 
+	private func updateTab(_ tab: RepositoryTab, with repository: SavedRepository) -> RepositoryTab {
+		guard tab.repository != repository else { return tab }
+		let changesLocation = tab.repository.url != repository.url
+		if changesLocation {
+			tab.workspace.viewModel.didChooseRepository(repository.url, preservesContent: true)
+		}
+		let updatedTab = RepositoryTab(repository: repository, workspace: tab.workspace)
+		updatedTab.hasLoadedContent = tab.hasLoadedContent || changesLocation
+		return updatedTab
+	}
+
 	private func activateSelectedTabIfNeeded() {
-		guard let selectedTab, selectedTab.hasLoadedContent == false else { return }
-		selectedTab.hasLoadedContent = true
-		selectedTab.workspace.viewModel.didRequestRefresh()
+		guard let selectedTabID else { return }
+		didPrepareTab(selectedTabID)
 	}
 
 	func defaultSidebarSelection(

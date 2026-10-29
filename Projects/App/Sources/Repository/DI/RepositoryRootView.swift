@@ -9,11 +9,16 @@ struct RepositoryRootView: View {
 	@ObservedObject private var accountViewModel = AppDIContainer.shared.accountViewModel
 
 	var body: some View {
-		if !accountViewModel.hasCompletedSetup {
-			GitAccountSetupView(viewModel: accountViewModel, isOnboarding: true)
-				.frame(maxWidth: .infinity, maxHeight: .infinity)
-		} else {
-			repositoryContent
+		Group {
+			if !accountViewModel.hasCompletedSetup {
+				GitAccountSetupView(viewModel: accountViewModel, isOnboarding: true)
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+			} else {
+				repositoryContent
+			}
+		}
+		.background {
+			NativeWindowTabConfigurator(repositoryID: repositoryID)
 		}
 	}
 

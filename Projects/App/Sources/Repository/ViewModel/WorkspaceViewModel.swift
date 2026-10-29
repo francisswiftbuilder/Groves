@@ -104,7 +104,7 @@ final class WorkspaceViewModel: ObservableObject {
 		}
 	}
 
-	func didChooseRepository(_ url: URL) {
+	func didChooseRepository(_ url: URL, preservesContent: Bool = false) {
 		refreshTask?.cancel()
 		let changesRepository = repositoryURL != url
 		if changesRepository {
@@ -114,12 +114,15 @@ final class WorkspaceViewModel: ObservableObject {
 		refreshTask = Task {
 			defer { finishContentLoad(id: loadID) }
 			do {
-				if changesRepository {
+				if changesRepository, !preservesContent {
 					actions.resetContent()
 					expandedSidebarGroups = []
 				}
 				repositoryURL = url
-				try await requestAllContent(at: url)
+				try await requestAllContent(
+					at: url,
+					revalidatesSelectedContent: changesRepository && preservesContent
+				)
 			} catch is CancellationError {
 				return
 			} catch {
