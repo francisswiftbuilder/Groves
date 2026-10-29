@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 	private let container: ModelContainer
-	private let context: ModelContext
+	private var context: ModelContext
 	private var accessedURLs: [UUID: URL] = [:]
 	private var resourceIdentifiers: [UUID: NSObject] = [:]
 
@@ -27,8 +27,7 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 
 	init(container: ModelContainer) {
 		self.container = container
-		context = ModelContext(container)
-		context.autosaveEnabled = false
+		context = Self.makeContext(container)
 	}
 
 	deinit {
@@ -46,14 +45,14 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 				try requestResolveRepository($0, occupiedPaths: &occupiedPaths)
 			}
 		} catch {
-			context.rollback()
+			discardUnsavedChanges()
 			throw error
 		}
 		if context.hasChanges {
 			do {
 				try context.save()
 			} catch {
-				context.rollback()
+				discardUnsavedChanges()
 			}
 		}
 		return repositories
@@ -258,11 +257,21 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 		return values?.fileResourceIdentifier as? NSObject
 	}
 
+	private static func makeContext(_ container: ModelContainer) -> ModelContext {
+		let context = ModelContext(container)
+		context.autosaveEnabled = false
+		return context
+	}
+
+	private func discardUnsavedChanges() {
+		context = Self.makeContext(container)
+	}
+
 	private func requestSaveContext() throws {
 		do {
 			try context.save()
 		} catch {
-			context.rollback()
+			discardUnsavedChanges()
 			throw SavedRepositoryStoreError.persistenceFailed
 		}
 	}
