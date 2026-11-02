@@ -17,7 +17,7 @@ struct RepositoryTabsView: View {
 					repositoryID: repositoryTab.id
 				)
 			} else {
-				RepositoryWelcomeView(
+				RepositoryWelcomeContainerView(
 					viewModel: windowViewModel,
 					isWorking: viewModel.isAddingRepository,
 					onOpenRepository: presentRepositoryImporter,
