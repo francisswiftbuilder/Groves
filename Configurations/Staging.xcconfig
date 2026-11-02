@@ -1,3 +1,4 @@
-// Staging configuration
-// Add staging-specific build settings here.
+GROVES_APP_NAME = Groves Staging
+GROVES_BUNDLE_IDENTIFIER = io.github.francisswiftbuilder.Groves.staging
+GROVES_DATA_NAMESPACE = Groves Staging
 

@@ -114,6 +114,16 @@ Git source, build scripts, and license notices are included inside `Groves.app/C
 
 Groves uses Tuist to manage its modular project structure.
 
+App identity and data isolation are configured in `Configurations/*.xcconfig`:
+
+| Configuration file | App | Bundle ID | Application Support |
+| --- | --- | --- | --- |
+| `Debug.xcconfig` | Groves Dev | `io.github.francisswiftbuilder.Groves.dev` | `Groves Dev` |
+| `Staging.xcconfig` | Groves Staging | `io.github.francisswiftbuilder.Groves.staging` | `Groves Staging` |
+| `Production.xcconfig` | Groves | `io.github.francisswiftbuilder.Groves` | `Groves` |
+
+Development and staging builds keep their own saved repositories, preferences, Git identity, and credential services. `./script/build_and_run.sh --verify` builds and opens Groves Dev without quitting an installed Groves. Opening the same repository directory in both apps still shares that repository’s Git state; use a separate clone or worktree when testing Git mutations.
+
 ### Commands
 
 ```bash

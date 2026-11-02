@@ -1,3 +1,4 @@
-// Production configuration
-// Add production-specific build settings here.
+GROVES_APP_NAME = Groves
+GROVES_BUNDLE_IDENTIFIER = io.github.francisswiftbuilder.Groves
+GROVES_DATA_NAMESPACE = Groves
 

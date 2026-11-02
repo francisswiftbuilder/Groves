@@ -25,7 +25,7 @@ public final class GitCredentialStore: GitCredentialPersisting, Sendable {
 	private let diagnosticHandler: @Sendable (GitCredentialStoreError) -> Void
 
 	public convenience init(
-		service: String = "io.github.francisswiftbuilder.Groves.GitCredential.Isolated"
+		service: String = GrovesRuntimeConfiguration.credentialNamespace + ".GitCredential.Isolated"
 	) {
 		self.init(
 			service: service,

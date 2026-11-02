@@ -3,7 +3,9 @@ import Foundation
 public final class GitCredentialSaveDecisionStore: @unchecked Sendable {
 	private let defaults: UserDefaults
 
-	public init(suiteName: String = "io.github.francisswiftbuilder.Groves.GitCredential") {
+	public init(
+		suiteName: String = GrovesRuntimeConfiguration.credentialNamespace + ".GitCredential"
+	) {
 		defaults = UserDefaults(suiteName: suiteName) ?? .standard
 	}
 

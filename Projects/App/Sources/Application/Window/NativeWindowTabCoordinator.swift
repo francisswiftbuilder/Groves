@@ -1,4 +1,5 @@
 import AppKit
+import CoreGitCredential
 import SwiftUI
 
 @MainActor
@@ -43,7 +44,7 @@ final class NativeWindowTabCoordinator: NSObject, RepositoryWindowTabCoordinatin
 	}
 
 	func configure(_ window: NSWindow) {
-		window.tabbingIdentifier = "com.francisswiftbuilder.Groves.Repository"
+		window.tabbingIdentifier = GrovesRuntimeConfiguration.credentialNamespace + ".Repository"
 		window.tabbingMode = .preferred
 	}
 
@@ -122,7 +123,7 @@ final class NativeWindowTabCoordinator: NSObject, RepositoryWindowTabCoordinatin
 			defer: false
 		)
 		configure(newWindow)
-		newWindow.title = "Groves"
+		newWindow.title = GrovesRuntimeConfiguration.displayName
 		newWindow.minSize = NSSize(width: 760, height: 520)
 		newWindow.isReleasedWhenClosed = false
 		if anchor == nil {
