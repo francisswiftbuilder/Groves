@@ -90,7 +90,7 @@ Browse the contents of your repository from inside Groves.
 
 On first launch, connect a GitHub account using a personal access token and choose your commit name and email. You can also continue locally and configure an account later in **Settings → Accounts**.
 
-- Tokens are verified with GitHub and stored in a separate Groves Keychain service.
+- Tokens are verified with GitHub and stored by the main app in a separate Groves Keychain service. The Git helper requests credentials from the running app over an operation-specific local socket instead of reading Keychain itself. Both sides verify the peer’s code identity and process ancestry; credentials are not passed in command arguments, environment variables, or temporary files. This handoff does not require shared Keychain entitlements or a paid signing certificate.
 - Settings supports replacing a token and signing out. Earlier Groves credentials are not imported or deleted.
 - Git uses the bundled Git runtime, an app-specific global configuration at `~/Library/Application Support/Groves/Git/config`, and the `GrovesAskPass` helper. A missing runtime produces an error instead of falling back to system Git.
 - System/global Git configuration and inherited Git environment overrides are excluded. Network operations use a private home directory so personal `.netrc` files and curl home configuration are not used.

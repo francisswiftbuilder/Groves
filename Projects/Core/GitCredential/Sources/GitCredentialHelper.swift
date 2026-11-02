@@ -19,8 +19,10 @@ public struct GitCredentialHelper: Sendable {
 	) throws -> String? {
 		let fields = Self.fields(in: input)
 		guard fields["protocol"] == "https",
-			let host = fields["host"]
+			let rawHost = fields["host"], !rawHost.isEmpty
 		else { return nil }
+		let host =
+			["github.com", "github.com:443"].contains(rawHost.lowercased()) ? "github.com" : rawHost
 
 		switch operation {
 		case .get:
@@ -37,6 +39,15 @@ public struct GitCredentialHelper: Sendable {
 			try eraseCredentials(host: host, username: fields["username"])
 			return nil
 		}
+	}
+
+	public func setShouldSave(_ shouldSave: Bool, operationID: String) {
+		decisionStore.setShouldSave(shouldSave, operationID: operationID)
+	}
+
+	public static func supports(input: String) -> Bool {
+		let fields = fields(in: input)
+		return fields["protocol"] == "https" && fields["host"]?.isEmpty == false
 	}
 
 	private func respondToGet(host: String, username: String?) throws -> String? {

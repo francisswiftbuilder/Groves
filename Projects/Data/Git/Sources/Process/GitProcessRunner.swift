@@ -5,14 +5,17 @@ import Foundation
 actor GitProcessRunner {
 	private let configuration: GitProcessConfiguration
 	private let credentialStore: any GitCredentialPersisting
+	private let credentialHelper: GitCredentialHelper
 	private let decisionStore = GitCredentialSaveDecisionStore()
 
 	init(
 		configuration: GitProcessConfiguration = GitProcessConfiguration(),
-		credentialStore: any GitCredentialPersisting = GitCredentialStore()
+		credentialStore: any GitCredentialPersisting = GitCredentialStore(),
+		credentialHelper: GitCredentialHelper = GitCredentialHelper()
 	) {
 		self.configuration = configuration
 		self.credentialStore = credentialStore
+		self.credentialHelper = credentialHelper
 	}
 
 	func requestRun(
@@ -48,6 +51,14 @@ actor GitProcessRunner {
 			trustScope = try makeTrustScope()
 		}
 		defer { trustScope?.remove() }
+		let broker: GitCredentialBroker?
+		if isNetworkOperation, let helperURL = configuration.askPassHelperURL {
+			broker = try GitCredentialBroker(
+				helperURL: helperURL, operationID: operationID, helper: credentialHelper)
+		} else {
+			broker = nil
+		}
+		defer { broker?.stop() }
 
 		let authenticationArguments: [String]
 		if isNetworkOperation, let homeURL = configuration.isolatedHomeDirectoryURL {
@@ -70,8 +81,10 @@ actor GitProcessRunner {
 			isNetworkOperation: isNetworkOperation,
 			operationID: operationID,
 			trustScope: trustScope,
-			authenticationArguments: authenticationArguments
+			authenticationArguments: authenticationArguments,
+			credentialSocketPath: broker?.socketPath
 		)
+		broker?.stop()
 		if isNetworkOperation {
 			commitPendingCredentials(operationID: operationID)
 			decisionStore.discard(operationID: operationID)
@@ -89,7 +102,8 @@ actor GitProcessRunner {
 		isNetworkOperation: Bool = false,
 		operationID: String,
 		trustScope: GitSSHTrustScope? = nil,
-		authenticationArguments: [String] = []
+		authenticationArguments: [String] = [],
+		credentialSocketPath: String? = nil
 	) async throws -> GitCommandResult {
 		let standardOutputPipe = Pipe()
 		let standardErrorPipe = Pipe()
@@ -111,7 +125,8 @@ actor GitProcessRunner {
 			merging: environment,
 			operationID: operationID,
 			isNetworkOperation: isNetworkOperation,
-			trustScope: trustScope
+			trustScope: trustScope,
+			credentialSocketPath: credentialSocketPath
 		)
 		process.standardOutput = standardOutputPipe
 		process.standardError = standardErrorPipe
@@ -244,12 +259,15 @@ actor GitProcessRunner {
 		merging environment: [String: String],
 		operationID: String,
 		isNetworkOperation: Bool,
-		trustScope: GitSSHTrustScope?
+		trustScope: GitSSHTrustScope?,
+		credentialSocketPath: String?
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+		result["GROVES_CREDENTIAL_SOCKET"] = nil
 		if let configurationURL = configuration.globalConfigurationURL {
 			result = result.filter { key, _ in
 				!key.hasPrefix("GIT_") && !key.hasPrefix("GROVES_") && !key.hasPrefix("SSH_")
+					&& !key.hasPrefix("DYLD_")
 			}
 			result["GIT_CONFIG_GLOBAL"] = configurationURL.path
 			result["GIT_CONFIG_NOSYSTEM"] = "1"
@@ -277,6 +295,7 @@ actor GitProcessRunner {
 			result["GIT_HTTP_LOW_SPEED_TIME"] = String(Int(policy.lowSpeedTime))
 			result["GIT_TERMINAL_PROMPT"] = "0"
 			if let helperURL = configuration.askPassHelperURL {
+				result["GROVES_CREDENTIAL_SOCKET"] = credentialSocketPath
 				result["GIT_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS_REQUIRE"] = "force"
@@ -438,9 +457,14 @@ actor GitProcessRunner {
 				"The Groves authentication helper was terminated before authentication could complete. Rebuild or reinstall Groves and verify the helper's code signing and provisioning profile.\n\n\(message)"
 			)
 		}
+		if lowercasedMessage.contains("stage=credential-broker") {
+			return .authentication(
+				"The local authentication helper could not connect securely to Groves. Keep Groves open and retry the Git operation.\n\n\(message)"
+			)
+		}
 		if lowercasedMessage.contains("groves authentication helper failed") {
 			return .authentication(
-				"Groves could not use the saved account through its authentication helper. Check whether macOS is asking to allow GrovesAskPass access to the Groves credential in Keychain.\n\n\(message)"
+				"Groves could not read the saved account from Keychain. Check whether macOS is asking to allow Groves access to its saved credential, then retry.\n\n\(message)"
 			)
 		}
 		if configuration.globalConfigurationURL != nil {

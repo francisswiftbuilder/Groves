@@ -5,6 +5,26 @@ import Testing
 
 @Suite(.serialized)
 struct GitCredentialHelperTests {
+	@Test(arguments: ["github.com", "GitHub.com", "github.com:443", "GitHub.com:443"])
+	func gitHubHostVariantsUseTheConnectedAccount(host: String) throws {
+		let store = makeTestCredentialStore()
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		try store.save(secret: "stored-token", for: descriptor)
+		let response = try GitCredentialHelper(store: store).handle(
+			operation: .get, input: "protocol=https\nhost=\(host)\n\n", operationID: nil)
+		#expect(response == "password=stored-token\nusername=groves\n\n")
+	}
+
+	@Test(arguments: ["github.com.evil.example", "github.com:8443", "github.com@evil.example"])
+	func unrelatedHostsCannotReadTheGitHubAccount(host: String) throws {
+		let store = makeTestCredentialStore()
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		try store.save(secret: "stored-token", for: descriptor)
+		let response = try GitCredentialHelper(store: store).handle(
+			operation: .get, input: "protocol=https\nhost=\(host)\n\n", operationID: nil)
+		#expect(response == nil)
+	}
+
 	@Test
 	func neverReturnsHTTPSCredentialsForAnHTTPConnection() throws {
 		let store = makeTestCredentialStore()

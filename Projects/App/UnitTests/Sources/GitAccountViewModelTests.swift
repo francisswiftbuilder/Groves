@@ -55,7 +55,7 @@ struct GitAccountViewModelTests {
 		override func stopLoading() {}
 	}
 
-	private final class SecurityClientStub: GitCredentialSecurityClient, @unchecked Sendable {
+	final class SecurityClientStub: GitCredentialSecurityClient, @unchecked Sendable {
 		private let lock = NSLock()
 		private var records: [[String: Any]] = []
 

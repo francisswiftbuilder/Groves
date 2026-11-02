@@ -1,6 +1,6 @@
 import Foundation
 
-public enum GitCredentialHelperOperation: String, Sendable {
+public enum GitCredentialHelperOperation: String, Codable, Sendable {
 	case get
 	case store
 	case erase

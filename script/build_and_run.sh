@@ -4,7 +4,6 @@ set -euo pipefail
 MODE="${1:-run}"
 APP_NAME="Groves"
 BUNDLE_ID="io.github.francisswiftbuilder.Groves"
-ACCESS_GROUP_SUFFIX="io.github.francisswiftbuilder.Groves.GitCredential"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$ROOT_DIR/Groves.xcworkspace"
@@ -27,12 +26,11 @@ DEVELOPMENT_TEAM="$(
 		| awk -F ' = ' '/^[[:space:]]*DEVELOPMENT_TEAM = / { print $2; exit }'
 )"
 
+SIGNING_ARGUMENTS=(-allowProvisioningUpdates)
+USE_ADHOC_SIGNING=false
 if [[ -z "$CODE_SIGN_IDENTITY" || "$CODE_SIGN_IDENTITY" == "-" || -z "$DEVELOPMENT_TEAM" ]]; then
-	printf '%s\n' \
-		'Groves requires a development-signed app and helper for shared Keychain access.' \
-		'Set TUIST_CODE_SIGN_IDENTITY and TUIST_DEVELOPMENT_TEAM in .env.local,' \
-		'then run make generate before using this script.' >&2
-	exit 1
+	SIGNING_ARGUMENTS=(CODE_SIGNING_ALLOWED=NO)
+	USE_ADHOC_SIGNING=true
 fi
 
 xcodebuild build \
@@ -40,7 +38,7 @@ xcodebuild build \
 	-scheme App \
 	-configuration Debug \
 	-destination "platform=macOS" \
-	-allowProvisioningUpdates
+	"${SIGNING_ARGUMENTS[@]}"
 
 TARGET_BUILD_DIR="$(
 	printf '%s\n' "$BUILD_SETTINGS" \
@@ -55,34 +53,22 @@ team_identifier() {
 		| awk -F= '/^TeamIdentifier=/ { print $2; exit }'
 }
 
-access_group() {
-	local binary="$1"
-	local entitlements
-	entitlements="$(/usr/bin/mktemp -t groves-entitlements)"
-	/usr/bin/codesign -d --entitlements :- "$binary" > "$entitlements" 2>/dev/null
-	/usr/libexec/PlistBuddy -c 'Print :keychain-access-groups:0' "$entitlements"
-	/bin/rm -f "$entitlements"
-}
+if [[ "$USE_ADHOC_SIGNING" == true ]]; then
+	/usr/bin/codesign --force --sign - "$APP_BUNDLE/Contents/Helpers/GrovesAskPass.app"
+	/usr/bin/codesign --force --sign - "$APP_BUNDLE"
+fi
 
 /usr/bin/codesign --verify --strict "$HELPER_BINARY"
 /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
-APP_TEAM="$(team_identifier "$APP_BINARY")"
-HELPER_TEAM="$(team_identifier "$HELPER_BINARY")"
-APP_GROUP="$(access_group "$APP_BINARY")"
-HELPER_GROUP="$(access_group "$HELPER_BINARY")"
-
-if [[ -z "$APP_TEAM" || "$APP_TEAM" != "$DEVELOPMENT_TEAM" || "$HELPER_TEAM" != "$APP_TEAM" ]]; then
-	printf 'Signing team mismatch: configured=%s app=%s helper=%s\n' \
-		"$DEVELOPMENT_TEAM" "${APP_TEAM:-missing}" "${HELPER_TEAM:-missing}" >&2
-	exit 1
+if [[ "$USE_ADHOC_SIGNING" == false ]]; then
+	APP_TEAM="$(team_identifier "$APP_BINARY")"
+	HELPER_TEAM="$(team_identifier "$HELPER_BINARY")"
+	if [[ -z "$APP_TEAM" || "$APP_TEAM" != "$DEVELOPMENT_TEAM" || "$HELPER_TEAM" != "$APP_TEAM" ]]; then
+		printf 'Signing team mismatch: configured=%s app=%s helper=%s\n' \
+			"$DEVELOPMENT_TEAM" "${APP_TEAM:-missing}" "${HELPER_TEAM:-missing}" >&2
+		exit 1
+	fi
 fi
-if [[ "$APP_GROUP" != "$HELPER_GROUP" || "$APP_GROUP" != *.$ACCESS_GROUP_SUFFIX ]]; then
-	printf 'Keychain access group mismatch: app=%s helper=%s\n' \
-		"${APP_GROUP:-missing}" "${HELPER_GROUP:-missing}" >&2
-	exit 1
-fi
-
-printf 'protocol=file\n\n' | "$HELPER_BINARY" credential get
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
