@@ -148,8 +148,15 @@ struct GitCredentialBrokerTests {
 		let values = try await withThrowingTaskGroup(of: String?.self) { group in
 			for _ in 0..<16 {
 				group.addTask {
-					try context.client.credential(
-						operation: .get, input: "protocol=https\nhost=github.com\n\n")
+					try await withCheckedThrowingContinuation { continuation in
+						Thread.detachNewThread {
+							continuation.resume(
+								with: Result {
+									try context.client.credential(
+										operation: .get, input: "protocol=https\nhost=github.com\n\n")
+								})
+						}
+					}
 				}
 			}
 			var values: [String?] = []

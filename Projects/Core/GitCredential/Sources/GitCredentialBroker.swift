@@ -44,7 +44,7 @@ public final class GitCredentialBroker: @unchecked Sendable {
 		}
 		do {
 			let status = try GitCredentialSocket.withAddress(path: path) { bind(descriptor, $0, $1) }
-			guard status == 0, chmod(path, 0o600) == 0, listen(descriptor, 8) == 0,
+			guard status == 0, chmod(path, 0o600) == 0, listen(descriptor, SOMAXCONN) == 0,
 				fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0
 			else { throw GitCredentialBrokerError.systemCall("listen", errno) }
 		} catch {
@@ -136,6 +136,8 @@ public final class GitCredentialBroker: @unchecked Sendable {
 		} catch {
 			let diagnostic: String
 			if let error = error as? GitCredentialStoreError {
+				diagnostic = error.diagnosticDescription
+			} else if let error = error as? GitHubAccountSelectionError {
 				diagnostic = error.diagnosticDescription
 			} else if let error = error as? GitCredentialBrokerError {
 				diagnostic = error.diagnosticDescription

@@ -100,11 +100,17 @@ struct GitCredentialBrokerIntegrationTests {
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let runtime = Bundle.main.bundleURL.appending(path: "Contents/Resources/Git")
+		let defaultsName = "Groves.Broker.Selection.\(UUID().uuidString)"
+		let defaults = try #require(UserDefaults(suiteName: defaultsName))
+		defer { defaults.removePersistentDomain(forName: defaultsName) }
+		let selection = GitHubAccountSelection(defaults: defaults)
+		selection.select(descriptor.account)
 		let runner = GitProcessRunner(
 			configuration: GitProcessConfiguration(
 				executableURL: runtime.appending(path: "bin/git"), runtimeURL: runtime,
 				askPassHelperURL: helperURL, globalConfigurationURL: directory.appending(path: "config")),
-			credentialStore: store, credentialHelper: GitCredentialHelper(store: store))
+			credentialStore: store, credentialHelper: GitCredentialHelper(store: store),
+			accountSelection: selection)
 
 		let result = try await runner.requestRun(
 			arguments: ["credential", "fill"], at: directory,
@@ -117,6 +123,72 @@ struct GitCredentialBrokerIntegrationTests {
 				"password=parent-runner-secret",
 			])
 		#expect(!result.standardError.contains("parent-runner-secret"))
+	}
+
+	@Test
+	func switchingAccountsDuringPreflightOnlyAffectsTheNextGitOperation() async throws {
+		let helperURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		let store = makeStore()
+		for account in ["alice", "zoe"] {
+			try store.save(
+				secret: "\(account)-token",
+				for: GitCredentialDescriptor(kind: .https, host: "github.com", account: account))
+		}
+		let identifier = "Groves.Broker.Switch.\(UUID().uuidString)"
+		let directory = FileManager.default.temporaryDirectory.appending(path: identifier)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let defaults = try #require(UserDefaults(suiteName: identifier))
+		defer { defaults.removePersistentDomain(forName: identifier) }
+		let selection = GitHubAccountSelection(defaults: defaults)
+		selection.select("alice")
+		let runtime = Bundle.main.bundleURL.appending(path: "Contents/Resources/Git")
+		let executable = directory.appending(path: "gated-git")
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" config "*)
+		    touch "$(dirname "$0")/started"
+		    while [ ! -f "$(dirname "$0")/released" ]; do sleep 0.01; done
+		    ;;
+		esac
+		exec '\(runtime.appending(path: "bin/git").path.replacingOccurrences(of: "'", with: "'\\''"))' "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(
+				executableURL: executable, runtimeURL: runtime, askPassHelperURL: helperURL,
+				globalConfigurationURL: directory.appending(path: "config")),
+			credentialStore: store, credentialHelper: GitCredentialHelper(store: store),
+			accountSelection: selection)
+		let operation = Task {
+			try await runner.requestRun(
+				arguments: ["credential", "fill"], at: directory,
+				standardInput: "protocol=https\nhost=github.com\n\n", isNetworkOperation: true)
+		}
+		defer {
+			try? Data().write(to: directory.appending(path: "released"))
+			operation.cancel()
+		}
+		let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+		while !FileManager.default.fileExists(atPath: directory.appending(path: "started").path) {
+			try #require(ContinuousClock.now < deadline, "Git preflight did not start")
+			try await Task.sleep(for: .milliseconds(10))
+		}
+
+		selection.select("zoe")
+		try Data().write(to: directory.appending(path: "released"))
+		let original = try await operation.value
+		let next = try await runner.requestRun(
+			arguments: ["credential", "fill"], at: directory,
+			standardInput: "protocol=https\nhost=github.com\nusername=alice\n\n", isNetworkOperation: true
+		)
+
+		#expect(original.standardOutput.contains("password=alice-token"))
+		#expect(!original.standardOutput.contains("zoe-token"))
+		#expect(next.standardOutput.contains("username=zoe"))
+		#expect(next.standardOutput.contains("password=zoe-token"))
+		#expect(!next.standardOutput.contains("alice-token"))
 	}
 
 	@Test

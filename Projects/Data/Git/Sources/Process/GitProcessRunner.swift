@@ -6,16 +6,19 @@ actor GitProcessRunner {
 	private let configuration: GitProcessConfiguration
 	private let credentialStore: any GitCredentialPersisting
 	private let credentialHelper: GitCredentialHelper
+	private let accountSelection: GitHubAccountSelection
 	private let decisionStore = GitCredentialSaveDecisionStore()
 
 	init(
 		configuration: GitProcessConfiguration = GitProcessConfiguration(),
 		credentialStore: any GitCredentialPersisting = GitCredentialStore(),
-		credentialHelper: GitCredentialHelper = GitCredentialHelper()
+		credentialHelper: GitCredentialHelper = GitCredentialHelper(),
+		accountSelection: GitHubAccountSelection = GitHubAccountSelection()
 	) {
 		self.configuration = configuration
 		self.credentialStore = credentialStore
 		self.credentialHelper = credentialHelper
+		self.accountSelection = accountSelection
 	}
 
 	func requestRun(
@@ -54,7 +57,8 @@ actor GitProcessRunner {
 		let broker: GitCredentialBroker?
 		if isNetworkOperation, let helperURL = configuration.askPassHelperURL {
 			broker = try GitCredentialBroker(
-				helperURL: helperURL, operationID: operationID, helper: credentialHelper)
+				helperURL: helperURL, operationID: operationID,
+				helper: credentialHelper.selectingGitHubAccount(accountSelection.account))
 		} else {
 			broker = nil
 		}
@@ -455,6 +459,11 @@ actor GitProcessRunner {
 		{
 			return .commandFailed(
 				"The Groves authentication helper was terminated before authentication could complete. Rebuild or reinstall Groves and verify the helper's code signing and provisioning profile.\n\n\(message)"
+			)
+		}
+		if lowercasedMessage.contains("stage=account-selection") {
+			return .authentication(
+				"Groves could not use the active GitHub account. Choose or reconnect an account in Settings → Accounts, then retry.\n\n\(message)"
 			)
 		}
 		if lowercasedMessage.contains("stage=credential-broker") {

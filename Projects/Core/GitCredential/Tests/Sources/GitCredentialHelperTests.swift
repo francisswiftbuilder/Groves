@@ -5,6 +5,130 @@ import Testing
 
 @Suite(.serialized)
 struct GitCredentialHelperTests {
+	@Test(arguments: ["github.com", "GitHub.com:443"])
+	func theSelectedAccountIsUsedInsteadOfAnAlphabeticalOrSuppliedUsername(host: String) throws {
+		let store = makeTestCredentialStore()
+		let first = GitCredentialDescriptor(kind: .https, host: "github.com", account: "alice")
+		let selected = GitCredentialDescriptor(kind: .https, host: "github.com", account: "zoe")
+		try store.save(secret: "alice-token", for: first)
+		try store.save(secret: "zoe-token", for: selected)
+		let helper = try GitCredentialHelper(store: store).selectingGitHubAccount(selected.account)
+
+		let response = try helper.handle(
+			operation: .get, input: "protocol=https\nhost=\(host)\nusername=alice\n\n", operationID: nil)
+
+		#expect(response == "password=zoe-token\nusername=zoe\n\n")
+	}
+
+	@Test
+	func anOperationKeepsItsAccountWhenAnotherAccountIsAddedOrSelected() throws {
+		let store = makeTestCredentialStore()
+		let original = GitCredentialDescriptor(kind: .https, host: "github.com", account: "original")
+		let added = GitCredentialDescriptor(kind: .https, host: "github.com", account: "added")
+		try store.save(secret: "original-token", for: original)
+		let originalHelper = try GitCredentialHelper(store: store).selectingGitHubAccount(nil)
+		try store.save(secret: "added-token", for: added)
+		let addedHelper = try GitCredentialHelper(store: store).selectingGitHubAccount(added.account)
+		let input = "protocol=https\nhost=github.com\n\n"
+
+		#expect(
+			try originalHelper.handle(operation: .get, input: input, operationID: nil)
+				== "password=original-token\nusername=original\n\n")
+		#expect(
+			try addedHelper.handle(operation: .get, input: input, operationID: nil)
+				== "password=added-token\nusername=added\n\n")
+	}
+
+	@Test
+	func anUnconnectedOperationDoesNotBorrowAnAccountConnectedAfterItStarted() throws {
+		let store = makeTestCredentialStore()
+		let helper = try GitCredentialHelper(store: store).selectingGitHubAccount(nil)
+		let added = GitCredentialDescriptor(kind: .https, host: "github.com", account: "added")
+		try store.save(secret: "added-token", for: added)
+		let input = "protocol=https\nhost=github.com\n\n"
+
+		#expect(throws: GitHubAccountSelectionError.self) {
+			try helper.handle(operation: .get, input: input, operationID: nil)
+		}
+		_ = try helper.handle(operation: .erase, input: input, operationID: nil)
+		#expect(try store.secret(for: added) == "added-token")
+	}
+
+	@Test(arguments: [nil, "removed"] as [String?])
+	func ambiguousOrMissingSelectionsNeverFallBackToAnotherAccount(selection: String?) throws {
+		let store = makeTestCredentialStore()
+		for account in ["alice", "zoe"] {
+			try store.save(
+				secret: "\(account)-token",
+				for: GitCredentialDescriptor(kind: .https, host: "github.com", account: account))
+		}
+		let helper = try GitCredentialHelper(store: store).selectingGitHubAccount(selection)
+
+		#expect(throws: GitHubAccountSelectionError.self) {
+			try helper.handle(
+				operation: .get, input: "protocol=https\nhost=github.com\nusername=alice\n\n",
+				operationID: nil)
+		}
+		#expect(try store.descriptors().count == 2)
+	}
+
+	@Test
+	func rejectingACredentialRemovesOnlyTheOperationAccount() throws {
+		let store = makeTestCredentialStore()
+		let first = GitCredentialDescriptor(kind: .https, host: "github.com", account: "alice")
+		let selected = GitCredentialDescriptor(kind: .https, host: "github.com", account: "zoe")
+		try store.save(secret: "alice-token", for: first)
+		try store.save(secret: "zoe-token", for: selected)
+		let helper = try GitCredentialHelper(store: store).selectingGitHubAccount(selected.account)
+
+		_ = try helper.handle(
+			operation: .erase, input: "protocol=https\nhost=github.com\n\n", operationID: nil)
+
+		#expect(try store.secret(for: first) == "alice-token")
+		#expect(try store.secret(for: selected) == nil)
+		#expect(throws: GitHubAccountSelectionError.self) {
+			try helper.handle(
+				operation: .get, input: "protocol=https\nhost=github.com\n\n", operationID: nil)
+		}
+	}
+
+	@Test
+	func anUnattributedRejectionCannotDeleteMultipleGitHubAccounts() throws {
+		let store = makeTestCredentialStore()
+		for account in ["alice", "zoe"] {
+			try store.save(
+				secret: "\(account)-token",
+				for: GitCredentialDescriptor(kind: .https, host: "github.com", account: account))
+		}
+
+		#expect(throws: GitHubAccountSelectionError.self) {
+			try GitCredentialHelper(store: store).handle(
+				operation: .erase, input: "protocol=https\nhost=github.com\n\n", operationID: nil)
+		}
+		#expect(try store.descriptors().count == 2)
+	}
+
+	@Test
+	func storingAMismatchedUsernameCannotReplaceEitherSavedToken() throws {
+		let store = makeTestCredentialStore()
+		let first = GitCredentialDescriptor(kind: .https, host: "github.com", account: "alice")
+		let selected = GitCredentialDescriptor(kind: .https, host: "github.com", account: "zoe")
+		try store.save(secret: "alice-token", for: first)
+		try store.save(secret: "zoe-token", for: selected)
+		let helper = try GitCredentialHelper(store: store).selectingGitHubAccount(selected.account)
+		let operationID = UUID().uuidString
+
+		#expect(throws: GitHubAccountSelectionError.self) {
+			try helper.handle(
+				operation: .store,
+				input: "protocol=https\nhost=github.com\nusername=alice\npassword=replacement\n\n",
+				operationID: operationID)
+		}
+		try store.commitPending(operationID: operationID)
+		#expect(try store.secret(for: first) == "alice-token")
+		#expect(try store.secret(for: selected) == "zoe-token")
+	}
+
 	@Test(arguments: ["github.com", "GitHub.com", "github.com:443", "GitHub.com:443"])
 	func gitHubHostVariantsUseTheConnectedAccount(host: String) throws {
 		let store = makeTestCredentialStore()

@@ -41,7 +41,7 @@ public struct GitCredentialBrokerClient: Sendable {
 		let status = try GitCredentialSocket.withAddress(path: socketPath) {
 			connect(descriptor, $0, $1)
 		}
-		guard status == 0 else { throw GitCredentialBrokerError.unavailable }
+		guard status == 0 else { throw GitCredentialBrokerError.systemCall("connect", errno) }
 		guard try isTrustedServer(GitCredentialSocket.peer(of: descriptor)) else {
 			throw GitCredentialBrokerError.untrustedPeer
 		}
