@@ -1,60 +1,51 @@
+import CoreGitCredential
 import SwiftUI
 
 struct GitAccountForm: View {
 	@Bindable var viewModel: GitAccountViewModel
-	@State private var isConfirmingSignOut = false
 
 	var body: some View {
 		Form {
-			Section {
-				Label("App-specific Git settings", systemImage: "checkmark.shield")
-				Text(
-					"Groves uses its own HTTPS credentials and commit identity. Your terminal’s global Git settings are not imported. Repository-level settings still apply."
-				)
-				.font(.callout)
-				.foregroundStyle(.secondary)
-			}
-			Section("GitHub Account") {
-				if let account = viewModel.account {
-					LabeledContent("Saved account", value: account.account)
-					Button("Sign Out…", role: .destructive) { isConfirmingSignOut = true }
-						.disabled(viewModel.isConnecting)
-				}
-				SecureField("Personal access token", text: $viewModel.token)
-					.textContentType(.password)
-					.autocorrectionDisabled()
+			if !viewModel.accounts.isEmpty {
+				Section("GitHub Accounts") {
+					Picker("Active account", selection: accountSelection) {
+						if viewModel.account == nil {
+							Text("Choose an account").tag(nil as GitCredentialDescriptor?)
+						}
+						ForEach(viewModel.accounts) { account in
+							Text(account.account).tag(Optional(account))
+						}
+					}
 					.disabled(viewModel.isConnecting)
-					.onSubmit { viewModel.connect() }
-				Link(
-					"Create a token on GitHub",
-					destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
-				Text(
-					"Select the repositories you need. Contents: Read and write is needed to push. Organization approval or additional workflow permissions may also be required."
-				)
-				.font(.caption)
-				.foregroundStyle(.secondary)
-				if viewModel.isConnecting {
 					HStack {
-						ProgressView("Verifying account…").controlSize(.small)
-						Button("Cancel") { viewModel.cancelConnection() }
+						Button("Add Account…") { viewModel.beginAddingAccount() }
+						Button("Replace Token…") { viewModel.beginReplacingToken() }
+							.disabled(viewModel.account == nil)
+						Button("Sign Out…", role: .destructive) { viewModel.beginSignOut() }
+							.disabled(viewModel.account == nil)
 					}
-				} else {
-					Button(viewModel.account == nil ? "Connect GitHub" : "Verify and Replace Token") {
-						viewModel.connect()
-					}
-					.buttonStyle(.borderedProminent)
-					.disabled(viewModel.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+					.disabled(viewModel.isConnecting)
+					Text(
+						"Used by Groves to authenticate with GitHub. Changing accounts does not change commit identity."
+					)
+					.font(.caption)
+					.foregroundStyle(.secondary)
 				}
-				Text(
-					"GitHub HTTPS and SSH remote URLs work with this account. Other hosts require HTTPS."
-				)
-				.font(.caption)
-				.foregroundStyle(.secondary)
+			}
+			if viewModel.accounts.isEmpty || viewModel.tokenEntry != nil {
+				GitAccountTokenSection(viewModel: viewModel)
 			}
 			Section("Commit Identity") {
-				TextField("Name", text: $viewModel.identity.name)
-				TextField("Email", text: $viewModel.identity.email)
-					.autocorrectionDisabled()
+				TextField(
+					"Name", text: $viewModel.identity.name, prompt: Text("Commit author name")
+				)
+				.multilineTextAlignment(.leading)
+				TextField(
+					"Email", text: $viewModel.identity.email, prompt: Text("name@example.com")
+				)
+				.textContentType(.emailAddress)
+				.autocorrectionDisabled()
+				.multilineTextAlignment(.leading)
 				Text(
 					"This identity is written into commits. You can use your GitHub noreply email. A repository’s own identity takes precedence."
 				)
@@ -76,12 +67,35 @@ struct GitAccountForm: View {
 			}
 		}
 		.formStyle(.grouped)
-		.confirmationDialog("Sign out of Groves?", isPresented: $isConfirmingSignOut) {
-			Button("Sign Out", role: .destructive) { viewModel.signOut() }
+		.textFieldStyle(.roundedBorder)
+		.confirmationDialog(
+			"Sign out of \(viewModel.pendingSignOut?.account ?? "this account")?",
+			isPresented: signOutPresentation
+		) {
+			Button("Sign Out", role: .destructive) { viewModel.confirmSignOut() }
+			Button("Cancel", role: .cancel) { viewModel.cancelSignOut() }
 		} message: {
 			Text(
-				"The saved GitHub token will be removed from Groves. Your repositories and commit identity remain available."
+				"This account’s token will be removed from Groves. If other accounts are saved, another account becomes active. Your repositories and commit identity remain available."
 			)
 		}
+	}
+
+	private var signOutPresentation: Binding<Bool> {
+		Binding(
+			get: { viewModel.pendingSignOut != nil },
+			set: { isPresented in
+				if !isPresented { viewModel.cancelSignOut() }
+			}
+		)
+	}
+
+	private var accountSelection: Binding<GitCredentialDescriptor?> {
+		Binding(
+			get: { viewModel.account },
+			set: { account in
+				if let account { viewModel.switchAccount(to: account) }
+			}
+		)
 	}
 }
