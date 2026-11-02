@@ -1,3 +1,4 @@
+import CoreGitCredential
 import DomainGitInterface
 import Foundation
 import SwiftData
@@ -10,11 +11,16 @@ public final class SwiftDataSavedRepositoryStore: SavedRepositoryStore {
 	private var resourceIdentifiers: [UUID: NSObject] = [:]
 
 	public convenience init(isStoredInMemoryOnly: Bool = false) throws {
-		let configuration = ModelConfiguration(
-			"Groves",
-			isStoredInMemoryOnly: isStoredInMemoryOnly
-		)
 		do {
+			let configuration: ModelConfiguration
+			if !isStoredInMemoryOnly, GrovesRuntimeConfiguration.dataNamespace != "Groves" {
+				let directory = GrovesRuntimeConfiguration.applicationSupportURL
+				try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+				configuration = ModelConfiguration(
+					"Groves", url: directory.appending(path: "Repositories.store"))
+			} else {
+				configuration = ModelConfiguration("Groves", isStoredInMemoryOnly: isStoredInMemoryOnly)
+			}
 			let container = try ModelContainer(
 				for: SavedRepositoryRecord.self,
 				configurations: configuration

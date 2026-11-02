@@ -1,4 +1,5 @@
 import AppKit
+import CoreGitCredential
 import SwiftUI
 
 @main
@@ -10,7 +11,8 @@ struct GrovesApp: App {
 	}
 
 	var body: some Scene {
-		WindowGroup("Groves", id: "repository", for: UUID.self) { $repositoryID in
+		WindowGroup(GrovesRuntimeConfiguration.displayName, id: "repository", for: UUID.self) {
+			$repositoryID in
 			AppDIContainer.shared.makeRepositoryRootView(repositoryID: $repositoryID)
 				.frame(minWidth: 760, minHeight: 520)
 		}

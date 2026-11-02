@@ -2,8 +2,6 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="Groves"
-BUNDLE_ID="io.github.francisswiftbuilder.Groves"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$ROOT_DIR/Groves.xcworkspace"
@@ -44,7 +42,19 @@ TARGET_BUILD_DIR="$(
 	printf '%s\n' "$BUILD_SETTINGS" \
 		| awk -F ' = ' '/^[[:space:]]*TARGET_BUILD_DIR = / { print $2; exit }'
 )"
-APP_BUNDLE="$TARGET_BUILD_DIR/$APP_NAME.app"
+APP_NAME="$(
+	printf '%s\n' "$BUILD_SETTINGS" \
+		| awk -F ' = ' '/^[[:space:]]*EXECUTABLE_NAME = / { print $2; exit }'
+)"
+FULL_PRODUCT_NAME="$(
+	printf '%s\n' "$BUILD_SETTINGS" \
+		| awk -F ' = ' '/^[[:space:]]*FULL_PRODUCT_NAME = / { print $2; exit }'
+)"
+BUNDLE_ID="$(
+	printf '%s\n' "$BUILD_SETTINGS" \
+		| awk -F ' = ' '/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER = / { print $2; exit }'
+)"
+APP_BUNDLE="$TARGET_BUILD_DIR/$FULL_PRODUCT_NAME"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/GrovesAskPass.app/Contents/MacOS/GrovesAskPass"
 
