@@ -5,14 +5,20 @@ import Foundation
 actor GitProcessRunner {
 	private let configuration: GitProcessConfiguration
 	private let credentialStore: any GitCredentialPersisting
+	private let credentialHelper: GitCredentialHelper
+	private let accountSelection: GitHubAccountSelection
 	private let decisionStore = GitCredentialSaveDecisionStore()
 
 	init(
 		configuration: GitProcessConfiguration = GitProcessConfiguration(),
-		credentialStore: any GitCredentialPersisting = GitCredentialStore()
+		credentialStore: any GitCredentialPersisting = GitCredentialStore(),
+		credentialHelper: GitCredentialHelper = GitCredentialHelper(),
+		accountSelection: GitHubAccountSelection = GitHubAccountSelection()
 	) {
 		self.configuration = configuration
 		self.credentialStore = credentialStore
+		self.credentialHelper = credentialHelper
+		self.accountSelection = accountSelection
 	}
 
 	func requestRun(
@@ -48,6 +54,15 @@ actor GitProcessRunner {
 			trustScope = try makeTrustScope()
 		}
 		defer { trustScope?.remove() }
+		let broker: GitCredentialBroker?
+		if isNetworkOperation, let helperURL = configuration.askPassHelperURL {
+			broker = try GitCredentialBroker(
+				helperURL: helperURL, operationID: operationID,
+				helper: credentialHelper.selectingGitHubAccount(accountSelection.account))
+		} else {
+			broker = nil
+		}
+		defer { broker?.stop() }
 
 		let authenticationArguments: [String]
 		if isNetworkOperation, let homeURL = configuration.isolatedHomeDirectoryURL {
@@ -70,8 +85,10 @@ actor GitProcessRunner {
 			isNetworkOperation: isNetworkOperation,
 			operationID: operationID,
 			trustScope: trustScope,
-			authenticationArguments: authenticationArguments
+			authenticationArguments: authenticationArguments,
+			credentialSocketPath: broker?.socketPath
 		)
+		broker?.stop()
 		if isNetworkOperation {
 			commitPendingCredentials(operationID: operationID)
 			decisionStore.discard(operationID: operationID)
@@ -89,7 +106,8 @@ actor GitProcessRunner {
 		isNetworkOperation: Bool = false,
 		operationID: String,
 		trustScope: GitSSHTrustScope? = nil,
-		authenticationArguments: [String] = []
+		authenticationArguments: [String] = [],
+		credentialSocketPath: String? = nil
 	) async throws -> GitCommandResult {
 		let standardOutputPipe = Pipe()
 		let standardErrorPipe = Pipe()
@@ -111,7 +129,8 @@ actor GitProcessRunner {
 			merging: environment,
 			operationID: operationID,
 			isNetworkOperation: isNetworkOperation,
-			trustScope: trustScope
+			trustScope: trustScope,
+			credentialSocketPath: credentialSocketPath
 		)
 		process.standardOutput = standardOutputPipe
 		process.standardError = standardErrorPipe
@@ -244,12 +263,15 @@ actor GitProcessRunner {
 		merging environment: [String: String],
 		operationID: String,
 		isNetworkOperation: Bool,
-		trustScope: GitSSHTrustScope?
+		trustScope: GitSSHTrustScope?,
+		credentialSocketPath: String?
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+		result["GROVES_CREDENTIAL_SOCKET"] = nil
 		if let configurationURL = configuration.globalConfigurationURL {
 			result = result.filter { key, _ in
 				!key.hasPrefix("GIT_") && !key.hasPrefix("GROVES_") && !key.hasPrefix("SSH_")
+					&& !key.hasPrefix("DYLD_")
 			}
 			result["GIT_CONFIG_GLOBAL"] = configurationURL.path
 			result["GIT_CONFIG_NOSYSTEM"] = "1"
@@ -277,6 +299,7 @@ actor GitProcessRunner {
 			result["GIT_HTTP_LOW_SPEED_TIME"] = String(Int(policy.lowSpeedTime))
 			result["GIT_TERMINAL_PROMPT"] = "0"
 			if let helperURL = configuration.askPassHelperURL {
+				result["GROVES_CREDENTIAL_SOCKET"] = credentialSocketPath
 				result["GIT_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS_REQUIRE"] = "force"
@@ -305,6 +328,16 @@ actor GitProcessRunner {
 		var result = [configuration.executableURL.path]
 		if configuration.globalConfigurationURL != nil {
 			result += ["-c", "user.useConfigOnly=true"]
+			for prefix in [
+				"git@github.com:",
+				"ssh://git@github.com/",
+				"ssh://git@github.com:22/",
+				"git+ssh://git@github.com/",
+				"git+ssh://git@github.com:22/",
+				"ssh://git@ssh.github.com:443/",
+			] {
+				result += ["-c", "url.https://github.com/.insteadOf=\(prefix)"]
+			}
 			if isNetworkOperation, configuration.askPassHelperURL == nil {
 				result += ["-c", "credential.helper=", "-c", "core.askPass="]
 			}
@@ -426,6 +459,45 @@ actor GitProcessRunner {
 		{
 			return .commandFailed(
 				"The Groves authentication helper was terminated before authentication could complete. Rebuild or reinstall Groves and verify the helper's code signing and provisioning profile.\n\n\(message)"
+			)
+		}
+		if lowercasedMessage.contains("stage=account-selection") {
+			return .authentication(
+				"Groves could not use the active GitHub account. Choose or reconnect an account in Settings → Accounts, then retry.\n\n\(message)"
+			)
+		}
+		if lowercasedMessage.contains("stage=credential-broker") {
+			return .authentication(
+				"The local authentication helper could not connect securely to Groves. Keep Groves open and retry the Git operation.\n\n\(message)"
+			)
+		}
+		if lowercasedMessage.contains("groves authentication helper failed") {
+			return .authentication(
+				"Groves could not read the saved account from Keychain. Check whether macOS is asking to allow Groves access to its saved credential, then retry.\n\n\(message)"
+			)
+		}
+		if configuration.globalConfigurationURL != nil {
+			if lowercasedMessage.contains("saml") || lowercasedMessage.contains("single sign-on") {
+				return .authentication(
+					"This organization requires single sign-on. Authorize your token or app for the organization, then retry.\n\n\(message)"
+				)
+			}
+			if lowercasedMessage.contains("repository not found") {
+				return .authentication(
+					"The remote repository could not be accessed. Check its URL and that your account can read it. For GitHub, check the token’s repository selection, Contents: Read access, and organization approval.\n\n\(message)"
+				)
+			}
+			if lowercasedMessage.contains("requested url returned error: 403") {
+				return .authentication(
+					"The remote denied repository access. Check the token’s repository permissions and any required organization approval. Signing in again alone may not grant this access.\n\n\(message)"
+				)
+			}
+		}
+		if lowercasedMessage.contains("ssl certificate problem")
+			|| lowercasedMessage.contains("certificate verification failed")
+		{
+			return .network(
+				"The remote server’s TLS certificate could not be verified. Check your network, proxy, and trusted certificates.\n\n\(message)"
 			)
 		}
 		if lowercasedMessage.contains("authentication failed")

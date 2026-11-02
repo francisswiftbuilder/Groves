@@ -55,7 +55,7 @@ struct GitAccountViewModelTests {
 		override func stopLoading() {}
 	}
 
-	private final class SecurityClientStub: GitCredentialSecurityClient, @unchecked Sendable {
+	final class SecurityClientStub: GitCredentialSecurityClient, @unchecked Sendable {
 		private let lock = NSLock()
 		private var records: [[String: Any]] = []
 
@@ -148,7 +148,7 @@ struct GitAccountViewModelTests {
 	}
 
 	@Test
-	func testDifferentAccountRequiresSigningOutBeforeReplacingTheToken() async throws {
+	func testReplacingATokenCannotChangeTheAccount() async throws {
 		let context = try makeContext()
 		let viewModel = context.viewModel
 		viewModel.token = "valid-test-token"
@@ -156,6 +156,7 @@ struct GitAccountViewModelTests {
 		try await waitUntil { !viewModel.isConnecting }
 		let account = try #require(viewModel.account)
 
+		viewModel.beginReplacingToken()
 		viewModel.token = "different-test-token"
 		viewModel.connect()
 		try await waitUntil { !viewModel.isConnecting }
@@ -163,6 +164,188 @@ struct GitAccountViewModelTests {
 		#expect(try context.store.descriptors() == [account])
 		#expect(try context.store.secret(for: account) == "valid-test-token")
 		#expect(viewModel.errorMessage != nil)
+		#expect(viewModel.tokenEntry == .replaceToken(account))
+	}
+
+	@Test
+	func addingAndSwitchingAccountsPreservesBothTokensAndTheCommitIdentity() async throws {
+		let context = try makeContext()
+		let viewModel = context.viewModel
+		viewModel.token = "valid-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let original = try #require(viewModel.account)
+		let identity = viewModel.identity
+
+		viewModel.beginAddingAccount()
+		viewModel.token = "different-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let added = try #require(viewModel.account)
+
+		#expect(added.account == "different")
+		#expect(Set(viewModel.accounts) == [original, added])
+		#expect(try context.store.secret(for: original) == "valid-test-token")
+		#expect(try context.store.secret(for: added) == "different-test-token")
+		#expect(viewModel.tokenEntry == nil)
+		#expect(GitHubAccountSelection(defaults: context.defaults).account == added.account)
+
+		viewModel.switchAccount(to: original)
+
+		#expect(viewModel.account == original)
+		#expect(viewModel.identity == identity)
+		#expect(GitHubAccountSelection(defaults: context.defaults).account == original.account)
+		let reloaded = GitAccountViewModel(
+			store: context.store, defaults: context.defaults, configurationURL: context.configurationURL)
+		reloaded.load()
+		#expect(reloaded.account == original)
+		#expect(Set(reloaded.accounts) == [original, added])
+	}
+
+	@Test
+	func addingAnExistingAccountCannotReplaceItsTokenOrChangeTheSelection() async throws {
+		let context = try makeContext()
+		let viewModel = context.viewModel
+		viewModel.token = "valid-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let original = try #require(viewModel.account)
+
+		viewModel.beginAddingAccount()
+		viewModel.token = "another-valid-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+
+		#expect(viewModel.account == original)
+		#expect(viewModel.accounts == [original])
+		#expect(try context.store.secret(for: original) == "valid-test-token")
+		#expect(viewModel.errorMessage?.contains("already connected") == true)
+		#expect(viewModel.tokenEntry == .addAccount)
+	}
+
+	@Test
+	func loadingDoesNotSilentlyChooseBetweenAccountsOrReplaceAMissingSelection() throws {
+		let context = try makeContext()
+		let first = GitCredentialDescriptor(kind: .https, host: "github.com", account: "first")
+		let second = GitCredentialDescriptor(kind: .https, host: "github.com", account: "second")
+		try context.store.save(secret: "first-token", for: first)
+		try context.store.save(secret: "second-token", for: second)
+		let selection = GitHubAccountSelection(defaults: context.defaults)
+
+		context.viewModel.load()
+		#expect(context.viewModel.account == nil)
+		#expect(context.viewModel.accounts == [first, second])
+		#expect(selection.account == nil)
+
+		selection.select("removed-account")
+		context.viewModel.load()
+		#expect(context.viewModel.account == nil)
+		#expect(selection.account == "removed-account")
+		context.viewModel.switchAccount(to: second)
+		#expect(context.viewModel.account == second)
+		#expect(selection.account == "second")
+	}
+
+	@Test
+	func loadingASingleLegacyAccountMakesItActive() throws {
+		let context = try makeContext()
+		let account = GitCredentialDescriptor(kind: .https, host: "github.com", account: "legacy")
+		try context.store.save(secret: "legacy-token", for: account)
+
+		context.viewModel.load()
+
+		#expect(context.viewModel.account == account)
+		#expect(context.viewModel.tokenEntry == nil)
+		#expect(GitHubAccountSelection(defaults: context.defaults).account == "legacy")
+	}
+
+	@Test
+	func signingOutRemovesOnlyTheActiveAccountAndSelectsARemainingAccount() async throws {
+		let context = try makeContext()
+		let viewModel = context.viewModel
+		viewModel.token = "valid-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let original = try #require(viewModel.account)
+		viewModel.beginAddingAccount()
+		viewModel.token = "different-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let added = try #require(viewModel.account)
+
+		viewModel.signOut()
+
+		#expect(viewModel.account == original)
+		#expect(viewModel.accounts == [original])
+		#expect(try context.store.secret(for: original) == "valid-test-token")
+		#expect(try context.store.secret(for: added) == nil)
+		#expect(GitHubAccountSelection(defaults: context.defaults).account == original.account)
+	}
+
+	@Test
+	func aPendingSignOutCannotRemoveAnAccountSelectedAfterTheConfirmationOpened() async throws {
+		let context = try makeContext()
+		let viewModel = context.viewModel
+		viewModel.token = "valid-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let original = try #require(viewModel.account)
+		viewModel.beginAddingAccount()
+		viewModel.token = "different-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let added = try #require(viewModel.account)
+		viewModel.beginSignOut()
+		#expect(viewModel.pendingSignOut == added)
+
+		viewModel.switchAccount(to: original)
+		viewModel.confirmSignOut()
+
+		#expect(viewModel.pendingSignOut == nil)
+		#expect(viewModel.account == original)
+		#expect(try context.store.secret(for: original) == "valid-test-token")
+		#expect(try context.store.secret(for: added) == "different-test-token")
+		viewModel.beginSignOut()
+		viewModel.confirmSignOut()
+		#expect(viewModel.account == added)
+		#expect(try context.store.secret(for: original) == nil)
+		#expect(try context.store.secret(for: added) == "different-test-token")
+	}
+
+	@Test
+	func cancellingTokenEntryClearsTheDraftAndKeepsTheAccount() async throws {
+		let context = try makeContext()
+		let viewModel = context.viewModel
+		viewModel.token = "valid-test-token"
+		viewModel.connect()
+		try await waitUntil { !viewModel.isConnecting }
+		let original = try #require(viewModel.account)
+		viewModel.beginAddingAccount()
+		viewModel.token = "slow-test-token"
+		viewModel.connect()
+
+		viewModel.cancelTokenEntry()
+		viewModel.beginReplacingToken()
+		viewModel.token = "draft-token"
+		viewModel.cancelTokenEntry()
+
+		#expect(!viewModel.isConnecting)
+		#expect(viewModel.account == original)
+		#expect(viewModel.token.isEmpty)
+		#expect(viewModel.tokenEntry == nil)
+		#expect(try context.store.secret(for: original) == "valid-test-token")
+	}
+
+	@Test
+	func anUnavailableAccountCannotBecomeActive() throws {
+		let context = try makeContext()
+		let account = GitCredentialDescriptor(kind: .https, host: "github.com", account: "removed")
+
+		context.viewModel.switchAccount(to: account)
+
+		#expect(context.viewModel.account == nil)
+		#expect(context.viewModel.errorMessage != nil)
+		#expect(GitHubAccountSelection(defaults: context.defaults).account == nil)
 	}
 
 	@Test
