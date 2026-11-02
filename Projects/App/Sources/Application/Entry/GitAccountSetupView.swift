@@ -7,17 +7,16 @@ struct GitAccountSetupView: View {
 	var body: some View {
 		GitAccountForm(viewModel: viewModel)
 			.safeAreaInset(edge: .top) {
-				VStack(alignment: .leading, spacing: 6) {
-					Label(
-						isOnboarding ? "Set Up Git in Groves" : "Accounts & Git",
-						systemImage: "person.crop.circle.badge.checkmark"
-					)
-					.font(.title2.bold())
-					Text("Connect your account once, then work with your repositories.")
-						.foregroundStyle(.secondary)
+				if isOnboarding {
+					VStack(alignment: .leading, spacing: 6) {
+						Label("Set Up Git in Groves", systemImage: "person.crop.circle.badge.checkmark")
+							.font(.title2.bold())
+						Text("Connect your account once, then work with your repositories.")
+							.foregroundStyle(.secondary)
+					}
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.padding(20)
 				}
-				.frame(maxWidth: .infinity, alignment: .leading)
-				.padding(20)
 			}
 			.safeAreaInset(edge: .bottom) {
 				HStack {
@@ -33,6 +32,7 @@ struct GitAccountSetupView: View {
 					.disabled(!viewModel.identity.isValid || viewModel.isConnecting)
 				}
 				.padding(20)
+				.background(.bar)
 			}
 			.frame(minWidth: 480, idealWidth: 560, maxWidth: 680, minHeight: 580)
 			.task { viewModel.load() }
