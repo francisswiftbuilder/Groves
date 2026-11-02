@@ -46,7 +46,7 @@ struct GitAccountForm: View {
 					.disabled(viewModel.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 				}
 				Text(
-					"Use HTTPS remote URLs with this account. SSH remotes must be changed to HTTPS in repository Remotes."
+					"GitHub HTTPS and SSH remote URLs work with this account. Other hosts require HTTPS."
 				)
 				.font(.caption)
 				.foregroundStyle(.secondary)

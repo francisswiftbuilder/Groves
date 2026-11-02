@@ -305,6 +305,16 @@ actor GitProcessRunner {
 		var result = [configuration.executableURL.path]
 		if configuration.globalConfigurationURL != nil {
 			result += ["-c", "user.useConfigOnly=true"]
+			for prefix in [
+				"git@github.com:",
+				"ssh://git@github.com/",
+				"ssh://git@github.com:22/",
+				"git+ssh://git@github.com/",
+				"git+ssh://git@github.com:22/",
+				"ssh://git@ssh.github.com:443/",
+			] {
+				result += ["-c", "url.https://github.com/.insteadOf=\(prefix)"]
+			}
 			if isNetworkOperation, configuration.askPassHelperURL == nil {
 				result += ["-c", "credential.helper=", "-c", "core.askPass="]
 			}
@@ -426,6 +436,35 @@ actor GitProcessRunner {
 		{
 			return .commandFailed(
 				"The Groves authentication helper was terminated before authentication could complete. Rebuild or reinstall Groves and verify the helper's code signing and provisioning profile.\n\n\(message)"
+			)
+		}
+		if lowercasedMessage.contains("groves authentication helper failed") {
+			return .authentication(
+				"Groves could not use the saved account through its authentication helper. Check whether macOS is asking to allow GrovesAskPass access to the Groves credential in Keychain.\n\n\(message)"
+			)
+		}
+		if configuration.globalConfigurationURL != nil {
+			if lowercasedMessage.contains("saml") || lowercasedMessage.contains("single sign-on") {
+				return .authentication(
+					"This organization requires single sign-on. Authorize your token or app for the organization, then retry.\n\n\(message)"
+				)
+			}
+			if lowercasedMessage.contains("repository not found") {
+				return .authentication(
+					"The remote repository could not be accessed. Check its URL and that your account can read it. For GitHub, check the token’s repository selection, Contents: Read access, and organization approval.\n\n\(message)"
+				)
+			}
+			if lowercasedMessage.contains("requested url returned error: 403") {
+				return .authentication(
+					"The remote denied repository access. Check the token’s repository permissions and any required organization approval. Signing in again alone may not grant this access.\n\n\(message)"
+				)
+			}
+		}
+		if lowercasedMessage.contains("ssl certificate problem")
+			|| lowercasedMessage.contains("certificate verification failed")
+		{
+			return .network(
+				"The remote server’s TLS certificate could not be verified. Check your network, proxy, and trusted certificates.\n\n\(message)"
 			)
 		}
 		if lowercasedMessage.contains("authentication failed")
