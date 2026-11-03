@@ -28,7 +28,7 @@ struct CommitTaskEditor: View {
 				TextField(
 					"Summary",
 					text: Binding(
-						get: { viewModel.selectedTask?.subject ?? "" }, set: viewModel.didUpdateSubject)
+						get: { viewModel.selectedTask?.subject ?? "" }, set: { viewModel.didUpdateSubject($0) })
 				)
 				.labelsHidden()
 				.textFieldStyle(.roundedBorder)
@@ -38,7 +38,7 @@ struct CommitTaskEditor: View {
 				TextField(
 					"Description",
 					text: Binding(
-						get: { viewModel.selectedTask?.body ?? "" }, set: viewModel.didUpdateBody),
+						get: { viewModel.selectedTask?.body ?? "" }, set: { viewModel.didUpdateBody($0) }),
 					prompt: Text("Optional"), axis: .vertical
 				)
 				.lineLimit(3...5)
