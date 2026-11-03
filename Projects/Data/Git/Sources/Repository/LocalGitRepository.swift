@@ -1,7 +1,7 @@
 import DomainGitInterface
 import Foundation
 
-public struct LocalGitRepository: GitRepository {
+public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	private static let maximumPreviewByteCount = 10 * 1_024 * 1_024
 	private let runner: GitProcessRunner
 
@@ -690,6 +690,108 @@ public struct LocalGitRepository: GitRepository {
 				standardInput: message
 			)
 		}
+	}
+
+	public func requestCommitPlanInput(at repositoryURL: URL) async throws -> GitCommitPlanInput {
+		try await requestEnsureIdle(at: repositoryURL)
+		let state = try await requestOperationState(at: repositoryURL)
+		guard !state.isDetached else { throw GitCommitPlanError.repositoryChanged }
+		let head = try await requestCommitPlanHead(at: repositoryURL)
+		let entries = try await runner.requestRun(
+			arguments: ["ls-files", "--stage", "-z"], at: repositoryURL
+		).standardOutput
+		let changes = try await requestWorkingTreeChanges(at: repositoryURL).filter(\.isStaged)
+		var units: [GitCommitUnit] = []
+		for change in changes {
+			try Task.checkCancellation()
+			let diff = try await runner.requestRun(
+				arguments: [
+					"--literal-pathspecs", "diff", "--cached", "--binary", "--full-index",
+					"--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--unified=0",
+					"--", change.path,
+				] + [change.previousPath].compactMap { $0 },
+				at: repositoryURL
+			).standardOutput
+			units.append(contentsOf: try GitCommitUnitParser.parse(diff, path: change.path))
+		}
+		let recentMessages: [String]
+		if let head {
+			let messages = try await runner.requestRun(
+				arguments: [
+					"log", "-8", "--no-merges", "--no-show-signature", "--no-notes", "--format=%B%x00", head,
+					"--",
+				],
+				at: repositoryURL
+			).standardOutput
+			recentMessages = messages.split(separator: "\0").map {
+				String(
+					String($0).trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.prefix(512))
+			}.filter { !$0.isEmpty }
+		} else {
+			recentMessages = []
+		}
+		let currentEntries = try await runner.requestRun(
+			arguments: ["ls-files", "--stage", "-z"], at: repositoryURL
+		).standardOutput
+		guard entries == currentEntries, head == (try await requestCommitPlanHead(at: repositoryURL))
+		else { throw GitCommitPlanError.repositoryChanged }
+		return GitCommitPlanInput(
+			headHash: head, indexFingerprint: GitCommitUnitParser.fingerprint(entries), units: units,
+			recentCommitMessages: recentMessages)
+	}
+
+	public func requestCommitTask(
+		_ task: GitCommitTask,
+		expecting input: GitCommitPlanInput,
+		at repositoryURL: URL
+	) async throws {
+		guard task.hasValidMessage, !task.unitIDs.isEmpty,
+			Set(task.unitIDs).count == task.unitIDs.count,
+			Set(task.unitIDs).isSubset(of: Set(input.units.map(\.id)))
+		else { throw GitCommitPlanError.invalidPlan }
+		try await requestMutation(at: repositoryURL) {
+			let indexPath = try await runner.requestRun(
+				arguments: ["rev-parse", "--path-format=absolute", "--git-path", "index"],
+				at: repositoryURL
+			).standardOutput.trimmingCharacters(in: .newlines)
+			let transaction: GitCommitIndexTransaction
+			do {
+				transaction = try GitCommitIndexTransaction(indexURL: URL(fileURLWithPath: indexPath))
+			} catch let error as POSIXError where error.code == .EEXIST {
+				throw GitRepositoryError.commandFailed(
+					"Another Git process is updating staged changes. Wait for it to finish and retry.")
+			}
+			defer { withExtendedLifetime(transaction) {} }
+			guard try await requestCommitPlanInput(at: repositoryURL) == input else {
+				throw GitCommitPlanError.repositoryChanged
+			}
+			let environment = ["GIT_INDEX_FILE": transaction.temporaryIndexURL.path]
+			_ = try await runner.requestRun(
+				arguments: input.headHash.map { ["read-tree", $0] } ?? ["read-tree", "--empty"],
+				at: repositoryURL, environment: environment)
+			let selected = input.units.filter { task.unitIDs.contains($0.id) }
+			let patch = try GitCommitUnitParser.combinedPatch(for: selected)
+			_ = try await runner.requestRun(
+				arguments: ["apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "-"],
+				at: repositoryURL, standardInput: patch, environment: environment)
+			let subject = task.subject.trimmingCharacters(in: .whitespacesAndNewlines)
+			let body = task.body.trimmingCharacters(in: .whitespacesAndNewlines)
+			guard try await requestCommitPlanHead(at: repositoryURL) == input.headHash else {
+				throw GitCommitPlanError.repositoryChanged
+			}
+			_ = try await runner.requestRun(
+				arguments: ["commit", "--file", "-"], at: repositoryURL,
+				standardInput: body.isEmpty ? subject : subject + "\n\n" + body,
+				environment: environment)
+		}
+	}
+
+	private func requestCommitPlanHead(at repositoryURL: URL) async throws -> String? {
+		let result = try await runner.requestRun(
+			arguments: ["rev-parse", "--verify", "--quiet", "HEAD"], at: repositoryURL,
+			acceptedTerminationStatuses: [0, 1])
+		let hash = result.standardOutput.trimmingCharacters(in: .newlines)
+		return hash.isEmpty ? nil : hash
 	}
 
 	public func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws {

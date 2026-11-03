@@ -684,6 +684,19 @@ struct WorkspaceViewModelTests {
 	}
 
 	@Test
+	func preparingTheSidebarAgainPreservesCollapsedSectionsAndSelection() {
+		let workspace = makeRepositoryWorkspace()
+		let repositoryID = UUID()
+		let group = RepositorySidebarGroup(repositoryID: repositoryID, kind: .branches)
+		workspace.viewModel.didPrepareSidebar(repositoryID: repositoryID)
+		workspace.viewModel.setSidebarGroup(group, isExpanded: false)
+		workspace.viewModel.didSelectSection(.history)
+		workspace.viewModel.didPrepareSidebar(repositoryID: repositoryID)
+		#expect(!workspace.viewModel.expandedSidebarGroups.contains(group))
+		#expect(workspace.viewModel.selectedSection == .history)
+	}
+
+	@Test
 	func testSelectionEventsPublishAfterSwiftUIUpdateCycle() async throws {
 		let change = WorkingTreeChange(
 			path: "GalleryView.swift",

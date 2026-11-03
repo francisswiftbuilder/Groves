@@ -34,5 +34,6 @@ struct GrovesApp: App {
 		Settings {
 			GrovesSettingsView(accountViewModel: AppDIContainer.shared.accountViewModel)
 		}
+		.windowResizability(.contentSize)
 	}
 }

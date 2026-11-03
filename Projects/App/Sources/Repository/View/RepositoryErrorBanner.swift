@@ -12,18 +12,16 @@ struct RepositoryErrorBanner: View {
 				Image(systemName: "exclamationmark.circle.fill")
 					.foregroundStyle(.red)
 					.accessibilityHidden(true)
-				VStack(alignment: .leading, spacing: 2) {
-					Text("Git Couldn’t Complete the Action").font(.headline)
-					Text("Review the details, update the repository state, and try again.")
-						.font(.caption)
-						.foregroundStyle(.secondary)
-				}
+				Text("Couldn’t complete the Git action.").font(.callout)
 				Spacer(minLength: 8)
 				if message.localizedCaseInsensitiveContains("settings") {
 					SettingsLink { Text("Open Settings") }
 				}
-				Button("Details") { showsDetails.toggle() }
-				Button("Dismiss") { onDismiss() }
+				Button(showsDetails ? "Hide Details" : "Details") { showsDetails.toggle() }
+				Button("Dismiss", systemImage: "xmark", action: onDismiss)
+					.labelStyle(.iconOnly)
+					.buttonStyle(.plain)
+					.help("Dismiss")
 			}
 			if showsDetails {
 				HStack(alignment: .top, spacing: 8) {

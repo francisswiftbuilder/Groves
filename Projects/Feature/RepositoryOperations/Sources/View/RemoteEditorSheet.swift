@@ -37,11 +37,6 @@ struct RemoteEditorSheet: View {
 			TextField("Name", text: $name).disabled(isEditing)
 			TextField("Fetch URL", text: $fetchURL)
 			TextField("Push URL", text: $pushURL, prompt: Text("Uses fetch URL when empty"))
-			if fetchURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-				Text("A fetch URL is required.")
-					.font(.caption)
-					.foregroundStyle(.red)
-			}
 			if hasMultipleURLs {
 				Text("This remote has multiple URLs. Edit them with Git to preserve all destinations.")
 					.font(.caption)
@@ -55,12 +50,18 @@ struct RemoteEditorSheet: View {
 		}
 		.disabled(isLoading)
 		.formStyle(.grouped)
-		.padding(16)
-		.frame(width: 500, height: 320)
-		.safeAreaInset(edge: .bottom) {
+		.safeAreaInset(edge: .top, spacing: 0) {
+			Text(isEditing ? "Edit Remote" : "New Remote")
+				.font(.headline)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(.horizontal, 20)
+				.padding(.top, 20)
+		}
+		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				Spacer()
 				Button("Cancel", role: .cancel) { dismiss() }
+					.keyboardShortcut(.cancelAction)
 					.disabled(isLoading)
 				Button(isEditing ? "Save" : "Add Remote") {
 					onSave(
@@ -70,11 +71,12 @@ struct RemoteEditorSheet: View {
 					)
 				}
 				.buttonStyle(.borderedProminent)
+				.keyboardShortcut(.defaultAction)
 				.disabled(!isValid || isLoading || hasMultipleURLs)
 			}
-			.padding(12)
-			.background(.bar)
+			.padding(20)
 		}
+		.frame(width: 500, height: 320)
 		.interactiveDismissDisabled(isLoading)
 	}
 

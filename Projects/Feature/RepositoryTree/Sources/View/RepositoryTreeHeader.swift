@@ -7,15 +7,16 @@ struct RepositoryTreeHeader: View {
 	let statistics: (directories: Int, files: Int)
 
 	var body: some View {
-		HStack(spacing: 10) {
-			Label("\(statistics.directories) folders", systemImage: "folder")
-			Label("\(statistics.files) files", systemImage: "doc")
-				.foregroundStyle(.secondary)
-			Spacer()
+		VStack(spacing: 0) {
+			HStack {
+				Text("Files").font(.headline)
+				Spacer()
+				Text("\(statistics.files)").font(.caption).foregroundStyle(.secondary)
+			}
+			.padding(.horizontal, 12)
+			.frame(height: 52)
+			.background(.bar)
+			Divider()
 		}
-		.font(.caption)
-		.padding(.horizontal, 12)
-		.padding(.vertical, 8)
-		.background(.bar)
 	}
 }

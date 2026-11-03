@@ -151,6 +151,8 @@ struct DiffPresentationContractTests {
 		try await waitUntil { await gate.callCount(of: label) == 1 }
 		await gate.resumeCall(0)
 		try await waitUntil { workspace.changesDiffViewModel.diff == diff }
+		#expect(workspace.changesDiffViewModel.additionCount == 3)
+		#expect(workspace.changesDiffViewModel.deletionCount == 3)
 
 		workspace.viewModel.didProduceSnapshot(
 			RepositorySnapshot(
@@ -169,6 +171,8 @@ struct DiffPresentationContractTests {
 
 		#expect(workspace.changesDiffViewModel.diff == diff)
 		#expect(workspace.changesDiffViewModel.isLoading)
+		#expect(workspace.changesDiffViewModel.additionCount == 3)
+		#expect(workspace.changesDiffViewModel.deletionCount == 3)
 		await gate.resumeCall(1)
 		try await waitUntil { workspace.changesDiffViewModel.isLoading == false }
 

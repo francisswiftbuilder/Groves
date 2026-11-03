@@ -25,15 +25,18 @@ public final class CommitViewModel {
 		public let contentUseCase: any RepositoryContentUseCase
 		public let changesUseCase: any RepositoryChangesUseCase
 		public let repositoryURL: @MainActor () -> URL?
+		public let commitPlanningUseCase: (any RepositoryCommitPlanningUseCase)?
 
 		public init(
 			contentUseCase: any RepositoryContentUseCase,
 			changesUseCase: any RepositoryChangesUseCase,
-			repositoryURL: @escaping @MainActor () -> URL?
+			repositoryURL: @escaping @MainActor () -> URL?,
+			commitPlanningUseCase: (any RepositoryCommitPlanningUseCase)? = nil
 		) {
 			self.contentUseCase = contentUseCase
 			self.changesUseCase = changesUseCase
 			self.repositoryURL = repositoryURL
+			self.commitPlanningUseCase = commitPlanningUseCase
 		}
 	}
 
@@ -49,6 +52,7 @@ public final class CommitViewModel {
 	@ObservationIgnored private var mutationTask: Task<Void, Never>?
 	private var activeMutationRequestID: Int?
 	private var mutationRequestSequence = 0
+	let planningViewModel: CommitPlanViewModel?
 
 	public init(
 		dependencies: Dependencies,
@@ -56,6 +60,13 @@ public final class CommitViewModel {
 	) {
 		self.dependencies = dependencies
 		self.actions = actions
+		planningViewModel = dependencies.commitPlanningUseCase.map { useCase in
+			CommitPlanViewModel(
+				dependencies: .init(
+					useCase: useCase, contentUseCase: dependencies.contentUseCase,
+					repositoryURL: dependencies.repositoryURL),
+				didProduceSnapshot: actions.didProduceSnapshot)
+		}
 	}
 
 	deinit {
@@ -86,6 +97,7 @@ public final class CommitViewModel {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
+		planningViewModel?.apply(snapshot)
 		let nextAvailability = CommitAvailability(
 			hasStagedChanges: snapshot.changes.contains(where: \.isStaged),
 			hasCommits: !snapshot.commits.isEmpty,
@@ -110,6 +122,7 @@ public final class CommitViewModel {
 	}
 
 	public func onDisappear() {
+		planningViewModel?.onDisappear()
 		mutationTask?.cancel()
 		mutationTask = nil
 		activeMutationRequestID = nil

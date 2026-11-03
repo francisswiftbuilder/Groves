@@ -65,8 +65,6 @@ struct ConflictHunkView: View {
 			.disabled(isLoading)
 		}
 		.padding(12)
-		.background(.background.secondary)
-		.clipShape(.rect(cornerRadius: 10))
 		.accessibilityElement(children: .contain)
 		.accessibilityLabel("Conflict \(position) of \(count)")
 	}

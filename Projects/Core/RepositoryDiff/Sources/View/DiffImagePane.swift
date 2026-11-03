@@ -1,4 +1,5 @@
 import AppKit
+import CoreRepositoryUI
 import SwiftUI
 
 struct DiffImagePane: View {
@@ -11,25 +12,6 @@ struct DiffImagePane: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			HStack(spacing: 8) {
-				Text(title)
-					.font(.caption.weight(.semibold))
-				Spacer(minLength: 8)
-				if let image {
-					Text("\(Int(image.size.width)) × \(Int(image.size.height))")
-						.foregroundStyle(.secondary)
-				}
-				if let byteCount {
-					Text(ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file))
-						.foregroundStyle(.secondary)
-				}
-			}
-			.font(.caption)
-			.padding(.horizontal, 10)
-			.frame(height: 30)
-
-			Divider()
-
 			if let image {
 				GeometryReader { geometry in
 					ScrollView([.horizontal, .vertical]) {
@@ -54,23 +36,33 @@ struct DiffImagePane: View {
 					.defaultScrollAnchor(.center)
 				}
 			} else if decodingFailed {
-				ContentUnavailableView(
-					"Could Not Decode \(title) Image",
-					systemImage: "photo.badge.exclamationmark",
-					description: Text("The image data uses a format that Groves cannot display.")
-				)
+				EmptyStateView(title: "Unsupported Image", systemImage: "photo.badge.exclamationmark")
 			} else {
-				ContentUnavailableView(
-					unavailableMessage,
-					systemImage: "photo.badge.exclamationmark"
-				)
+				EmptyStateView(title: unavailableMessage, systemImage: "photo.badge.exclamationmark")
 			}
 		}
-		.background(Color.primary.opacity(0.025))
-		.clipShape(.rect(cornerRadius: 8))
-		.overlay {
-			RoundedRectangle(cornerRadius: 8)
-				.stroke(.separator, lineWidth: 1)
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			VStack(spacing: 0) {
+				HStack(spacing: 8) {
+					Text(title)
+						.font(.caption.weight(.semibold))
+					Spacer(minLength: 8)
+					if let image {
+						Text("\(Int(image.size.width)) × \(Int(image.size.height))")
+							.foregroundStyle(.secondary)
+					}
+					if let byteCount {
+						Text(ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file))
+							.foregroundStyle(.secondary)
+					}
+				}
+				.font(.caption)
+				.padding(.horizontal, 10)
+				.frame(height: 30)
+
+				Divider()
+			}
 		}
 	}
 

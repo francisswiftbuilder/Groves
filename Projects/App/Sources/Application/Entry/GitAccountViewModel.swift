@@ -18,8 +18,10 @@ final class GitAccountViewModel {
 	private(set) var pendingSignOut: GitCredentialDescriptor?
 	private(set) var isConnecting = false
 	private(set) var errorMessage: String?
+	private(set) var identityErrorMessage: String?
 	private(set) var statusMessage: String?
 	private(set) var hasCompletedSetup: Bool
+	private var savedIdentity = GitIdentityConfiguration()
 	private let store: GitCredentialStore
 	private let client: GitHubAuthenticationClient
 	private let defaults: UserDefaults
@@ -45,7 +47,11 @@ final class GitAccountViewModel {
 			name: defaults.string(forKey: "isolatedGitAuthorName") ?? "",
 			email: defaults.string(forKey: "isolatedGitAuthorEmail") ?? ""
 		)
+		savedIdentity = identity
 	}
+
+	var hasIdentityChanges: Bool { identity != savedIdentity }
+	var canSaveIdentity: Bool { identity.isValid && hasIdentityChanges && !isConnecting }
 
 	deinit {
 		connectionTask?.cancel()
@@ -193,6 +199,7 @@ final class GitAccountViewModel {
 			)
 			try savedIdentity.save(to: configurationURL)
 			identity = savedIdentity
+			self.savedIdentity = savedIdentity
 			defaults.set(identity.name, forKey: "isolatedGitAuthorName")
 			defaults.set(identity.email, forKey: "isolatedGitAuthorEmail")
 			defaults.set(true, forKey: "isolatedGitSetupCompleted")
@@ -201,6 +208,7 @@ final class GitAccountViewModel {
 			statusMessage = "Git identity saved for Groves."
 		} catch {
 			errorMessage = error.localizedDescription
+			identityErrorMessage = error.localizedDescription
 		}
 	}
 
@@ -209,6 +217,12 @@ final class GitAccountViewModel {
 		clearMessages()
 		defaults.set(true, forKey: "isolatedGitSetupCompleted")
 		hasCompletedSetup = true
+	}
+
+	func restoreIdentity() {
+		guard !isConnecting else { return }
+		identity = savedIdentity
+		clearMessages()
 	}
 
 	func beginSignOut() {
@@ -262,6 +276,7 @@ final class GitAccountViewModel {
 
 	private func clearMessages() {
 		errorMessage = nil
+		identityErrorMessage = nil
 		statusMessage = nil
 	}
 }

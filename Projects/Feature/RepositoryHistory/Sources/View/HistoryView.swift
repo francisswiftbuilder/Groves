@@ -48,7 +48,6 @@ public struct HistoryView: View {
 			if historyViewModel.commitGraphItems.isEmpty {
 				EmptyStateView(
 					title: "No Commits",
-					message: "Commit history will appear after the first commit.",
 					systemImage: "point.3.connected.trianglepath.dotted"
 				)
 			} else {
@@ -92,35 +91,9 @@ public struct HistoryView: View {
 	private var historyList: some View {
 		ScrollViewReader { proxy in
 			VStack(spacing: 0) {
-				VStack(spacing: 8) {
-					HStack(spacing: 8) {
-						Image(systemName: "point.3.connected.trianglepath.dotted")
-							.foregroundStyle(.secondary)
-							.accessibilityHidden(true)
-						Text("All Branches")
-							.font(.subheadline.weight(.semibold))
-						Spacer(minLength: 0)
-					}
-
-					TextField(
-						"Search commits",
-						text: Binding(
-							get: { historyViewModel.searchText },
-							set: { historyViewModel.didChangeSearchText($0) }
-						)
-					)
-					.textFieldStyle(.roundedBorder)
-					.accessibilityLabel("Search commit history")
-				}
-				.padding(.horizontal, 12)
-				.padding(.vertical, 8)
-				.background(.bar)
-
-				Divider()
-
 				List(selection: selectedCommitBinding) {
 					if historyViewModel.displayedCommitGraphItems.isEmpty {
-						ContentUnavailableView.search(text: historyViewModel.searchText)
+						EmptyStateView(title: "No Results", systemImage: "magnifyingglass")
 							.listRowSeparator(.hidden)
 					} else {
 						ForEach(historyViewModel.displayedCommitGraphItems) { item in
@@ -183,6 +156,22 @@ public struct HistoryView: View {
 					}
 				}
 				.listStyle(.plain)
+				.safeAreaInset(edge: .top, spacing: 0) {
+					VStack(spacing: 0) {
+						TextField(
+							"Search Commits",
+							text: Binding(
+								get: { historyViewModel.searchText },
+								set: { historyViewModel.didChangeSearchText($0) })
+						)
+						.textFieldStyle(.roundedBorder)
+						.accessibilityLabel("Search commit history")
+						.padding(.horizontal, 12)
+						.frame(height: 52)
+						.background(.bar)
+						Divider()
+					}
+				}
 			}
 			.task(id: historyViewModel.historyFocusRequest) {
 				await scrollToFocusedCommit(using: proxy)

@@ -153,28 +153,18 @@ struct ConflictPreview: View {
 				.defaultScrollAnchor(.topLeading)
 			}
 		} else if viewModel.isLoadingContent {
-			LoadingStateView(
-				title: "Loading Conflict",
-				message: "Reading the current, incoming, and working versions."
-			)
+			LoadingStateView(title: "Loading Conflict")
 		} else {
-			ContentUnavailableView(
-				"Preview Unavailable",
-				systemImage: "doc.questionmark",
-				description: Text("The conflicted file is binary or unavailable.")
+			EmptyStateView(
+				title: "Preview Unavailable",
+				message: "The file is binary or unavailable.",
+				systemImage: "doc.questionmark"
 			)
 		}
 	}
 
 	private func fileComparison(_ content: GitConflictContent) -> some View {
 		VStack(alignment: .leading, spacing: 12) {
-			Label(
-				"Compare both versions, then resolve the entire file or edit the result manually.",
-				systemImage: "arrow.triangle.merge"
-			)
-			.font(.callout)
-			.foregroundStyle(.secondary)
-
 			ConflictSideBySideComparison(
 				currentLabel: viewModel.currentLabel,
 				currentContent: content.current,

@@ -22,10 +22,6 @@ struct RemoteActionBar: View {
 				onAdd()
 			}
 
-			Label(preferredRemoteName ?? "Remote", systemImage: "icloud")
-				.font(.callout)
-				.foregroundStyle(.secondary)
-
 			Spacer()
 
 			Button("Pull", systemImage: "arrow.down") {

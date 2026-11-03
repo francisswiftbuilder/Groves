@@ -68,12 +68,17 @@ public struct DiffView: View {
 
 	public var body: some View {
 		VStack(spacing: 0) {
-			diffHeader
-			Divider()
-			if options.ignoresWhitespace, !diff.isEmpty {
-				partialActionsDisabledBanner
-			}
 			diffContent
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			VStack(spacing: 0) {
+				diffHeader
+				Divider()
+				if options.ignoresWhitespace, !diff.isEmpty {
+					partialActionsDisabledBanner
+				}
+			}
 		}
 		.safeAreaInset(edge: .bottom) {
 			if !diff.isEmpty || imageDiff != nil {
@@ -89,7 +94,7 @@ public struct DiffView: View {
 		HStack(spacing: 8) {
 			Image(systemName: "line.3.horizontal.decrease.circle")
 				.foregroundStyle(.secondary)
-			Text("Line and hunk actions are unavailable while Ignore All Whitespace is enabled.")
+			Text("Show whitespace to stage individual changes.")
 				.font(.caption)
 				.foregroundStyle(.secondary)
 			Spacer(minLength: 8)
@@ -108,16 +113,14 @@ public struct DiffView: View {
 		VStack(spacing: 0) {
 			Divider()
 			HStack(spacing: 12) {
-				Text("\(changedFileCount) files with changes")
-					.foregroundStyle(.secondary)
-				Spacer(minLength: 16)
 				if !isImageFile {
 					DiffStatisticsView(document: displayedDocument)
 				}
+				Spacer(minLength: 0)
 			}
 			.font(.caption)
 			.padding(.horizontal, 16)
-			.frame(height: 40)
+			.frame(height: 28)
 		}
 		.background(.bar)
 	}
@@ -139,14 +142,11 @@ public struct DiffView: View {
 							.font(.caption)
 							.foregroundStyle(.secondary)
 							.lineLimit(1)
+							.truncationMode(.middle)
 					}
 				}
 
 				Spacer(minLength: 12)
-
-				if !displayedDocument.lines.isEmpty, imageDiff == nil {
-					DiffStatisticsView(document: displayedDocument)
-				}
 
 				if !isImageFile {
 					DiffOptionsMenu(
@@ -189,10 +189,7 @@ public struct DiffView: View {
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 				.accessibilityLabel("Applying diff change")
 		} else if isLoadingDiff && !displaysCurrentSource {
-			LoadingStateView(
-				title: "Loading Diff",
-				message: "Reading the selected file changes."
-			)
+			LoadingStateView(title: "Loading Diff")
 		} else if let imageDiff {
 			ImageDiffView(
 				diff: imageDiff,
@@ -208,18 +205,13 @@ public struct DiffView: View {
 		} else if diff.isEmpty {
 			EmptyStateView(
 				title: "No Diff Selected",
-				message: "Select a tracked text change to inspect its diff.",
 				systemImage: "doc.text.magnifyingglass"
 			)
 		} else if viewerModel.presentation == nil {
-			LoadingStateView(
-				title: "Loading Diff",
-				message: "Reading the selected file changes."
-			)
+			LoadingStateView(title: "Loading Diff")
 		} else if displayedDocument.lines.isEmpty {
 			EmptyStateView(
 				title: "No Text Diff",
-				message: "This file has no text changes to display.",
 				systemImage: "doc"
 			)
 		} else if let presentation = viewerModel.presentation {

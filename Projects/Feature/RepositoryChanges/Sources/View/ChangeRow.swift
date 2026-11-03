@@ -5,32 +5,21 @@ struct ChangeRow: View {
 	let change: WorkingTreeChange
 	let state: GitFileState
 	let isStaged: Bool
-	let onSetStaged: (Bool) -> Void
 
 	var body: some View {
 		HStack(spacing: 8) {
-			Toggle(
-				"",
-				isOn: Binding(
-					get: { isStaged },
-					set: { isStaged in
-						onSetStaged(isStaged)
-					}
-				)
-			)
-			.labelsHidden()
-			.toggleStyle(.checkbox)
-			.controlSize(.small)
-			.accessibilityLabel(
-				isStaged
-					? "Unstage \(URL(fileURLWithPath: change.path).lastPathComponent)"
-					: "Stage \(URL(fileURLWithPath: change.path).lastPathComponent)"
-			)
-
 			ChangeFileIcon(path: change.path)
 
-			Text(URL(fileURLWithPath: change.path).lastPathComponent)
-				.lineLimit(1)
+			VStack(alignment: .leading, spacing: 2) {
+				Text(URL(fileURLWithPath: change.path).lastPathComponent)
+					.lineLimit(1)
+					.truncationMode(.middle)
+				if change.isStaged, change.hasWorkingTreeChange {
+					Text("Partially Staged")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				}
+			}
 
 			Spacer(minLength: 8)
 
@@ -40,9 +29,13 @@ struct ChangeRow: View {
 				.frame(width: 16, alignment: .trailing)
 		}
 		.padding(.vertical, 4)
-		.accessibilityElement(children: .contain)
+		.padding(.trailing, 12)
+		.help(change.path)
+		.accessibilityElement(children: .combine)
 		.accessibilityLabel(
-			"\(URL(fileURLWithPath: change.path).lastPathComponent), \(state.inspectorTitle)"
+			"\(URL(fileURLWithPath: change.path).lastPathComponent), \(state.inspectorTitle), \(isStaged ? "Staged" : "Unstaged")"
 		)
+		.accessibilityValue(
+			Text(change.isStaged && change.hasWorkingTreeChange ? "Partially Staged" : ""))
 	}
 }

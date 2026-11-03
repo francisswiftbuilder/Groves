@@ -2,6 +2,11 @@ import DomainGitInterface
 import Foundation
 
 struct ChangesUseCaseStub: RepositoryChangesUseCase {
+	var diffOperation:
+		@Sendable (WorkingTreeChange, GitDiffSource, GitDiffOptions, URL) async throws -> String = {
+			_, _, _, _ in
+			fatalError()
+		}
 	var commitOperation: @Sendable (String, String, Bool, URL) async throws -> RepositorySnapshot = {
 		_, _, _, _ in
 		fatalError()
@@ -9,6 +14,18 @@ struct ChangesUseCaseStub: RepositoryChangesUseCase {
 	var amendOperation: @Sendable (URL) async throws -> RepositorySnapshot = { _ in
 		fatalError()
 	}
+	var stageOperation: @Sendable ([WorkingTreeChange], URL) async throws -> RepositorySnapshot = {
+		_, _ in
+		fatalError()
+	}
+	var unstageOperation: @Sendable ([WorkingTreeChange], URL) async throws -> RepositorySnapshot = {
+		_, _ in
+		fatalError()
+	}
+	var unstageAmendOperation: @Sendable ([GitAmendChange], URL) async throws -> RepositorySnapshot =
+		{ _, _ in
+			fatalError()
+		}
 
 	func loadDiff(
 		for change: WorkingTreeChange,
@@ -16,7 +33,7 @@ struct ChangesUseCaseStub: RepositoryChangesUseCase {
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> String {
-		fatalError()
+		try await diffOperation(change, source, options, repositoryURL)
 	}
 
 	func loadAmendDiff(
@@ -62,19 +79,19 @@ struct ChangesUseCaseStub: RepositoryChangesUseCase {
 	func stage(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		fatalError()
+		try await stageOperation(changes, repositoryURL)
 	}
 
 	func unstage(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		fatalError()
+		try await unstageOperation(changes, repositoryURL)
 	}
 
 	func unstageFromAmend(_ changes: [GitAmendChange], at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		fatalError()
+		try await unstageAmendOperation(changes, repositoryURL)
 	}
 
 	func applyDiffLine(

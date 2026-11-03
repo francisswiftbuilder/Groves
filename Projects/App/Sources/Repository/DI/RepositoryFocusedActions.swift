@@ -1,6 +1,10 @@
 @MainActor
 public struct RepositoryFocusedActions {
 	public let refresh: () -> Void
+	public let stageSelectedChanges: (() -> Void)?
+	public let unstageSelectedChanges: (() -> Void)?
+	public let stageAllChanges: (() -> Void)?
+	public let unstageAllChanges: (() -> Void)?
 	public let viewConflicts: (() -> Void)?
 	public let continueOperation: (() -> Void)?
 	public let skipOperation: (() -> Void)?
@@ -17,6 +21,10 @@ public struct RepositoryFocusedActions {
 
 	public init(
 		refresh: @escaping () -> Void,
+		stageSelectedChanges: (() -> Void)?,
+		unstageSelectedChanges: (() -> Void)?,
+		stageAllChanges: (() -> Void)?,
+		unstageAllChanges: (() -> Void)?,
 		viewConflicts: (() -> Void)?,
 		continueOperation: (() -> Void)?,
 		skipOperation: (() -> Void)?,
@@ -32,6 +40,10 @@ public struct RepositoryFocusedActions {
 		deleteSelectedRemote: (() -> Void)?
 	) {
 		self.refresh = refresh
+		self.stageSelectedChanges = stageSelectedChanges
+		self.unstageSelectedChanges = unstageSelectedChanges
+		self.stageAllChanges = stageAllChanges
+		self.unstageAllChanges = unstageAllChanges
 		self.viewConflicts = viewConflicts
 		self.continueOperation = continueOperation
 		self.skipOperation = skipOperation

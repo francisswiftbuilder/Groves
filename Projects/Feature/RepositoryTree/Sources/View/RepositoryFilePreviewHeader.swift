@@ -41,9 +41,8 @@ struct RepositoryFilePreviewHeader: View {
 				.foregroundStyle(.secondary)
 			}
 		}
-		.frame(minHeight: 34)
+		.frame(height: 52)
 		.padding(.horizontal, 12)
-		.padding(.vertical, 6)
 		.background(.bar)
 		.accessibilityElement(children: .combine)
 	}
