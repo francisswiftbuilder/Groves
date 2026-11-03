@@ -25,7 +25,11 @@ let project = Project(
 			productName: GrovesProduct.askPassTargetName,
 			bundleId: environment.organizationName + ".AskPass",
 			deploymentTargets: environment.deploymentTargets,
-			infoPlist: .extendingDefault(with: ["LSUIElement": .boolean(true)]),
+			infoPlist: .extendingDefault(with: [
+				"LSUIElement": .boolean(true),
+				"GrovesDataNamespace": "$(GROVES_DATA_NAMESPACE)",
+				"GrovesCredentialNamespace": "$(GROVES_BUNDLE_IDENTIFIER)",
+			]),
 			sources: GrovesProduct.askPassSources,
 			entitlements: Permissions.appEntitlements,
 			dependencies: [

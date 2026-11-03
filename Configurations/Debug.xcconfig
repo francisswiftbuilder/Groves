@@ -1,2 +1,3 @@
-// Debug configuration
-// Add debug-specific build settings here.
+GROVES_APP_NAME = Groves Dev
+GROVES_BUNDLE_IDENTIFIER = io.github.francisswiftbuilder.Groves.dev
+GROVES_DATA_NAMESPACE = Groves Dev

@@ -5,8 +5,7 @@ public struct GitIdentityConfiguration: Codable, Equatable, Sendable {
 	public var email: String
 
 	public static var defaultURL: URL {
-		FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-			.appending(path: "Groves/Git/config")
+		GrovesRuntimeConfiguration.applicationSupportURL.appending(path: "Git/config")
 	}
 
 	public init(name: String = "", email: String = "") {

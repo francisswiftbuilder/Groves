@@ -24,7 +24,9 @@ private var appTargetSettings: SettingsDictionary {
 		"ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "",
 		"CODE_SIGN_ENTITLEMENTS": .string(Permissions.appEntitlementsBuildSetting),
 		"ENABLE_USER_SCRIPT_SANDBOXING": "NO",
-		"PRODUCT_NAME": "Groves",
+		"PRODUCT_NAME": "$(GROVES_APP_NAME)",
+		"PRODUCT_MODULE_NAME": "Groves",
+		"PRODUCT_BUNDLE_IDENTIFIER": "$(GROVES_BUNDLE_IDENTIFIER)",
 	]
 	settings.merge(developmentSigningSettings) { _, signing in signing }
 	return settings
@@ -45,8 +47,7 @@ public let baseSettings: SettingsDictionary = [
 // executable and no longer matches the bundle. Point it at the renamed product instead.
 public var appTestsSettings: Settings {
 	let executablePath =
-		"$(BUILT_PRODUCTS_DIR)/\(environment.name).app"
-		+ "/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/\(environment.name)"
+		"$(BUILT_PRODUCTS_DIR)/$(GROVES_APP_NAME).app/Contents/MacOS/$(GROVES_APP_NAME)"
 	let testHostSettings: SettingsDictionary = [
 		"TEST_HOST": .string(executablePath),
 		"BUNDLE_LOADER": "$(TEST_HOST)",
@@ -58,6 +59,7 @@ public var askPassSettings: Settings {
 	var settings = baseSettings.merging(developmentSigningSettings) { _, signing in signing }
 	settings["SKIP_INSTALL"] = "YES"
 	settings["ENABLE_DEBUG_DYLIB"] = "NO"
+	settings["PRODUCT_BUNDLE_IDENTIFIER"] = "$(GROVES_BUNDLE_IDENTIFIER).AskPass"
 	return .settings(base: settings)
 }
 
