@@ -64,13 +64,13 @@ struct SidebarSettingsLayoutTests {
 			workspace.onDisappear()
 		}
 		try await settle(controller.view)
-		let outline = try #require(outline(in: controller.view))
-		let expandedCount = outline.numberOfRows
+		let outlineView = try #require(outline(in: controller.view))
+		let expandedCount = outlineView.numberOfRows
 		try capture(controller.view, name: "sidebar-\(Int(width))-\(colorScheme)")
 		let group = RepositorySidebarGroup(repositoryID: repositoryID, kind: .branches)
 		workspace.viewModel.setSidebarGroup(group, isExpanded: false)
 		try await settle(controller.view)
-		#expect(outline.numberOfRows < expandedCount)
+		#expect(outlineView.numberOfRows < expandedCount)
 		#expect(windowModel.sidebarSelection == selection)
 		workspace.viewModel.didPrepareSidebar(repositoryID: repositoryID)
 		#expect(!workspace.viewModel.expandedSidebarGroups.contains(group))
