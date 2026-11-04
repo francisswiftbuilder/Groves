@@ -3,12 +3,20 @@ import SwiftUI
 
 struct GitAccountForm: View {
 	@Bindable var viewModel: GitAccountViewModel
+	let showsIdentity: Bool
+
+	init(viewModel: GitAccountViewModel, showsIdentity: Bool = false) {
+		self.viewModel = viewModel
+		self.showsIdentity = showsIdentity
+	}
 
 	var body: some View {
 		Form {
-			if !viewModel.accounts.isEmpty {
-				Section("GitHub Accounts") {
-					Picker("Active account", selection: accountSelection) {
+			Section("GitHub") {
+				if viewModel.accounts.isEmpty {
+					Text("No Accounts").foregroundStyle(.secondary)
+				} else {
+					Picker("Account", selection: accountSelection) {
 						if viewModel.account == nil {
 							Text("Choose an account").tag(nil as GitCredentialDescriptor?)
 						}
@@ -17,85 +25,67 @@ struct GitAccountForm: View {
 						}
 					}
 					.disabled(viewModel.isConnecting)
-					HStack {
-						Button("Add Account…") { viewModel.beginAddingAccount() }
-						Button("Replace Token…") { viewModel.beginReplacingToken() }
-							.disabled(viewModel.account == nil)
-						Button("Sign Out…", role: .destructive) { viewModel.beginSignOut() }
-							.disabled(viewModel.account == nil)
-					}
-					.disabled(viewModel.isConnecting)
-					Text(
-						"Used by Groves to authenticate with GitHub. Changing accounts does not change commit identity."
-					)
-					.font(.caption)
-					.foregroundStyle(.secondary)
 				}
+				HStack {
+					Button("Add Account…", action: viewModel.beginAddingAccount)
+					Spacer()
+					if !viewModel.accounts.isEmpty {
+						Menu("Account Actions", systemImage: "ellipsis.circle") {
+							Button("Replace Token…", action: viewModel.beginReplacingToken)
+							Divider()
+							Button("Sign Out…", role: .destructive, action: viewModel.beginSignOut)
+						}
+						.labelStyle(.iconOnly)
+						.menuStyle(.borderlessButton)
+						.menuIndicator(.hidden)
+						.fixedSize()
+						.disabled(viewModel.account == nil)
+						.help("Account Actions")
+					}
+				}
+				.disabled(viewModel.isConnecting)
 			}
-			if viewModel.accounts.isEmpty || viewModel.tokenEntry != nil {
-				GitAccountTokenSection(viewModel: viewModel)
+			if showsIdentity {
+				GitIdentitySection(viewModel: viewModel, showsSaveActions: false)
 			}
-			Section("Commit Identity") {
-				TextField(
-					"Name", text: $viewModel.identity.name, prompt: Text("Commit author name")
-				)
-				.multilineTextAlignment(.leading)
-				TextField(
-					"Email", text: $viewModel.identity.email, prompt: Text("name@example.com")
-				)
-				.textContentType(.emailAddress)
-				.autocorrectionDisabled()
-				.multilineTextAlignment(.leading)
-				Text(
-					"This identity is written into commits. You can use your GitHub noreply email. A repository’s own identity takes precedence."
-				)
-				.font(.caption)
-				.foregroundStyle(.secondary)
-			}
-			if let message = viewModel.errorMessage {
+			if viewModel.tokenEntry == nil, let message = viewModel.errorMessage {
 				Section {
 					Label(message, systemImage: "exclamationmark.triangle")
 						.foregroundStyle(.red)
 						.textSelection(.enabled)
 				}
 			}
-			if let message = viewModel.statusMessage {
-				Section {
-					Label(message, systemImage: "info.circle")
-						.foregroundStyle(.secondary)
-				}
-			}
 		}
 		.formStyle(.grouped)
-		.textFieldStyle(.roundedBorder)
+		.sheet(isPresented: tokenEntryPresentation) {
+			GitAccountTokenSheet(viewModel: viewModel)
+		}
 		.confirmationDialog(
 			"Sign out of \(viewModel.pendingSignOut?.account ?? "this account")?",
 			isPresented: signOutPresentation
 		) {
-			Button("Sign Out", role: .destructive) { viewModel.confirmSignOut() }
-			Button("Cancel", role: .cancel) { viewModel.cancelSignOut() }
+			Button("Sign Out", role: .destructive, action: viewModel.confirmSignOut)
+			Button("Cancel", role: .cancel, action: viewModel.cancelSignOut)
 		} message: {
-			Text(
-				"This account’s token will be removed from Groves. If other accounts are saved, another account becomes active. Your repositories and commit identity remain available."
-			)
+			Text("Removes the saved token. Repositories and commit identity are kept.")
 		}
+	}
+
+	private var tokenEntryPresentation: Binding<Bool> {
+		Binding(
+			get: { viewModel.tokenEntry != nil },
+			set: { if !$0 { viewModel.cancelTokenEntry() } })
 	}
 
 	private var signOutPresentation: Binding<Bool> {
 		Binding(
 			get: { viewModel.pendingSignOut != nil },
-			set: { isPresented in
-				if !isPresented { viewModel.cancelSignOut() }
-			}
-		)
+			set: { if !$0 { viewModel.cancelSignOut() } })
 	}
 
 	private var accountSelection: Binding<GitCredentialDescriptor?> {
 		Binding(
 			get: { viewModel.account },
-			set: { account in
-				if let account { viewModel.switchAccount(to: account) }
-			}
-		)
+			set: { if let account = $0 { viewModel.switchAccount(to: account) } })
 	}
 }

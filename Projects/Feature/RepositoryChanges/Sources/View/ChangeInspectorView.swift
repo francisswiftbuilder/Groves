@@ -1,4 +1,3 @@
-import CoreRepositoryDiff
 import CoreRepositoryUI
 import DomainGitInterface
 import Foundation
@@ -10,14 +9,20 @@ struct ChangeInspectorView: View {
 	let fileState: GitFileState?
 	let isStaged: Bool
 	let selectedCount: Int
-	let diff: String
+	let additionCount: Int
+	let deletionCount: Int
 	let isLoading: Bool
 
 	var body: some View {
 		VStack(spacing: 0) {
-			inspectorHeader
-			Divider()
 			inspectorContent
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			VStack(spacing: 0) {
+				inspectorHeader
+				Divider()
+			}
 		}
 	}
 
@@ -34,15 +39,9 @@ struct ChangeInspectorView: View {
 
 	@ViewBuilder
 	private var inspectorContent: some View {
-		if isLoading {
-			LoadingStateView(
-				title: "Loading File",
-				message: "Reading file information and change statistics."
-			)
-		} else if selectedCount > 1 {
+		if selectedCount > 1 {
 			EmptyStateView(
 				title: "Multiple Files Selected",
-				message: "Select one file to inspect its details.",
 				systemImage: "doc.on.doc"
 			)
 		} else if let fileName, let filePath, let fileState {
@@ -50,15 +49,13 @@ struct ChangeInspectorView: View {
 				VStack(alignment: .leading, spacing: 0) {
 					fileIdentity(
 						fileName: fileName,
-						filePath: filePath,
-						fileState: fileState
+						filePath: filePath
 					)
 					.padding(16)
 
 					Divider()
 
 					inspectorSection("Information") {
-						InspectorValueRow("Location", value: filePath)
 						InspectorValueRow("Status", value: fileState.inspectorTitle)
 						InspectorValueRow("Staging", value: isStaged ? "Staged" : "Unstaged")
 					}
@@ -72,6 +69,10 @@ struct ChangeInspectorView: View {
 								.foregroundStyle(.green)
 							Text("−\(deletionCount)")
 								.foregroundStyle(.red)
+							if isLoading {
+								ProgressView().controlSize(.small)
+									.accessibilityLabel("Refreshing change statistics")
+							}
 						}
 						.font(.subheadline.weight(.semibold).monospacedDigit())
 					}
@@ -79,10 +80,10 @@ struct ChangeInspectorView: View {
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
 			}
+			.id(filePath)
 		} else {
 			EmptyStateView(
 				title: "No File Selected",
-				message: "Select a file to inspect its status and changes.",
 				systemImage: "doc.text"
 			)
 		}
@@ -90,14 +91,14 @@ struct ChangeInspectorView: View {
 
 	private func fileIdentity(
 		fileName: String,
-		filePath: String,
-		fileState: GitFileState
+		filePath: String
 	) -> some View {
 		HStack(alignment: .top, spacing: 12) {
 			Image(systemName: fileSymbol)
-				.font(.system(size: 28, weight: .light))
+				.font(.title3)
 				.foregroundStyle(.secondary)
-				.frame(width: 48, height: 54)
+				.frame(width: 24)
+				.accessibilityHidden(true)
 
 			VStack(alignment: .leading, spacing: 4) {
 				Text(fileName)
@@ -106,10 +107,8 @@ struct ChangeInspectorView: View {
 				Text(filePath)
 					.font(.caption)
 					.foregroundStyle(.secondary)
-					.lineLimit(2)
-				Text(fileState.inspectorTitle)
-					.font(.caption.weight(.semibold))
-					.foregroundStyle(statusColor)
+					.textSelection(.enabled)
+					.help(filePath)
 			}
 		}
 	}
@@ -139,26 +138,4 @@ struct ChangeInspectorView: View {
 		}
 	}
 
-	private var statusColor: Color {
-		switch fileState {
-		case .added, .copied, .untracked:
-			return .green
-		case .deleted:
-			return .red
-		case .modified, .renamed, .typeChanged:
-			return .orange
-		case .unmerged:
-			return .purple
-		case .ignored, .unchanged, .none:
-			return .secondary
-		}
-	}
-
-	private var additionCount: Int {
-		DiffParser.parseSourceLines(diff).count { $0.kind == .addition }
-	}
-
-	private var deletionCount: Int {
-		DiffParser.parseSourceLines(diff).count { $0.kind == .deletion }
-	}
 }

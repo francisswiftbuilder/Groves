@@ -40,6 +40,8 @@ public final class ChangesDiffViewModel {
 	}
 
 	private(set) var diff = ""
+	private(set) var additionCount = 0
+	private(set) var deletionCount = 0
 	private(set) var imageDiff: GitImageDiff?
 	public private(set) var isLoading = false
 	public private(set) var isApplyingAction = false
@@ -291,7 +293,7 @@ public final class ChangesDiffViewModel {
 				options: preferences.options,
 				at: repositoryURL
 			)
-			updateDisplayedDiff(diff, for: selection, requestID: requestID)
+			try await updateDisplayedDiff(diff, for: selection, requestID: requestID)
 		}
 	}
 
@@ -313,7 +315,7 @@ public final class ChangesDiffViewModel {
 				options: preferences.options,
 				at: repositoryURL
 			)
-			updateDisplayedDiff(diff, for: selection, requestID: requestID)
+			try await updateDisplayedDiff(diff, for: selection, requestID: requestID)
 		}
 	}
 
@@ -359,8 +361,27 @@ public final class ChangesDiffViewModel {
 		_ requestedDiff: String,
 		for selection: ChangesDiffSelection,
 		requestID: Int
-	) {
+	) async throws {
 		guard activeLoadRequestID == requestID, self.selection == selection else { return }
+		if diff != requestedDiff {
+			let parsingTask = Task.detached(priority: .userInitiated) {
+				try DiffParser.parseSourceLinesCancellable(requestedDiff).reduce(
+					into: (additions: 0, deletions: 0)
+				) { counts, line in
+					if line.kind == .addition { counts.additions += 1 }
+					if line.kind == .deletion { counts.deletions += 1 }
+				}
+			}
+			let counts = try await withTaskCancellationHandler {
+				try await parsingTask.value
+			} onCancel: {
+				parsingTask.cancel()
+			}
+			try Task.checkCancellation()
+			guard activeLoadRequestID == requestID, self.selection == selection else { return }
+			additionCount = counts.additions
+			deletionCount = counts.deletions
+		}
 		if diff != requestedDiff {
 			diff = requestedDiff
 		}
@@ -376,6 +397,8 @@ public final class ChangesDiffViewModel {
 		requestID: Int
 	) {
 		guard activeLoadRequestID == requestID, self.selection == selection else { return }
+		additionCount = 0
+		deletionCount = 0
 		if !diff.isEmpty {
 			diff = ""
 		}
@@ -398,6 +421,8 @@ public final class ChangesDiffViewModel {
 
 	private func clearDisplayedDiff() {
 		diff = ""
+		additionCount = 0
+		deletionCount = 0
 		imageDiff = nil
 		displayedSelection = nil
 		clearLoad()

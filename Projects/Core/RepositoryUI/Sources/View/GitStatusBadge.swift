@@ -10,13 +10,9 @@ public struct GitStatusBadge: View {
 
 	public var body: some View {
 		Text(state.symbol)
-			.font(.system(.caption2, design: .rounded, weight: .bold))
+			.font(.system(.caption, design: .monospaced, weight: .medium))
 			.foregroundStyle(color)
 			.frame(width: 20, height: 20)
-			.background {
-				RoundedRectangle(cornerRadius: 6, style: .continuous)
-					.fill(color.opacity(0.12))
-			}
 			.accessibilityLabel(state.title)
 	}
 

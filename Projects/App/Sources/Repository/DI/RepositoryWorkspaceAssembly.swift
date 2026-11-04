@@ -165,7 +165,8 @@ final class RepositoryWorkspaceAssembly {
 			dependencies: .init(
 				contentUseCase: dependencies.contentUseCase,
 				changesUseCase: dependencies.changesUseCase,
-				repositoryURL: { output.workspaceViewModel?.repositoryURL }
+				repositoryURL: { output.workspaceViewModel?.repositoryURL },
+				commitPlanningUseCase: dependencies.commitPlanningUseCase
 			),
 			actions: .init(
 				didProduceSnapshot: { snapshot in
@@ -357,12 +358,28 @@ final class RepositoryWorkspaceAssembly {
 		let focusedActionsViewModel = RepositoryFocusedActionsViewModel(
 			dependencies: .init(
 				operationState: { operationViewModel.operationState },
+				canStageSelection: {
+					viewModel.selectedSection == .changes && changesViewModel.canStageSelection
+				},
+				canUnstageSelection: {
+					viewModel.selectedSection == .changes && changesViewModel.canUnstageSelection
+				},
+				canStageAllChanges: {
+					viewModel.selectedSection == .changes && changesViewModel.canStageAllChanges
+				},
+				canUnstageAllChanges: {
+					viewModel.selectedSection == .changes && changesViewModel.canUnstageAllChanges
+				},
 				selectedBranch: { referencesViewModel.selectedBranch },
 				selectedCommit: { historyViewModel.selectedCommit },
 				selectedRemote: { remotesViewModel.selectedRemote }
 			),
 			actions: .init(
 				refresh: viewModel.didRequestRefresh,
+				stageSelectedChanges: changesViewModel.didRequestStageSelectedChanges,
+				unstageSelectedChanges: changesViewModel.didRequestUnstageSelectedChanges,
+				stageAllChanges: changesViewModel.didRequestStageAllChanges,
+				unstageAllChanges: changesViewModel.didRequestUnstageAllChanges,
 				viewConflicts: operationViewModel.didViewConflicts,
 				performOperationAction: operationViewModel.didPerformOperationAction,
 				presentOperationAction: operationViewModel.didPresentOperationAction,

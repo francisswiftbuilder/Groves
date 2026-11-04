@@ -18,26 +18,28 @@ struct ChangesListView: View {
 	}
 
 	var body: some View {
-		VStack(spacing: 0) {
-			titleHeader
-			Divider()
-			changeList
-		}
-		.confirmationDialog(
-			viewModel.pendingConfirmation?.title ?? "Confirm Changes",
-			isPresented: pendingConfirmationPresentation
-		) {
-			if let confirmation = viewModel.pendingConfirmation {
-				Button(confirmation.actionTitle, role: .destructive) {
-					viewModel.didConfirmPendingConfirmation()
+		changeList
+			.safeAreaInset(edge: .top, spacing: 0) {
+				VStack(spacing: 0) {
+					titleHeader
+					Divider()
 				}
 			}
-			Button("Cancel", role: .cancel) {
-				viewModel.didDismissPendingConfirmation()
+			.confirmationDialog(
+				viewModel.pendingConfirmation?.title ?? "Confirm Changes",
+				isPresented: pendingConfirmationPresentation
+			) {
+				if let confirmation = viewModel.pendingConfirmation {
+					Button(confirmation.actionTitle, role: .destructive) {
+						viewModel.didConfirmPendingConfirmation()
+					}
+				}
+				Button("Cancel", role: .cancel) {
+					viewModel.didDismissPendingConfirmation()
+				}
+			} message: {
+				Text(viewModel.pendingConfirmation?.message ?? "")
 			}
-		} message: {
-			Text(viewModel.pendingConfirmation?.message ?? "")
-		}
 	}
 
 	private var pendingConfirmationPresentation: Binding<Bool> {
@@ -82,7 +84,6 @@ struct ChangesListView: View {
 			{
 				EmptyStateView(
 					title: "Working Tree Clean",
-					message: "There are no staged or unstaged changes.",
 					systemImage: "checkmark.circle"
 				)
 			} else {
@@ -134,12 +135,10 @@ struct ChangesListView: View {
 		if viewModel.isAmendingCommit, !viewModel.amendChanges.isEmpty {
 			Section {
 				ForEach(viewModel.filteredAmendChanges) { change in
-					AmendChangeRow(change: change) {
-						viewModel.didRequestUnstageFromAmend([change])
-					}
-					.tag(WorkspaceChangeSelection.amend(change.id))
-					.listRowSeparator(.hidden)
-					.contextMenu { amendContextMenu(for: change) }
+					AmendChangeRow(change: change)
+						.tag(WorkspaceChangeSelection.amend(change.id))
+						.listRowSeparator(.hidden)
+						.contextMenu { amendContextMenu(for: change) }
 				}
 			} header: {
 				ChangeListSectionHeader(
@@ -162,15 +161,9 @@ struct ChangesListView: View {
 					ChangeRow(
 						change: change,
 						state: source == .staged ? change.indexState : change.workingTreeState,
-						isStaged: source == .staged,
-						onSetStaged: { isStaged in
-							if isStaged {
-								viewModel.didRequestStage([change])
-							} else {
-								viewModel.didRequestUnstage([change])
-							}
-						}
+						isStaged: source == .staged
 					)
+					.id(changeSelection(change, source: source))
 					.tag(changeSelection(change, source: source))
 					.listRowSeparator(.hidden)
 					.contextMenu { changeContextMenu(for: change, source: source) }

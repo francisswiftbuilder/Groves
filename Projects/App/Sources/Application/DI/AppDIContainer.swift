@@ -50,7 +50,9 @@ final class AppDIContainer {
 						repository: repository,
 						content: contentUseCase
 					),
-					externalEditorOpener: WorkspaceExternalEditorOpener()
+					externalEditorOpener: WorkspaceExternalEditorOpener(),
+					commitPlanningUseCase: DefaultRepositoryCommitPlanningUseCase(
+						repository: repository, generator: FoundationModelCommitPlanGenerator())
 				)
 			)
 			return RepositoryTabsViewModel(

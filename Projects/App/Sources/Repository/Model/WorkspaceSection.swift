@@ -21,7 +21,7 @@ public enum WorkspaceSection: String, CaseIterable, Identifiable, Sendable {
 		case .stashes:
 			return "Stashes"
 		case .tree:
-			return "Workspace"
+			return "Files"
 		}
 	}
 
@@ -34,7 +34,7 @@ public enum WorkspaceSection: String, CaseIterable, Identifiable, Sendable {
 		case .branches:
 			return "arrow.triangle.branch"
 		case .remotes:
-			return "icloud"
+			return "network"
 		case .stashes:
 			return "archivebox"
 		case .tree:

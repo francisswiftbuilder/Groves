@@ -41,9 +41,14 @@ public struct CommitDiffView: View {
 
 	public var body: some View {
 		VStack(spacing: 0) {
-			diffHeader
-			Divider()
 			diffContent
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			VStack(spacing: 0) {
+				diffHeader
+				Divider()
+			}
 		}
 		.safeAreaInset(edge: .bottom) {
 			if file != nil {
@@ -59,16 +64,14 @@ public struct CommitDiffView: View {
 		VStack(spacing: 0) {
 			Divider()
 			HStack(spacing: 12) {
-				Text("\(changedFileCount) files changed")
-					.foregroundStyle(.secondary)
-				Spacer(minLength: 16)
 				if !isImageFile {
 					DiffStatisticsView(document: displayedDocument)
 				}
+				Spacer(minLength: 0)
 			}
 			.font(.caption)
 			.padding(.horizontal, 16)
-			.frame(height: 40)
+			.frame(height: 28)
 		}
 		.background(.bar)
 	}
@@ -76,11 +79,10 @@ public struct CommitDiffView: View {
 	@ViewBuilder
 	private var diffHeader: some View {
 		if file != nil {
-			VStack(alignment: .leading, spacing: 12) {
+			VStack(alignment: .leading, spacing: 4) {
 				HStack(spacing: 8) {
-					Text(displayedFilePath.replacingOccurrences(of: "/", with: " / "))
-						.font(.subheadline)
-						.foregroundStyle(.secondary)
+					Text(URL(fileURLWithPath: displayedFilePath).lastPathComponent)
+						.font(.subheadline.weight(.semibold))
 						.lineLimit(1)
 					Spacer(minLength: 8)
 					if !isImageFile {
@@ -92,14 +94,11 @@ public struct CommitDiffView: View {
 					}
 				}
 
-				HStack(spacing: 8) {
-					Text("File changed")
-						.font(.subheadline.weight(.medium))
-					Spacer()
-					if !isImageFile {
-						DiffStatisticsView(document: displayedDocument)
-					}
-				}
+				Text(displayedFilePath)
+					.font(.caption)
+					.foregroundStyle(.secondary)
+					.lineLimit(1)
+					.truncationMode(.middle)
 			}
 			.padding(.horizontal, 16)
 			.padding(.vertical, 12)
@@ -122,10 +121,7 @@ public struct CommitDiffView: View {
 	@ViewBuilder
 	private var diffContent: some View {
 		if isLoading {
-			LoadingStateView(
-				title: "Loading Commit Diff",
-				message: "Reading the files changed by this commit."
-			)
+			LoadingStateView(title: "Loading Commit Diff")
 		} else if file != nil {
 			if let imageDiff {
 				ImageDiffView(
@@ -140,14 +136,10 @@ public struct CommitDiffView: View {
 					systemImage: "photo.badge.exclamationmark"
 				)
 			} else if viewerModel.presentation == nil {
-				LoadingStateView(
-					title: "Loading Commit Diff",
-					message: "Reading the files changed by this commit."
-				)
+				LoadingStateView(title: "Loading Commit Diff")
 			} else if viewerModel.presentation?.document.lines.isEmpty == true {
 				EmptyStateView(
 					title: "No Text Diff",
-					message: "This commit changed a file without a text diff.",
 					systemImage: "doc"
 				)
 			} else if let presentation = viewerModel.presentation {
@@ -168,7 +160,6 @@ public struct CommitDiffView: View {
 		} else {
 			EmptyStateView(
 				title: "No File Selected",
-				message: "Select a changed file to inspect this commit.",
 				systemImage: "doc.text.magnifyingglass"
 			)
 		}

@@ -42,19 +42,39 @@ public struct StashesView: View {
 						}
 					}
 					.listStyle(.inset)
-				} center: {
-					if stashesViewModel.isLoadingDiff {
-						LoadingStateView(
-							title: "Loading Stash Diff",
-							message: "Reading the files changed by this stash."
-						)
-					} else {
-						List(stashesViewModel.files, selection: fileSelection) { file in
-							CommitChangedFileRow(file: file)
-								.tag(file.id)
-								.listRowSeparator(.hidden)
+					.safeAreaInset(edge: .top, spacing: 0) {
+						VStack(spacing: 0) {
+							Text("Stashes").font(.headline)
+								.frame(maxWidth: .infinity, alignment: .leading)
+								.padding(.horizontal, 12)
+								.frame(height: 52)
+								.background(.bar)
+							Divider()
 						}
-						.listStyle(.plain)
+					}
+				} center: {
+					VStack(spacing: 0) {
+						if stashesViewModel.isLoadingDiff {
+							LoadingStateView(title: "Loading Stash Diff")
+						} else {
+							List(stashesViewModel.files, selection: fileSelection) { file in
+								CommitChangedFileRow(file: file)
+									.tag(file.id)
+									.listRowSeparator(.hidden)
+							}
+							.listStyle(.plain)
+						}
+					}
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+					.safeAreaInset(edge: .top, spacing: 0) {
+						VStack(spacing: 0) {
+							Text("Files").font(.subheadline.weight(.semibold))
+								.frame(maxWidth: .infinity, alignment: .leading)
+								.padding(.horizontal, 12)
+								.frame(height: 52)
+								.background(.bar)
+							Divider()
+						}
 					}
 				} trailing: {
 					CommitDiffView(
@@ -73,8 +93,6 @@ public struct StashesView: View {
 				}
 			}
 		}
-		.navigationTitle("Stashes")
-		.navigationSubtitle("\(stashesViewModel.stashes.count) stashes")
 		.safeAreaInset(edge: .bottom) {
 			StashActionBar(viewModel: stashesViewModel) {
 				if let stash = stashesViewModel.selectedStash {

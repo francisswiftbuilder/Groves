@@ -55,6 +55,9 @@ struct RepositorySidebar: View {
 		.onAppear {
 			viewModel.didPrepareSidebar(repositoryID: repositoryID)
 		}
+		.onChange(of: viewModel.repositoryURL) { _, _ in
+			viewModel.didPrepareSidebar(repositoryID: repositoryID)
+		}
 	}
 
 	private var selectedItemBinding: Binding<RepositorySidebarSelection?> {
@@ -111,7 +114,7 @@ struct RepositorySidebar: View {
 
 					Divider()
 
-					Button("Delete Branch", systemImage: "trash", role: .destructive) {
+					Button("Delete Branch…", systemImage: "trash", role: .destructive) {
 						referencesViewModel.didPresentBranchDeletion(branch)
 					}
 					.disabled(branch.isCurrent)
@@ -130,7 +133,7 @@ struct RepositorySidebar: View {
 
 					Divider()
 
-					Button("Delete Stash", systemImage: "trash", role: .destructive) {
+					Button("Delete Stash…", systemImage: "trash", role: .destructive) {
 						stashesViewModel.didPresentStashDrop(stash)
 					}
 				}
@@ -157,11 +160,24 @@ struct RepositorySidebar: View {
 				}
 			case .tag(_, let id):
 				if let tag = referencesViewModel.tags.first(where: { $0.id == id }) {
-					Button("Delete Tag", systemImage: "trash", role: .destructive) {
+					Button("Delete Tag…", systemImage: "trash", role: .destructive) {
 						referencesViewModel.didPresentTagDeletion(tag)
 					}
 				}
-			case .section, .remote:
+			case .remote(_, let id):
+				if let remote = remotesViewModel.remotes.first(where: { $0.id == id }) {
+					Button("Edit URLs…", systemImage: "link") {
+						remotesViewModel.didPresentEditor(remote)
+					}
+					Button("Rename…", systemImage: "pencil") {
+						remotesViewModel.didPresentRename(remote)
+					}
+					Divider()
+					Button("Delete Remote…", systemImage: "trash", role: .destructive) {
+						remotesViewModel.didPresentDeletion(remote)
+					}
+				}
+			case .section:
 				EmptyView()
 			}
 		}

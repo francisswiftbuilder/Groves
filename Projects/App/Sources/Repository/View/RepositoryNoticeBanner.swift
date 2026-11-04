@@ -14,7 +14,10 @@ struct RepositoryNoticeBanner: View {
 					.font(.callout)
 					.frame(maxWidth: .infinity, alignment: .leading)
 				SettingsLink { Text("Open Settings") }
-				Button("Dismiss") { onDismiss() }
+				Button("Dismiss", systemImage: "xmark", action: onDismiss)
+					.labelStyle(.iconOnly)
+					.buttonStyle(.plain)
+					.help("Dismiss")
 			}
 			Divider()
 		}

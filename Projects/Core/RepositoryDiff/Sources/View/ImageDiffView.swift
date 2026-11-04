@@ -26,10 +26,7 @@ public struct ImageDiffView: View {
 		Group {
 			switch viewModel.state {
 			case .idle, .loading:
-				LoadingStateView(
-					title: "Loading Images",
-					message: "Preparing both versions for comparison."
-				)
+				LoadingStateView(title: "Loading Images")
 			case .loaded(let presentation):
 				ScrollView(.horizontal) {
 					HStack(spacing: 10) {

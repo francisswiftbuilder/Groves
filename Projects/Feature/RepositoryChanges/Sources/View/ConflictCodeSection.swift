@@ -64,10 +64,6 @@ struct ConflictCodeSection: View {
 		}
 		.background(Color.primary.opacity(0.035))
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.clipShape(.rect(cornerRadius: 8))
-		.overlay {
-			RoundedRectangle(cornerRadius: 8)
-				.stroke(.separator, lineWidth: 1)
-		}
+		.border(.separator, width: 1)
 	}
 }

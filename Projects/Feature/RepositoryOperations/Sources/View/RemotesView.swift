@@ -19,8 +19,8 @@ public struct RemotesView: View {
 			if viewModel.remotes.isEmpty {
 				EmptyStateView(
 					title: "No Remotes",
-					message: "Remote repositories will appear here.",
-					systemImage: "icloud"
+					message: "Add a remote to sync this repository.",
+					systemImage: "network"
 				)
 			} else {
 				List(
@@ -50,8 +50,19 @@ public struct RemotesView: View {
 				.listStyle(.inset)
 			}
 		}
-		.navigationTitle("Remotes")
-		.navigationSubtitle("\(viewModel.remotes.count) remotes")
+		.safeAreaInset(edge: .top, spacing: 0) {
+			VStack(spacing: 0) {
+				HStack {
+					Text("Remotes").font(.headline)
+					Spacer()
+					Text("\(viewModel.remotes.count)").foregroundStyle(.secondary)
+				}
+				.padding(.horizontal, 12)
+				.frame(height: 52)
+				.background(.bar)
+				Divider()
+			}
+		}
 		.safeAreaInset(edge: .bottom) {
 			RemoteActionBar(
 				syncViewModel: syncViewModel,

@@ -9,6 +9,15 @@ struct RepositoryCommands: Commands {
 				.keyboardShortcut("r", modifiers: .command)
 				.disabled(actions == nil)
 			Divider()
+			Button("Stage Selected Changes") { actions?.stageSelectedChanges?() }
+				.disabled(actions?.stageSelectedChanges == nil)
+			Button("Unstage Selected Changes") { actions?.unstageSelectedChanges?() }
+				.disabled(actions?.unstageSelectedChanges == nil)
+			Button("Stage All Changes") { actions?.stageAllChanges?() }
+				.disabled(actions?.stageAllChanges == nil)
+			Button("Unstage All Changes") { actions?.unstageAllChanges?() }
+				.disabled(actions?.unstageAllChanges == nil)
+			Divider()
 			Button("View Conflicts") { actions?.viewConflicts?() }
 				.disabled(actions?.viewConflicts == nil)
 			Button("Continue Operation") { actions?.continueOperation?() }

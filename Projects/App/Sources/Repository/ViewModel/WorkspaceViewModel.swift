@@ -38,6 +38,7 @@ final class WorkspaceViewModel {
 	private var automaticRefreshRevalidatesSelectedContent = false
 	private var isVisible = false
 	private var isSceneActive = false
+	private var preparedSidebarRepositoryID: RepositoryTab.ID?
 
 	init(
 		dependencies: Dependencies,
@@ -84,6 +85,8 @@ final class WorkspaceViewModel {
 	}
 
 	func didPrepareSidebar(repositoryID: RepositoryTab.ID) {
+		guard preparedSidebarRepositoryID != repositoryID else { return }
+		preparedSidebarRepositoryID = repositoryID
 		var groups = expandedSidebarGroups
 		groups.formUnion(
 			RepositorySidebarGroupKind.allCases.map {
@@ -119,6 +122,7 @@ final class WorkspaceViewModel {
 				if changesRepository, !preservesContent {
 					actions.resetContent()
 					expandedSidebarGroups = []
+					preparedSidebarRepositoryID = nil
 				}
 				repositoryURL = url
 				try await requestAllContent(

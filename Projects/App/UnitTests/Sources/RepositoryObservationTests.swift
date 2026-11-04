@@ -9,6 +9,35 @@ import Testing
 @MainActor
 struct RepositoryObservationTests {
 	@Test
+	func stagingCommandsFollowTheSelectionAndVisibleSection() async {
+		let workspace = makeRepositoryWorkspace()
+		defer { workspace.onDisappear() }
+		workspace.viewModel.didSelectSection(.changes)
+		let change = WorkingTreeChange(
+			path: "Sources/Change.swift", previousPath: nil, indexState: .modified,
+			workingTreeState: .modified)
+		workspace.changesViewModel.apply(makeSnapshot(changes: [change]))
+		await workspace.changesViewModel.didSelectChanges([.unstaged(change.id)])
+		#expect(workspace.focusedActionsViewModel.focusedActions.stageSelectedChanges != nil)
+		#expect(workspace.focusedActionsViewModel.focusedActions.unstageSelectedChanges == nil)
+		await confirmation("Change selection updates staging commands") { changed in
+			withObservationTracking {
+				_ = workspace.focusedActionsViewModel.focusedActions
+			} onChange: {
+				changed()
+			}
+			await workspace.changesViewModel.didSelectChanges([.staged(change.id)])
+		}
+		#expect(workspace.focusedActionsViewModel.focusedActions.stageSelectedChanges == nil)
+		#expect(workspace.focusedActionsViewModel.focusedActions.unstageSelectedChanges != nil)
+		workspace.viewModel.didSelectSection(.history)
+		#expect(workspace.focusedActionsViewModel.focusedActions.stageSelectedChanges == nil)
+		#expect(workspace.focusedActionsViewModel.focusedActions.unstageSelectedChanges == nil)
+		#expect(workspace.focusedActionsViewModel.focusedActions.stageAllChanges == nil)
+		#expect(workspace.focusedActionsViewModel.focusedActions.unstageAllChanges == nil)
+	}
+
+	@Test
 	func testFocusedActionsObserveBranchSelection() async {
 		let branch = GitBranch(
 			name: "feature/observation", shortHash: "1234567", upstream: nil, isCurrent: false)
@@ -102,13 +131,14 @@ struct RepositoryObservationTests {
 	}
 
 	private func makeSnapshot(
+		changes: [WorkingTreeChange] = [],
 		commits: [GitCommit] = [],
 		branches: [GitBranch] = [],
 		remotes: [GitRemote] = [],
 		operationState: RepositoryOperationState = .normal
 	) -> RepositorySnapshot {
 		RepositorySnapshot(
-			changes: [], amendChanges: [], commits: commits, branches: branches, remotes: remotes,
+			changes: changes, amendChanges: [], commits: commits, branches: branches, remotes: remotes,
 			operationState: operationState, tags: [], stashes: [], fileTree: []
 		)
 	}

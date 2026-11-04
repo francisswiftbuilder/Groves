@@ -15,6 +15,7 @@ struct ChangeListSectionHeader: View {
 				.font(.caption.monospacedDigit())
 				.foregroundStyle(.tertiary)
 		}
+		.padding(.trailing, 12)
 		.textCase(nil)
 	}
 }
