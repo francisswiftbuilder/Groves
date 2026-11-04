@@ -68,6 +68,30 @@ struct OnDeviceCommitAnalyzerTests {
 	}
 
 	@Test
+	func smallBlocksAreGroupedWithoutIndividualSummaryRequests() async throws {
+		let units = (0..<17).map { index in
+			GitCommitUnit(
+				id: "unit-\(index)", path: "File\(index).swift", patch: "+@MainActor", hunk: nil)
+		}
+		let input = GitCommitPlanInput(headHash: "head", indexFingerprint: "index", units: units)
+		let analyzer = OnDeviceCommitAnalyzer(
+			summarize: { _ in throw URLError(.badServerResponse) },
+			generate: { prompt in
+				let ids = prompt.split(separator: "\n").compactMap { line -> Int? in
+					guard line.hasPrefix("CHANGE ") else { return nil }
+					return Int(line.dropFirst(7))
+				}
+				return GeneratedCommitPlan(commits: [
+					.init(subject: "fix: isolate UI updates", body: "", changeIDs: ids)
+				])
+			}, fits: { $0.utf8.count <= 1_000 }, cache: CommitAnalysisCache(), progress: { _ in })
+		let plan = try await analyzer.analyze(input)
+		#expect(plan.isValid)
+		#expect(plan.input == input)
+		#expect(plan.tasks.count == 1)
+	}
+
+	@Test
 	func summariesAcrossBatchesPreserveEveryOriginalChange() async throws {
 		let units = (0..<17).map { index in
 			GitCommitUnit(id: "unit-\(index)", path: "File\(index).swift", patch: "+change", hunk: nil)

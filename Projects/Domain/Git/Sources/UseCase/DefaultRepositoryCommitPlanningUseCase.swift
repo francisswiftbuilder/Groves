@@ -22,6 +22,10 @@ public struct DefaultRepositoryCommitPlanningUseCase: RepositoryCommitPlanningUs
 		guard !input.units.isEmpty else { throw GitCommitPlanError.noStagedChanges }
 		let plan = try await generator.generatePlan(for: input, progress: progress)
 		guard plan.input == input, plan.isValid else { throw GitCommitPlanError.invalidPlan }
+		try Task.checkCancellation()
+		guard try await repository.requestCommitPlanInput(at: repositoryURL) == input else {
+			throw GitCommitPlanError.repositoryChanged
+		}
 		return plan
 	}
 
