@@ -3,9 +3,11 @@
 export TUIST_CODE_SIGN_IDENTITY
 export TUIST_DEVELOPMENT_TEAM
 
+TUIST_GENERATE_ARGS ?=
+
 generate:
 	tuist install
-	tuist generate
+	tuist generate $(TUIST_GENERATE_ARGS)
 
 bundled-git:
 	./script/build_bundled_git.sh

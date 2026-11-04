@@ -106,11 +106,11 @@ public final class ChangesViewModel {
 	}
 
 	var selectedStagedChanges: [WorkingTreeChange] {
-		changes.filter { selectedChangeIDs.contains(.staged($0.id)) }
+		unstageableChanges.filter { selectedChangeIDs.contains(.staged($0.id)) }
 	}
 
 	var selectedUnstagedChanges: [WorkingTreeChange] {
-		changes.filter { selectedChangeIDs.contains(.unstaged($0.id)) }
+		stageableChanges.filter { selectedChangeIDs.contains(.unstaged($0.id)) }
 	}
 
 	var selectedChanges: [WorkingTreeChange] {
@@ -120,6 +120,33 @@ public final class ChangesViewModel {
 
 	var selectedStageableChanges: [WorkingTreeChange] {
 		selectedUnstagedChanges.filter(\.hasWorkingTreeChange)
+	}
+
+	public var canStageSelection: Bool {
+		!isLoading && !selectedStageableChanges.isEmpty
+	}
+
+	public var canUnstageSelection: Bool {
+		!isLoading
+			&& (isAmendingCommit ? !selectedAmendChanges.isEmpty : !selectedStagedChanges.isEmpty)
+	}
+
+	public var canStageAllChanges: Bool {
+		!isLoading && !stageableChanges.isEmpty
+	}
+
+	public var canUnstageAllChanges: Bool {
+		!isLoading && (isAmendingCommit ? !amendChanges.isEmpty : !unstageableChanges.isEmpty)
+	}
+
+	private var stageableChanges: [WorkingTreeChange] {
+		let conflictPaths = Set(conflicts.map(\.path))
+		return changes.filter { $0.hasWorkingTreeChange && !conflictPaths.contains($0.path) }
+	}
+
+	private var unstageableChanges: [WorkingTreeChange] {
+		let conflictPaths = Set(conflicts.map(\.path))
+		return changes.filter { $0.isStaged && !conflictPaths.contains($0.path) }
 	}
 
 	var displayedWorkingTreeChanges: [WorkingTreeChange] {
@@ -198,7 +225,7 @@ public final class ChangesViewModel {
 	}
 
 	var filteredStagedChanges: [WorkingTreeChange] {
-		filteredWorkingTreeChanges.filter(\.isStaged)
+		isAmendingCommit ? [] : filteredWorkingTreeChanges.filter(\.isStaged)
 	}
 
 	var filteredUnstagedChanges: [WorkingTreeChange] {
@@ -311,24 +338,62 @@ public final class ChangesViewModel {
 		}
 	}
 
+	public func didRequestStageSelectedChanges() {
+		guard canStageSelection else { return }
+		didRequestStage(selectedStageableChanges)
+	}
+
+	public func didRequestUnstageSelectedChanges() {
+		guard canUnstageSelection else { return }
+		if isAmendingCommit {
+			didRequestUnstageFromAmend(selectedAmendChanges)
+		} else {
+			didRequestUnstage(selectedStagedChanges)
+		}
+	}
+
+	public func didRequestStageAllChanges() {
+		guard canStageAllChanges else { return }
+		didRequestStage(stageableChanges)
+	}
+
+	public func didRequestUnstageAllChanges() {
+		guard canUnstageAllChanges else { return }
+		if isAmendingCommit {
+			didRequestUnstageFromAmend(amendChanges)
+		} else {
+			didRequestUnstage(unstageableChanges)
+		}
+	}
+
 	func didRequestStage(_ requestedChanges: [WorkingTreeChange]) {
 		let requestedIDs = Set(requestedChanges.map(\.id))
-		let stageableChanges = changes.filter {
-			requestedIDs.contains($0.id) && $0.hasWorkingTreeChange
-		}
+		let stageableChanges = self.stageableChanges.filter { requestedIDs.contains($0.id) }
 		guard let repositoryURL = repositoryURL(), !stageableChanges.isEmpty else { return }
-		requestMutation {
+		let selection = Set(
+			selectedChangeIDs.map { selection in
+				if case .unstaged(let id) = selection, requestedIDs.contains(id) {
+					return isAmendingCommit ? WorkspaceChangeSelection.amend(id) : .staged(id)
+				}
+				return selection
+			})
+		requestMutation(selecting: selection) {
 			try await self.changesUseCase.stage(stageableChanges, at: repositoryURL)
 		}
 	}
 
 	func didRequestUnstage(_ requestedChanges: [WorkingTreeChange]) {
 		let requestedIDs = Set(requestedChanges.map(\.id))
-		let stagedChanges = changes.filter {
-			requestedIDs.contains($0.id) && $0.isStaged
-		}
+		let stagedChanges = unstageableChanges.filter { requestedIDs.contains($0.id) }
 		guard let repositoryURL = repositoryURL(), !stagedChanges.isEmpty else { return }
-		requestMutation {
+		let selection = Set(
+			selectedChangeIDs.map { selection in
+				if case .staged(let id) = selection, requestedIDs.contains(id) {
+					return WorkspaceChangeSelection.unstaged(id)
+				}
+				return selection
+			})
+		requestMutation(selecting: selection) {
 			try await self.changesUseCase.unstage(stagedChanges, at: repositoryURL)
 		}
 	}
@@ -337,7 +402,14 @@ public final class ChangesViewModel {
 		let requestedIDs = Set(requestedChanges.map(\.id))
 		let requestedAmendChanges = amendChanges.filter { requestedIDs.contains($0.id) }
 		guard let repositoryURL = repositoryURL(), !requestedAmendChanges.isEmpty else { return }
-		requestMutation {
+		let selection = Set(
+			selectedChangeIDs.map { selection in
+				if case .amend(let id) = selection, requestedIDs.contains(id) {
+					return WorkspaceChangeSelection.unstaged(id)
+				}
+				return selection
+			})
+		requestMutation(selecting: selection) {
 			try await self.changesUseCase.unstageFromAmend(requestedAmendChanges, at: repositoryURL)
 		}
 	}
@@ -377,16 +449,24 @@ public final class ChangesViewModel {
 	}
 
 	private func requestMutation(
+		selecting selection: Set<WorkspaceChangeSelection>? = nil,
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
 	) {
-		guard let expectedRepositoryURL = repositoryURL() else { return }
+		guard !isLoading, let expectedRepositoryURL = repositoryURL() else { return }
 		mutationTask?.cancel()
+		let expectedSelection = selectedChangeIDs
+		let expectedAmendingCommit = isAmendingCommit
 		let requestID = beginMutation()
 		mutationTask = Task { [weak self] in
 			defer { self?.finishMutation(id: requestID) }
 			do {
 				let snapshot = try await operation()
 				guard let self, self.activeMutationRequestID == requestID else { return }
+				if let selection, selectedChangeIDs == expectedSelection,
+					isAmendingCommit == expectedAmendingCommit
+				{
+					selectedChangeIDs = selection
+				}
 				didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
@@ -477,6 +557,7 @@ public final class ChangesViewModel {
 		if selection.isEmpty, let firstConflict = conflicts.first {
 			selection = [.conflict(firstConflict.path)]
 		} else if selection.isEmpty,
+			!isAmendingCommit,
 			let firstStagedChange = displayedWorkingTreeChanges.first(where: \.isStaged)
 		{
 			selection = [.staged(firstStagedChange.id)]
@@ -501,7 +582,7 @@ public final class ChangesViewModel {
 	) -> Set<WorkspaceChangeSelection> {
 		var selections: Set<WorkspaceChangeSelection> = []
 		for change in changes {
-			if change.isStaged {
+			if change.isStaged, !isAmendingCommit {
 				selections.insert(.staged(change.id))
 			}
 			if change.hasWorkingTreeChange {

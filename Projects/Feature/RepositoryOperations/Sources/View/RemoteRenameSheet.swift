@@ -22,7 +22,7 @@ struct RemoteRenameSheet: View {
 
 	var body: some View {
 		Form {
-			TextField("Remote Name", text: $name)
+			TextField("Name", text: $name)
 				.disabled(isLoading)
 			if let errorMessage {
 				Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -30,20 +30,28 @@ struct RemoteRenameSheet: View {
 					.foregroundStyle(.red)
 			}
 		}
-		.padding(20)
-		.frame(width: 380, height: 220)
-		.safeAreaInset(edge: .bottom) {
+		.formStyle(.grouped)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			Text("Rename Remote")
+				.font(.headline)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(.horizontal, 20)
+				.padding(.top, 20)
+		}
+		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				Spacer()
 				Button("Cancel", role: .cancel) { dismiss() }
+					.keyboardShortcut(.cancelAction)
 					.disabled(isLoading)
 				Button("Rename") { onRename(name.trimmingCharacters(in: .whitespacesAndNewlines)) }
 					.buttonStyle(.borderedProminent)
+					.keyboardShortcut(.defaultAction)
 					.disabled(isLoading || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 			}
-			.padding(12)
-			.background(.bar)
+			.padding(20)
 		}
+		.frame(width: 440, height: 220)
 		.interactiveDismissDisabled(isLoading)
 	}
 }

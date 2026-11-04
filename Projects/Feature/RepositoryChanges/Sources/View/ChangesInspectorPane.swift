@@ -18,7 +18,8 @@ struct ChangesInspectorPane: View {
 			fileState: selectedFileState,
 			isStaged: viewModel.selectedDiffSource == .staged,
 			selectedCount: viewModel.selectedChangeIDs.count,
-			diff: diffViewModel.diff,
+			additionCount: diffViewModel.additionCount,
+			deletionCount: diffViewModel.deletionCount,
 			isLoading: diffViewModel.isLoading
 		)
 	}

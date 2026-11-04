@@ -12,8 +12,7 @@ struct MainlineSelectionSheet: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 16) {
-			Text(action.title).font(.title2.weight(.semibold))
-			Text("Choose the parent that represents the mainline for \(action.commit.shortHash).")
+			Text("Choose the mainline parent for \(action.commit.shortHash).")
 				.foregroundStyle(.secondary)
 			ForEach(Array(action.commit.parentHashes.enumerated()), id: \.offset) { index, hash in
 				Button {
@@ -31,14 +30,21 @@ struct MainlineSelectionSheet: View {
 			}
 		}
 		.padding(20)
-		.frame(width: 420)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			Text(action.title)
+				.font(.headline)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(.horizontal, 20)
+				.padding(.top, 20)
+		}
 		.safeAreaInset(edge: .bottom) {
 			HStack {
 				Spacer()
 				Button("Cancel", role: .cancel) { dismiss() }
+					.keyboardShortcut(.cancelAction)
 			}
-			.padding(12)
-			.background(.bar)
+			.padding(20)
 		}
+		.frame(width: 440)
 	}
 }

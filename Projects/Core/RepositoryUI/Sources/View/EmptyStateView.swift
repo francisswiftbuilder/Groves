@@ -9,7 +9,7 @@ public struct EmptyStateView: View {
 	let action: (() -> Void)?
 	public init(
 		title: String,
-		message: String,
+		message: String = "",
 		systemImage: String,
 		actionTitle: String? = nil,
 		actionSystemImage: String? = nil,
@@ -24,11 +24,17 @@ public struct EmptyStateView: View {
 	}
 
 	public var body: some View {
-		ContentUnavailableView {
+		VStack(spacing: 8) {
 			Label(title, systemImage: systemImage)
-		} description: {
-			Text(message)
-		} actions: {
+				.font(.body.weight(.medium))
+				.foregroundStyle(.secondary)
+			if !message.isEmpty {
+				Text(message)
+					.font(.callout)
+					.foregroundStyle(.secondary)
+					.multilineTextAlignment(.center)
+					.fixedSize(horizontal: false, vertical: true)
+			}
 			if let actionTitle, let action {
 				Button(action: action) {
 					if let actionSystemImage {
@@ -41,6 +47,8 @@ public struct EmptyStateView: View {
 				.controlSize(.regular)
 			}
 		}
+		.frame(maxWidth: 360)
+		.padding(24)
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 	}
 }

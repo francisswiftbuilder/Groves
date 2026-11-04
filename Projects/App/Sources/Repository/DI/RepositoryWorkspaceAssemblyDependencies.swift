@@ -7,4 +7,5 @@ struct RepositoryWorkspaceAssemblyDependencies {
 	let stashesUseCase: any RepositoryStashesUseCase
 	let operationsUseCase: any RepositoryOperationsUseCase
 	let externalEditorOpener: (any RepositoryExternalEditorOpening)?
+	var commitPlanningUseCase: (any RepositoryCommitPlanningUseCase)? = nil
 }

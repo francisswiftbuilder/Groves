@@ -36,30 +36,35 @@ struct NewBranchSheet: View {
 						.font(.caption)
 						.foregroundStyle(.red)
 				}
-			} header: {
-				Text("Create Branch")
 			} footer: {
 				Text(
-					"The new branch starts at \(startCommit?.shortHash ?? "the current HEAD") and becomes the active branch."
+					"Starts at \(startCommit?.shortHash ?? "HEAD") and checks out the new branch."
 				)
 				.foregroundStyle(.secondary)
 			}
 		}
 		.formStyle(.grouped)
-		.frame(width: 420, height: 240)
-		.safeAreaInset(edge: .bottom) {
+		.safeAreaInset(edge: .top, spacing: 0) {
+			Text("New Branch")
+				.font(.headline)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(.horizontal, 20)
+				.padding(.top, 20)
+		}
+		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				Spacer()
 				Button("Cancel", role: .cancel, action: onCancel)
+					.keyboardShortcut(.cancelAction)
 					.disabled(isLoading)
 				Button("Create", action: onCreate)
 					.buttonStyle(.borderedProminent)
 					.keyboardShortcut(.defaultAction)
 					.disabled(isLoading || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 			}
-			.padding(12)
-			.background(.bar)
+			.padding(20)
 		}
+		.frame(width: 440, height: 240)
 		.interactiveDismissDisabled(isLoading)
 	}
 }

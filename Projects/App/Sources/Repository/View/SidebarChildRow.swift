@@ -1,4 +1,3 @@
-import DomainGitInterface
 import SwiftUI
 
 struct SidebarChildRow: View {
@@ -7,26 +6,21 @@ struct SidebarChildRow: View {
 	let accessory: String?
 
 	var body: some View {
-		HStack(spacing: 8) {
-			Image(systemName: systemImage)
-				.font(.system(size: 11))
-				.symbolRenderingMode(.hierarchical)
-				.foregroundStyle(.secondary)
-				.frame(width: 14)
-
-			Text(title)
-				.lineLimit(1)
-
-			Spacer(minLength: 6)
-
+		HStack {
+			Label {
+				Text(title).lineLimit(1).truncationMode(.middle)
+			} icon: {
+				Image(systemName: systemImage).foregroundStyle(.secondary).accessibilityHidden(true)
+			}
 			if let accessory {
+				Spacer(minLength: 8)
 				Text(accessory)
-					.font(.caption2)
-					.foregroundStyle(.tertiary)
-					.lineLimit(1)
+					.font(.caption)
+					.monospacedDigit()
+					.foregroundStyle(.secondary)
+					.fixedSize()
 			}
 		}
-		.frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
 		.contentShape(.rect)
 	}
 }

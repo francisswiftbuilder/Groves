@@ -6,9 +6,9 @@ struct RemoteRow: View {
 
 	var body: some View {
 		HStack(spacing: 10) {
-			Image(systemName: "icloud.fill")
+			Image(systemName: "network")
 				.symbolRenderingMode(.hierarchical)
-				.foregroundStyle(.blue)
+				.foregroundStyle(.secondary)
 				.frame(width: 20)
 				.accessibilityHidden(true)
 

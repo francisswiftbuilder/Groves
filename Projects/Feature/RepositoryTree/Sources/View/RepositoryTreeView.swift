@@ -34,8 +34,6 @@ public struct RepositoryTreeView: View {
 				}
 			}
 		}
-		.navigationTitle("Tree")
-		.navigationSubtitle("Repository files")
 	}
 
 	private var treePane: some View {

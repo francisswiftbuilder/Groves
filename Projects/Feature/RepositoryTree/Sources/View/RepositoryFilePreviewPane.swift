@@ -34,10 +34,7 @@ struct RepositoryFilePreviewPane: View {
 						systemImage: "doc.text.magnifyingglass"
 					)
 				case .loading:
-					LoadingStateView(
-						title: "Loading Preview",
-						message: "Reading the selected file."
-					)
+					LoadingStateView(title: "Loading Preview")
 				case .text(let content, _):
 					RepositoryTextPreview(content: content)
 				case .image(let data):
@@ -62,7 +59,6 @@ struct RepositoryFilePreviewPane: View {
 		} else {
 			EmptyStateView(
 				title: "No File Selected",
-				message: "Select a file in the tree to preview it.",
 				systemImage: "doc.text.magnifyingglass"
 			)
 		}

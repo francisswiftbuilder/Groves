@@ -8,7 +8,7 @@ struct StashRow: View {
 		HStack(spacing: 10) {
 			Image(systemName: "archivebox.fill")
 				.symbolRenderingMode(.hierarchical)
-				.foregroundStyle(.purple)
+				.foregroundStyle(.secondary)
 				.frame(width: 20)
 				.accessibilityHidden(true)
 

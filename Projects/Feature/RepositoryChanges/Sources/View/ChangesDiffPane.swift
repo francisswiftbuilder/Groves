@@ -1,4 +1,5 @@
 import CoreRepositoryDiff
+import CoreRepositoryUI
 import DomainGitInterface
 import Foundation
 import SwiftUI
@@ -32,14 +33,16 @@ struct ChangesDiffPane: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			actionsHeader
-			Divider()
 			if let conflict = viewModel.selectedConflict {
 				ConflictPreview(
 					viewModel: conflictViewModel,
 					repositoryURL: repositoryURL,
 					conflict: conflict
 				)
+			} else if viewModel.selectedChangeIDs.count > 1 {
+				EmptyStateView(
+					title: "\(viewModel.selectedChangeIDs.count) Changes Selected",
+					systemImage: "doc.on.doc")
 			} else {
 				DiffView(
 					searchModel: searchViewModel,
@@ -52,16 +55,23 @@ struct ChangesDiffPane: View {
 					fileName: selectedFileName,
 					filePath: selectedFilePath,
 					fileState: selectedFileState,
-					fileActionTitle: selectedFileActionTitle,
+					fileActionTitle: nil,
 					lineAction: diffViewModel.selectedDiffLineAction,
 					hunkActions: diffViewModel.selectedDiffHunkActions,
 					isLoadingDiff: diffViewModel.isLoading,
 					isApplyingAction: diffViewModel.isApplyingAction,
 					onOptionsChanged: onOptionsChanged,
-					onApplyFileAction: applySelectedFileAction,
+					onApplyFileAction: {},
 					onApplyLine: diffViewModel.didRequestApplyDiffLine,
 					onApplyHunk: diffViewModel.didRequestApplyDiffHunk
 				)
+			}
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			VStack(spacing: 0) {
+				ChangesActionBar(viewModel: viewModel)
+				Divider()
 			}
 		}
 		.confirmationDialog(
@@ -92,27 +102,6 @@ struct ChangesDiffPane: View {
 		)
 	}
 
-	private var actionsHeader: some View {
-		HStack(alignment: .center, spacing: 10) {
-			Text("Working Tree")
-				.font(.subheadline.weight(.semibold))
-			Spacer(minLength: 12)
-			Button("Stage All", systemImage: "plus.circle") {
-				viewModel.didRequestStage(stageAllChanges)
-			}
-			.buttonStyle(.bordered)
-			.controlSize(.small)
-			.disabled(stageAllChanges.isEmpty || viewModel.isLoading)
-		}
-		.padding(.horizontal, 12)
-		.frame(height: 52)
-		.background(.bar)
-	}
-
-	private var stageAllChanges: [WorkingTreeChange] {
-		viewModel.displayedWorkingTreeChanges.filter(\.hasWorkingTreeChange)
-	}
-
 	private var selectedFileName: String? {
 		selectedFilePath.map { URL(fileURLWithPath: $0).lastPathComponent }
 	}
@@ -127,21 +116,4 @@ struct ChangesDiffPane: View {
 		viewModel.selectedConflict == nil ? viewModel.selectedFileState : .unmerged
 	}
 
-	private var selectedFileActionTitle: String? {
-		guard viewModel.selectedChange != nil else { return nil }
-		switch viewModel.selectedDiffSource {
-		case .staged: return "Unstage"
-		case .unstaged: return "Stage"
-		case .none: return nil
-		}
-	}
-
-	private func applySelectedFileAction() {
-		guard let change = viewModel.selectedChange else { return }
-		if viewModel.selectedDiffSource == .unstaged {
-			viewModel.didRequestStage([change])
-		} else if viewModel.selectedDiffSource == .staged {
-			viewModel.didRequestUnstage([change])
-		}
-	}
 }

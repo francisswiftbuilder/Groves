@@ -5,36 +5,31 @@ struct GitAccountSetupView: View {
 	let isOnboarding: Bool
 
 	var body: some View {
-		GitAccountForm(viewModel: viewModel)
-			.safeAreaInset(edge: .top) {
+		GitAccountForm(viewModel: viewModel, showsIdentity: isOnboarding)
+			.safeAreaInset(edge: .top, spacing: 0) {
 				if isOnboarding {
-					VStack(alignment: .leading, spacing: 6) {
-						Label("Set Up Git in Groves", systemImage: "person.crop.circle.badge.checkmark")
-							.font(.title2.bold())
-						Text("Connect your account once, then work with your repositories.")
-							.foregroundStyle(.secondary)
+					Text("Set Up Git")
+						.font(.headline)
+						.frame(maxWidth: .infinity, alignment: .leading)
+						.padding(.horizontal, 20)
+						.padding(.top, 20)
+				}
+			}
+			.safeAreaInset(edge: .bottom, spacing: 0) {
+				if isOnboarding {
+					HStack {
+						Button("Not Now", action: viewModel.continueLocally)
+							.disabled(viewModel.isConnecting)
+						Spacer()
+						Button("Continue", action: viewModel.saveIdentity)
+							.buttonStyle(.borderedProminent)
+							.keyboardShortcut(.defaultAction)
+							.disabled(!viewModel.identity.isValid || viewModel.isConnecting)
 					}
-					.frame(maxWidth: .infinity, alignment: .leading)
 					.padding(20)
 				}
 			}
-			.safeAreaInset(edge: .bottom) {
-				HStack {
-					if isOnboarding {
-						Button("Continue Without an Account") { viewModel.continueLocally() }
-							.disabled(viewModel.isConnecting)
-					}
-					Spacer()
-					Button(isOnboarding ? "Save and Continue" : "Save Git Identity") {
-						viewModel.saveIdentity()
-					}
-					.buttonStyle(.borderedProminent)
-					.disabled(!viewModel.identity.isValid || viewModel.isConnecting)
-				}
-				.padding(20)
-				.background(.bar)
-			}
-			.frame(minWidth: 480, idealWidth: 560, maxWidth: 680, minHeight: 580)
+			.frame(minWidth: 480, idealWidth: 540, maxWidth: 680, minHeight: isOnboarding ? 440 : nil)
 			.task { viewModel.load() }
 	}
 }

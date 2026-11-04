@@ -30,7 +30,7 @@ struct NewTagSheet: View {
 
 	var body: some View {
 		Form {
-			Section("Create Tag at \(commit.shortHash)") {
+			Section("Commit \(commit.shortHash)") {
 				TextField("Tag name", text: $name)
 					.textFieldStyle(.roundedBorder)
 				TextField("Message (optional)", text: $message, axis: .vertical)
@@ -45,20 +45,27 @@ struct NewTagSheet: View {
 		}
 		.disabled(isLoading)
 		.formStyle(.grouped)
-		.frame(width: 440, height: 300)
-		.safeAreaInset(edge: .bottom) {
+		.safeAreaInset(edge: .top, spacing: 0) {
+			Text("New Tag")
+				.font(.headline)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(.horizontal, 20)
+				.padding(.top, 20)
+		}
+		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				Spacer()
 				Button("Cancel", role: .cancel, action: onCancel)
+					.keyboardShortcut(.cancelAction)
 					.disabled(isLoading)
 				Button("Create", action: onCreate)
 					.buttonStyle(.borderedProminent)
 					.keyboardShortcut(.defaultAction)
 					.disabled(isLoading || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 			}
-			.padding(12)
-			.background(.bar)
+			.padding(20)
 		}
+		.frame(width: 440, height: 300)
 		.interactiveDismissDisabled(isLoading)
 	}
 }

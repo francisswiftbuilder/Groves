@@ -402,6 +402,28 @@ struct GitAccountViewModelTests {
 	}
 
 	@Test
+	func identityChangesCanBeSavedOrRevertedWithoutChangingTheAccount() throws {
+		let context = try makeContext()
+		let viewModel = context.viewModel
+		#expect(!viewModel.canSaveIdentity)
+		viewModel.identity = .init(name: "Developer", email: "developer@example.com")
+		#expect(viewModel.hasIdentityChanges)
+		#expect(viewModel.canSaveIdentity)
+		viewModel.saveIdentity()
+		#expect(!viewModel.hasIdentityChanges)
+		#expect(!viewModel.canSaveIdentity)
+		let saved = try String(contentsOf: context.configurationURL, encoding: .utf8)
+		viewModel.identity.name = "Draft"
+		viewModel.restoreIdentity()
+		#expect(viewModel.identity.name == "Developer")
+		#expect(!viewModel.hasIdentityChanges)
+		#expect(try String(contentsOf: context.configurationURL, encoding: .utf8) == saved)
+		viewModel.identity.email = "invalid"
+		#expect(viewModel.hasIdentityChanges)
+		#expect(!viewModel.canSaveIdentity)
+	}
+
+	@Test
 	func testFailedIdentitySaveDoesNotCompleteOnboarding() throws {
 		let context = try makeContext()
 		try FileManager.default.createDirectory(
@@ -414,6 +436,8 @@ struct GitAccountViewModelTests {
 		#expect(!(context.viewModel.hasCompletedSetup))
 		#expect(!(context.defaults.bool(forKey: "isolatedGitSetupCompleted")))
 		#expect(context.viewModel.errorMessage != nil)
+		#expect(context.viewModel.identityErrorMessage != nil)
+		#expect(context.viewModel.hasIdentityChanges)
 		#expect(context.viewModel.statusMessage == nil)
 	}
 

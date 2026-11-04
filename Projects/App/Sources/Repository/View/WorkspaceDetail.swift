@@ -70,16 +70,12 @@ struct WorkspaceDetail: View {
 			if viewModel.repositoryURL == nil {
 				EmptyStateView(
 					title: "Open a Git Repository",
-					message: "Choose a local repository to inspect changes, history, tags, and files.",
 					systemImage: "externaldrive.badge.plus"
 				)
 			} else if viewModel.isLoadingContent {
-				LoadingStateView(
-					title: "Loading Repository",
-					message: "Fetching changes, history, branches, tags, and files."
-				)
-				.navigationTitle(viewModel.repositoryName)
-				.navigationSubtitle(referencesViewModel.currentBranchStatus)
+				LoadingStateView(title: "Loading Repository")
+					.navigationTitle(viewModel.repositoryName)
+					.navigationSubtitle(referencesViewModel.currentBranchStatus)
 			} else {
 				switch viewModel.selectedSection ?? .changes {
 				case .changes:
@@ -125,6 +121,8 @@ struct WorkspaceDetail: View {
 				}
 			}
 		}
+		.navigationTitle(viewModel.repositoryName)
+		.navigationSubtitle(referencesViewModel.currentBranchStatus)
 		.safeAreaInset(edge: .top) {
 			VStack(spacing: 0) {
 				if let message = viewModel.alertMessage {

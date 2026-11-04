@@ -45,6 +45,14 @@ Inspect and manage your working tree without leaving the app.
 - Syntax-aware diff presentation
 - Conflict inspection and resolution workflows
 
+### Split Changes
+
+Stage the changes you want to review, then choose the **Apple Intelligence** button (**Split Changes…**) in the commit bar. Apple Foundation Models groups related change blocks into tasks, including separate tasks within the same file. Draft messages follow the language, subject format, and body structure of recent commits on the current branch, with Conventional Commits as the default when no examples are available. Review each patch, edit the message, or move a change to another task before choosing **Commit**.
+
+Builds made with the macOS 27 SDK can prefer Private Cloud Compute on macOS 27 or later when the app has the approved PCC entitlement and the service is available. It falls back to the on-device model when PCC is unavailable. On macOS 26, it uses the on-device model. Apple Intelligence must be available and enabled. Large changes are split into analysis excerpts and summarized before related work is grouped into commits. The model input reserves space for instructions, structured output, and the response. Original patches and change IDs remain intact for review and commit. Analysis reports progress, supports cancellation, and reuses successful in-memory summaries when retrying a failed request.
+
+Each task commits through a temporary Git index. Remaining staged changes and unstaged edits stay intact. Changes to the branch or index invalidate the previous plan. PCC calls require an eligible Apple Developer account and approved signing; ordinary development builds use the on-device model.
+
 ### History
 
 Explore repository history through an interactive commit graph.
@@ -102,7 +110,7 @@ This separates Git configuration and authentication; it does not enable macOS Ap
 ## Requirements
 
 - macOS 26.0 or later
-- Xcode 26 or later
+- Xcode 27 or later
 - Swift 6
 - Tuist 4.166.0
 
@@ -113,6 +121,10 @@ Run `make bundled-git` before the first Xcode build. This downloads checksum-pin
 Git source, build scripts, and license notices are included inside `Groves.app/Contents/Resources/Git/share/groves-source`. See [third-party notices](THIRD_PARTY_NOTICES.md). Git GUI, Perl/Python tools, translations, and legacy WebDAV push are excluded.
 
 Groves uses Tuist to manage its modular project structure.
+
+Generate the workspace with `make generate`, which loads `TUIST_CODE_SIGN_IDENTITY` and `TUIST_DEVELOPMENT_TEAM` from `.env.local`. Both values must be configured for development signing of the app and AskPass helper, whose shared Keychain access requires matching team signatures and provisioning profiles. Running `tuist generate` directly does not load this local configuration and can replace development signing with ad hoc signing.
+
+Use `make generate TUIST_GENERATE_ARGS=--no-open` to regenerate the workspace without opening Xcode.
 
 App identity and data isolation are configured in `Configurations/*.xcconfig`:
 
@@ -229,9 +241,7 @@ done
 
 Groves is still evolving. Planned areas include:
 
-- Public release builds
 - Signed and notarized distribution
-- Homebrew Cask installation
 - Automatic application updates
 - Additional Git workflows
 - Performance and large-repository improvements

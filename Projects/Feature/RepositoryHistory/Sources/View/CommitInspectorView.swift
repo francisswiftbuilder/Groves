@@ -12,9 +12,14 @@ struct CommitInspectorView: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			inspectorHeader
-			Divider()
 			inspectorContent
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.safeAreaInset(edge: .top, spacing: 0) {
+			VStack(spacing: 0) {
+				inspectorHeader
+				Divider()
+			}
 		}
 	}
 
@@ -33,7 +38,7 @@ struct CommitInspectorView: View {
 			}
 		}
 		.padding(.horizontal, 12)
-		.frame(height: 44)
+		.frame(height: 52)
 		.background(.bar)
 	}
 
@@ -64,7 +69,6 @@ struct CommitInspectorView: View {
 		} else {
 			EmptyStateView(
 				title: "No Commit Selected",
-				message: "Select a commit to inspect its details.",
 				systemImage: "clock"
 			)
 		}
@@ -94,14 +98,16 @@ struct CommitInspectorView: View {
 				"Authored",
 				value: commit.date.formatted(date: .abbreviated, time: .shortened)
 			)
-			CommitInspectorValue("Committer", value: commit.committer)
-			if !commit.committerEmail.isEmpty {
-				CommitInspectorValue("Committer Email", value: commit.committerEmail)
+			if commit.committer != commit.author || commit.committerEmail != commit.authorEmail {
+				CommitInspectorValue("Committer", value: commit.committer)
+				if !commit.committerEmail.isEmpty {
+					CommitInspectorValue("Committer Email", value: commit.committerEmail)
+				}
 			}
-			CommitInspectorValue(
-				"Committed",
-				value: commit.committedDate.formatted(date: .abbreviated, time: .shortened)
-			)
+			if commit.committedDate != commit.date {
+				CommitInspectorValue(
+					"Committed", value: commit.committedDate.formatted(date: .abbreviated, time: .shortened))
+			}
 			CommitInspectorValue("Hash", value: commit.shortHash, isMonospaced: true)
 			if !commit.parentHashes.isEmpty {
 				CommitInspectorValue(

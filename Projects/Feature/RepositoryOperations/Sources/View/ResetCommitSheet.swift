@@ -44,20 +44,26 @@ struct ResetCommitSheet: View {
 		}
 		.disabled(isLoading)
 		.formStyle(.grouped)
-		.padding(16)
-		.frame(width: 520, height: 330)
-		.safeAreaInset(edge: .bottom) {
+		.safeAreaInset(edge: .top, spacing: 0) {
+			Text("Reset Branch")
+				.font(.headline)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(.horizontal, 20)
+				.padding(.top, 20)
+		}
+		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				Spacer()
 				Button("Cancel", role: .cancel) { dismiss() }
+					.keyboardShortcut(.cancelAction)
 					.disabled(isLoading)
 				Button("Reset") { onReset() }
 					.buttonStyle(.borderedProminent)
 					.disabled(isLoading)
 			}
-			.padding(12)
-			.background(.bar)
+			.padding(20)
 		}
+		.frame(width: 520, height: 330)
 		.interactiveDismissDisabled(isLoading)
 	}
 }

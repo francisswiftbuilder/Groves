@@ -32,129 +32,72 @@ struct RepositoryNavigationRows: View {
 	}
 
 	var body: some View {
-		sectionRow(.tree)
-		sectionRow(.changes, badgeCount: changesViewModel.changes.count)
-		sectionRow(.history)
+		Section("Repository") {
+			sectionRow(.changes, badgeCount: changesViewModel.changes.count)
+			sectionRow(.history)
+			sectionRow(.tree)
+		}
 
-		navigationGroup(.branches, kind: .branches, selectsSection: false) {
+		Section(isExpanded: expansion(for: .branches)) {
 			ForEach(referencesViewModel.branches) { branch in
 				BranchSidebarRow(branch: branch)
 					.tag(RepositorySidebarSelection.branch(repositoryID: repositoryID, id: branch.id))
-					.help("Click to show \(branch.name) in History. Double-click to switch branches.")
+			}
+		} header: {
+			Text("Branches").contextMenu {
+				Button("New Branch…", systemImage: "plus", action: onCreateBranch)
 			}
 		}
 
-		navigationGroup(.remotes, kind: .remotes, selectsSection: false) {
+		Section("Remotes", isExpanded: expansion(for: .remotes)) {
+			sectionRow(.remotes, title: "All Remotes")
 			ForEach(remotesViewModel.remotes) { remote in
 				DisclosureGroup {
 					ForEach(remote.branches) { branch in
 						RemoteBranchSidebarRow(branch: branch)
 							.tag(
-								RepositorySidebarSelection.remoteBranch(
-									repositoryID: repositoryID,
-									id: branch.id
-								)
+								RepositorySidebarSelection.remoteBranch(repositoryID: repositoryID, id: branch.id)
 							)
-							.help(
-								"Click to show \(branch.fullName) in History. Double-click to track and switch."
-							)
+							.help(branch.fullName)
 					}
 				} label: {
-					SidebarChildRow(title: remote.name, systemImage: "icloud", accessory: nil)
+					SidebarChildRow(title: remote.name, systemImage: "network", accessory: nil)
+				}
+				.tag(RepositorySidebarSelection.remote(repositoryID: repositoryID, id: remote.id))
+			}
+		}
+
+		if !referencesViewModel.tags.isEmpty {
+			Section("Tags", isExpanded: expansion(for: .tags)) {
+				ForEach(referencesViewModel.tags) { tag in
+					TagSidebarRow(tag: tag)
+						.tag(RepositorySidebarSelection.tag(repositoryID: repositoryID, id: tag.id))
+						.help(tag.name)
 				}
 			}
 		}
 
-		tagNavigationGroup {
-			ForEach(referencesViewModel.tags) { tag in
-				TagSidebarRow(tag: tag)
-					.tag(RepositorySidebarSelection.tag(repositoryID: repositoryID, id: tag.id))
-					.help("Show \(tag.name) in History")
-			}
-		}
-
-		navigationGroup(.stashes, kind: .stashes) {
+		Section("Stashes", isExpanded: expansion(for: .stashes)) {
+			sectionRow(.stashes, title: "All Stashes", badgeCount: stashesViewModel.stashes.count)
 			ForEach(stashesViewModel.stashes) { stash in
-				SidebarChildRow(
-					title: stash.subject,
-					systemImage: "archivebox",
-					accessory: stash.reference
-				)
-				.tag(RepositorySidebarSelection.stash(repositoryID: repositoryID, id: stash.id))
+				SidebarChildRow(title: stash.subject, systemImage: "archivebox", accessory: nil)
+					.tag(RepositorySidebarSelection.stash(repositoryID: repositoryID, id: stash.id))
+					.help("\(stash.reference) · \(stash.subject)")
 			}
 		}
 	}
 
-	private func sectionRow(_ section: WorkspaceSection, badgeCount: Int? = nil) -> some View {
-		SidebarSectionRow(section: section, badgeCount: badgeCount)
+	private func sectionRow(
+		_ section: WorkspaceSection, title: String? = nil, badgeCount: Int? = nil
+	) -> some View {
+		SidebarSectionRow(section: section, title: title, badgeCount: badgeCount)
 			.tag(RepositorySidebarSelection.section(repositoryID: repositoryID, section: section))
 	}
 
-	@ViewBuilder
-	private func navigationGroup<Content: View>(
-		_ section: WorkspaceSection,
-		kind: RepositorySidebarGroupKind,
-		selectsSection: Bool = true,
-		@ViewBuilder content: @escaping () -> Content
-	) -> some View {
-		let group = RepositorySidebarGroup(
-			repositoryID: repositoryID,
-			kind: kind
-		)
-		let disclosureGroup = DisclosureGroup(
-			isExpanded: Binding(
-				get: { workspace.expandedSidebarGroups.contains(group) },
-				set: { isExpanded in
-					workspace.setSidebarGroup(group, isExpanded: isExpanded)
-				}
-			)
-		) {
-			content()
-		} label: {
-			navigationGroupLabel(section, kind: kind)
-		}
-
-		if selectsSection {
-			disclosureGroup
-				.tag(RepositorySidebarSelection.section(repositoryID: repositoryID, section: section))
-		} else {
-			disclosureGroup
-		}
+	private func expansion(for kind: RepositorySidebarGroupKind) -> Binding<Bool> {
+		let group = RepositorySidebarGroup(repositoryID: repositoryID, kind: kind)
+		return Binding(
+			get: { workspace.expandedSidebarGroups.contains(group) },
+			set: { workspace.setSidebarGroup(group, isExpanded: $0) })
 	}
-
-	@ViewBuilder
-	private func navigationGroupLabel(
-		_ section: WorkspaceSection,
-		kind: RepositorySidebarGroupKind
-	) -> some View {
-		if kind == .branches {
-			SidebarSectionRow(section: section, badgeCount: nil)
-				.contextMenu {
-					Button("New Branch…", systemImage: "plus") {
-						onCreateBranch()
-					}
-				}
-		} else {
-			SidebarSectionRow(section: section, badgeCount: nil)
-		}
-	}
-
-	private func tagNavigationGroup<Content: View>(
-		@ViewBuilder content: @escaping () -> Content
-	) -> some View {
-		let group = RepositorySidebarGroup(repositoryID: repositoryID, kind: .tags)
-		return DisclosureGroup(
-			isExpanded: Binding(
-				get: { workspace.expandedSidebarGroups.contains(group) },
-				set: { isExpanded in
-					workspace.setSidebarGroup(group, isExpanded: isExpanded)
-				}
-			)
-		) {
-			content()
-		} label: {
-			SidebarGroupRow(title: "Tags", systemImage: "tag")
-		}
-	}
-
 }
