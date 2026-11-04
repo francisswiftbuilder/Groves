@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct RepositoryTabsView: View {
 	@Environment(\.windowTabCoordinator) private var coordinator
-	let viewModel: RepositoryTabsViewModel
+	@Bindable var viewModel: RepositoryTabsViewModel
 	let windowViewModel: RepositoryWindowViewModel
 	@Binding var repositoryID: RepositoryTab.ID?
 
@@ -55,25 +55,7 @@ struct RepositoryTabsView: View {
 			allowsMultipleSelection:
 				windowViewModel.folderImportRequest?.allowsMultipleSelection ?? false
 		) { handleFolderImport($0) }
-		.alert(
-			"Repository Error",
-			isPresented: Binding(
-				get: { viewModel.alertMessage != nil },
-				set: { isPresented in
-					if !isPresented {
-						viewModel.alertMessage = nil
-					}
-				}
-			),
-			actions: {
-				Button("OK") {
-					viewModel.alertMessage = nil
-				}
-			},
-			message: {
-				Text(viewModel.alertMessage ?? "")
-			}
-		)
+		.modifier(RepositoryErrorAlertModifier(message: $viewModel.alertMessage))
 	}
 
 	private func presentNewBranch() {

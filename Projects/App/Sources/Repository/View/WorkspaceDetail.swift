@@ -9,7 +9,7 @@ import FeatureRepositoryTree
 import SwiftUI
 
 struct WorkspaceDetail: View {
-	let viewModel: WorkspaceViewModel
+	@Bindable var viewModel: WorkspaceViewModel
 	private let operationViewModel: RepositoryOperationViewModel
 	private let referencesViewModel: RepositoryReferencesViewModel
 	let syncViewModel: RepositorySyncViewModel
@@ -123,13 +123,8 @@ struct WorkspaceDetail: View {
 		}
 		.navigationTitle(viewModel.repositoryName)
 		.navigationSubtitle(referencesViewModel.currentBranchStatus)
-		.safeAreaInset(edge: .top) {
+		.safeAreaInset(edge: .top, spacing: 0) {
 			VStack(spacing: 0) {
-				if let message = viewModel.alertMessage {
-					RepositoryErrorBanner(message: message) {
-						viewModel.alertMessage = nil
-					}
-				}
 				if operationViewModel.operationState.isDetached {
 					RepositoryDetachedHeadBanner(
 						viewModel: referencesViewModel
@@ -144,5 +139,6 @@ struct WorkspaceDetail: View {
 				}
 			}
 		}
+		.modifier(RepositoryErrorAlertModifier(message: $viewModel.alertMessage))
 	}
 }
