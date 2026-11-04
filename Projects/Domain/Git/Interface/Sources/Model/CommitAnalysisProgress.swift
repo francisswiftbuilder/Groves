@@ -4,6 +4,7 @@ public struct CommitAnalysisProgress: Sendable {
 	public enum Phase: Sendable {
 		case analyzing
 		case grouping
+		case drafting
 	}
 
 	public let phase: Phase

@@ -28,12 +28,16 @@ struct RepositoryRootView: View {
 			windowViewModel: windowViewModel,
 			repositoryID: $repositoryID
 		)
-		.safeAreaInset(edge: .top) {
-			if let notice = noticeCenter.notice {
-				RepositoryNoticeBanner(message: notice.message) {
-					noticeCenter.dismiss()
-				}
-			}
-		}
+		.modifier(
+			RepositoryErrorAlertModifier(
+				message: Binding(
+					get: { noticeCenter.notice?.message },
+					set: { message in
+						if message == nil { noticeCenter.dismiss() }
+					}
+				),
+				title: "Couldn’t Save Credentials"
+			)
+		)
 	}
 }

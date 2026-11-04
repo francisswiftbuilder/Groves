@@ -152,8 +152,18 @@ final class RepositoryTabsViewModel {
 		tab.workspace.viewModel.didActivateSidebarSelection(selection)
 	}
 
+	func didCloseRepositoryWindow(_ id: SavedRepository.ID) {
+		guard let workspace = tab(id: id)?.workspace else { return }
+		workspace.viewModel.onDisappear()
+		workspace.onDisappear()
+	}
+
+	func didCloseLastRepositoryWindow() {
+		didRestoreRepositoryWindows = false
+	}
+
 	@discardableResult
-	func didRequestCloseTab(_ id: SavedRepository.ID) -> SavedRepository.ID? {
+	func didRequestRemoveRepository(_ id: SavedRepository.ID) -> SavedRepository.ID? {
 		guard tabs.contains(where: { $0.id == id }) else { return nil }
 		do {
 			let snapshot = try dependencies.useCase.removeRepository(id: id)

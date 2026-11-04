@@ -35,6 +35,17 @@ enum GitCommitUnitParser {
 		}
 	}
 
+	static func analysisPatch(for unit: GitCommitUnit) -> String {
+		if unit.hunk != nil {
+			return unit.patch.components(separatedBy: "\n").drop { !$0.hasPrefix("@@ ") }
+				.joined(separator: "\n")
+		}
+		if let range = unit.patch.range(of: "GIT binary patch") {
+			return String(unit.patch[..<range.lowerBound]) + "Binary content changed."
+		}
+		return unit.patch
+	}
+
 	static func combinedPatch(for units: [GitCommitUnit]) throws -> String {
 		var patches: [String] = []
 		for path in Set(units.map(\.path)).sorted() {
