@@ -270,6 +270,41 @@ struct SwiftDataSavedRepositoryStoreTests {
 	}
 
 	@Test
+	func environmentStoresKeepIndependentRepositoriesAfterReloading() throws {
+		let directory = try requestTemporaryDirectory()
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let storeURLs = [
+			directory.appending(path: "Groves.store"),
+			directory.appending(path: "Groves Dev/Repositories.store"),
+			directory.appending(path: "Groves Staging/Repositories.store"),
+		]
+		var expectedIDs: [UUID] = []
+		for (index, url) in storeURLs.enumerated() {
+			try FileManager.default.createDirectory(
+				at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+			let repositoryURL = directory.appending(
+				path: "Repository\(index)", directoryHint: .isDirectory)
+			try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
+			let store = SwiftDataSavedRepositoryStore(
+				container: try ModelContainer(
+					for: SavedRepositoryRecord.self,
+					configurations: ModelConfiguration("Groves", url: url)))
+			let saved = try store.requestSaveRepository(at: repositoryURL)
+			try store.requestSelectRepository(id: saved.id)
+			expectedIDs.append(saved.id)
+		}
+		for (index, url) in storeURLs.enumerated() {
+			let reloaded = SwiftDataSavedRepositoryStore(
+				container: try ModelContainer(
+					for: SavedRepositoryRecord.self,
+					configurations: ModelConfiguration("Groves", url: url)))
+			let repositories = try reloaded.requestRepositories()
+			#expect(repositories.map(\.id) == [expectedIDs[index]])
+			#expect(repositories.first?.isSelected == true)
+		}
+	}
+
+	@Test
 	func testFailedDiskSaveRollsBackDeletionAndSelection() throws {
 		let directory = try requestTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directory) }

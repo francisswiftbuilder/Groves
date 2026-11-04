@@ -18,7 +18,7 @@ struct NativeWindowTabCoordinatorTests {
 	}
 
 	@Test
-	func testClosingWindowWithExistingControllerRemovesSavedRepository() {
+	func testClosingWindowWithExistingControllerPreservesSavedRepository() {
 		let repository = makeRepository()
 		let store = SavedRepositoryStoreSpy(repositories: [repository])
 		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
@@ -31,8 +31,67 @@ struct NativeWindowTabCoordinatorTests {
 		#expect(window.windowController === existingController)
 		window.close()
 
-		#expect(store.removedRepositoryIDs == [repository.id])
-		#expect(viewModel.tabs.isEmpty)
+		#expect(store.removedRepositoryIDs.isEmpty)
+		#expect(viewModel.tabs.map(\.id) == [repository.id])
+	}
+
+	@Test
+	func testClosingAllWindowsPreservesRepositoriesForTheNextLaunch() {
+		let first = makeRepository(position: 0)
+		let second = makeRepository(position: 1)
+		let store = SavedRepositoryStoreSpy(repositories: [first, second])
+		let coordinator = makeCoordinator(
+			viewModel: makeRepositoryTabsViewModel(savedRepositoryStore: store)
+		)
+		let firstWindow = makeWindow()
+		let secondWindow = makeWindow()
+		coordinator.register(firstWindow, repositoryID: first.id)
+		coordinator.register(secondWindow, repositoryID: second.id)
+
+		firstWindow.close()
+		secondWindow.close()
+
+		let restored = makeRepositoryTabsViewModel(savedRepositoryStore: store)
+		#expect(restored.tabs.map(\.id) == [first.id, second.id])
+		#expect(store.removedRepositoryIDs.isEmpty)
+	}
+
+	@Test
+	func testClosingLastWindowAllowsRestorationInTheSameProcess() throws {
+		let first = makeRepository(position: 0, isSelected: false)
+		let selected = makeRepository(position: 1)
+		let store = SavedRepositoryStoreSpy(repositories: [first, selected])
+		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
+		let initial = try #require(viewModel.requestWindowRestoration(currentRepositoryID: nil))
+		let coordinator = makeCoordinator(viewModel: viewModel)
+		let firstWindow = makeWindow()
+		let secondWindow = makeWindow()
+		coordinator.register(firstWindow, repositoryID: first.id)
+		coordinator.register(secondWindow, repositoryID: selected.id)
+
+		firstWindow.close()
+		#expect(viewModel.requestWindowRestoration(currentRepositoryID: nil) == nil)
+		secondWindow.close()
+
+		#expect(viewModel.requestWindowRestoration(currentRepositoryID: nil) == initial)
+		#expect(store.repositories.map(\.id) == [first.id, selected.id])
+	}
+
+	@Test
+	func testClosingAnEmptyLastWindowAllowsSavedRepositoriesToRestore() {
+		let repository = makeRepository()
+		let viewModel = makeRepositoryTabsViewModel(
+			savedRepositoryStore: SavedRepositoryStoreSpy(repositories: [repository]))
+		_ = viewModel.requestWindowRestoration(currentRepositoryID: nil)
+		let coordinator = makeCoordinator(viewModel: viewModel)
+		let window = makeWindow()
+		coordinator.register(window, repositoryID: nil)
+
+		window.close()
+
+		#expect(
+			viewModel.requestWindowRestoration(currentRepositoryID: nil)?.primaryRepositoryID
+				== repository.id)
 	}
 
 	@Test
@@ -59,7 +118,7 @@ struct NativeWindowTabCoordinatorTests {
 	}
 
 	@Test
-	func testClosingDuplicateWindowPreservesRepositoryUntilLastWindowCloses() {
+	func testClosingDuplicateWindowsPreservesSavedRepository() {
 		let repository = makeRepository()
 		let store = SavedRepositoryStoreSpy(repositories: [repository])
 		let coordinator = makeCoordinator(
@@ -77,7 +136,8 @@ struct NativeWindowTabCoordinatorTests {
 
 		secondWindow.close()
 
-		#expect(store.removedRepositoryIDs == [repository.id])
+		#expect(store.removedRepositoryIDs.isEmpty)
+		#expect(store.repositories.map(\.id) == [repository.id])
 	}
 
 	@Test
@@ -150,7 +210,8 @@ struct NativeWindowTabCoordinatorTests {
 	func testNewWindowReceivesCoordinatorAndCanOpenAnotherTabWithoutAnAnchor() async throws {
 		var receivedCoordinator: (any RepositoryWindowTabCoordinating)?
 		let coordinator = NativeWindowTabCoordinator(
-			actions: .init(didSelectRepository: { _ in }, didCloseRepository: { _ in }),
+			actions: .init(
+				didSelectRepository: { _ in }, didCloseRepository: { _ in }, didCloseLastWindow: {}),
 			makeRootView: { _ in
 				AnyView(
 					CoordinatorProbe { coordinator in
@@ -177,6 +238,44 @@ struct NativeWindowTabCoordinatorTests {
 	}
 
 	@Test
+	func testMovingAnUpdatedHostingViewRetainsItsCurrentRepository() async throws {
+		let initialID = UUID()
+		let updatedID = UUID()
+		var selectedIDs: [UUID] = []
+		let coordinator = NativeWindowTabCoordinator(
+			actions: .init(
+				didSelectRepository: { selectedIDs.append($0) }, didCloseRepository: { _ in },
+				didCloseLastWindow: {}),
+			makeRootView: { _ in AnyView(EmptyView()) })
+		let window = makeWindow()
+		let controller = NSHostingController(
+			rootView: NativeWindowTabConfigurator(repositoryID: initialID)
+				.environment(\.windowTabCoordinator, coordinator))
+		window.contentViewController = controller
+		defer {
+			coordinator.prepareForTermination()
+			window.close()
+		}
+		try await Task.sleep(for: .milliseconds(30))
+		controller.rootView = NativeWindowTabConfigurator(repositoryID: updatedID)
+			.environment(\.windowTabCoordinator, coordinator)
+		controller.view.layoutSubtreeIfNeeded()
+		try await Task.sleep(for: .milliseconds(30))
+		let observationView = try #require(findObservationView(in: controller.view))
+
+		observationView.viewDidMoveToWindow()
+		try await Task.sleep(for: .milliseconds(30))
+		NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+
+		#expect(selectedIDs.last == updatedID)
+	}
+
+	private func findObservationView(in view: NSView) -> WindowObservationView? {
+		if let view = view as? WindowObservationView { return view }
+		return view.subviews.lazy.compactMap { findObservationView(in: $0) }.first
+	}
+
+	@Test
 	func testDelayedRegistrationDoesNotReactivateClosedWindow() {
 		let repositoryID = UUID()
 		var selectedIDs: [UUID] = []
@@ -184,7 +283,8 @@ struct NativeWindowTabCoordinatorTests {
 		let coordinator = NativeWindowTabCoordinator(
 			actions: .init(
 				didSelectRepository: { selectedIDs.append($0) },
-				didCloseRepository: { closedIDs.append($0) }
+				didCloseRepository: { closedIDs.append($0) },
+				didCloseLastWindow: {}
 			),
 			makeRootView: { _ in AnyView(EmptyView()) }
 		)
@@ -204,7 +304,8 @@ struct NativeWindowTabCoordinatorTests {
 		NativeWindowTabCoordinator(
 			actions: .init(
 				didSelectRepository: { viewModel.didSelectTab($0) },
-				didCloseRepository: { viewModel.didRequestCloseTab($0) }
+				didCloseRepository: { viewModel.didCloseRepositoryWindow($0) },
+				didCloseLastWindow: { viewModel.didCloseLastRepositoryWindow() }
 			),
 			makeRootView: { _ in AnyView(EmptyView()) }
 		)

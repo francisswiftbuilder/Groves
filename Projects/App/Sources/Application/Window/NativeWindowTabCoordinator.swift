@@ -7,6 +7,7 @@ final class NativeWindowTabCoordinator: NSObject, RepositoryWindowTabCoordinatin
 	struct Actions {
 		let didSelectRepository: @MainActor (UUID) -> Void
 		let didCloseRepository: @MainActor (UUID) -> Void
+		let didCloseLastWindow: @MainActor () -> Void
 	}
 
 	typealias RootViewFactory = @MainActor (Binding<UUID?>) -> AnyView
@@ -191,8 +192,13 @@ final class NativeWindowTabCoordinator: NSObject, RepositoryWindowTabCoordinatin
 		closedWindows.add(window)
 		registeredWindows.remove(window)
 		windowControllers.removeAll { $0.window === window }
-		guard !isTerminating, let id, self.window(for: id) == nil else { return }
-		actions.didCloseRepository(id)
+		guard !isTerminating else { return }
+		if let id, self.window(for: id) == nil {
+			actions.didCloseRepository(id)
+		}
+		if registeredWindows.allObjects.isEmpty {
+			actions.didCloseLastWindow()
+		}
 	}
 
 	private func window(for repositoryID: UUID) -> NSWindow? {
