@@ -10,33 +10,27 @@ struct OnDeviceCommitAnalyzer {
 	let progress: @Sendable (CommitAnalysisProgress) async -> Void
 
 	func analyze(_ input: GitCommitPlanInput) async throws -> GitCommitPlan {
-		var parts: [(GitCommitUnit, [String])] = []
-		for unit in input.units {
-			let text: String
-			if let binary = unit.patch.range(of: "GIT binary patch") {
-				text = String(unit.patch[..<binary.lowerBound]) + "Binary content changed."
-			} else {
-				text = unit.patch
-			}
-			parts.append((unit, try await split(text, path: unit.path)))
-		}
-		let total = parts.reduce(0) { $0 + $1.1.count }
-		var completed = 0
 		var candidates: [GitCommitTask] = []
-		await progress(.init(phase: .analyzing, completed: 0, total: total))
-		for (unit, chunks) in parts {
-			var summaries: [String] = []
-			for chunk in chunks {
-				try Task.checkCancellation()
-				summaries.append(try await summarizeCached(chunk, path: unit.path))
-				completed += 1
-				await progress(.init(phase: .analyzing, completed: completed, total: total))
+		await progress(.init(phase: .analyzing, completed: 0, total: input.units.count))
+		for (index, unit) in input.units.enumerated() {
+			let text = GitCommitUnitParser.analysisPatch(for: unit)
+			let chunks = try await split(text, path: unit.path)
+			let summary: String
+			if chunks.count == 1 {
+				summary = text
+			} else {
+				var summaries: [String] = []
+				for chunk in chunks {
+					try Task.checkCancellation()
+					summaries.append(try await summarizeCached(chunk, path: unit.path))
+				}
+				summary = try await consolidate(summaries, path: unit.path)
 			}
-			let summary = try await consolidate(summaries, path: unit.path)
 			candidates.append(
 				.init(
-					subject: "", body: URL(fileURLWithPath: unit.path).lastPathComponent + "\n" + summary,
+					subject: "", body: "FILE: " + unit.path + "\n" + summary,
 					unitIDs: [unit.id]))
+			await progress(.init(phase: .analyzing, completed: index + 1, total: input.units.count))
 		}
 		for _ in 0..<8 {
 			try Task.checkCancellation()
@@ -64,30 +58,14 @@ struct OnDeviceCommitAnalyzer {
 			let reminder =
 				attempt == 0
 				? ""
-				: "\nThe previous assignment was invalid. Include each supplied CHANGE ID once, with no omissions or duplicates."
+				: "\nThe previous response was invalid. Follow the specified output language and subject format. Keep Conventional Commit types such as fix, feat and refactor in English. Include each supplied CHANGE ID once, with no omissions or duplicates."
 			let result: GeneratedCommitPlan
 			do {
 				result = try await generate(groupPrompt(batch) + reminder)
 			} catch {
 				try Task.checkCancellation()
-				#if compiler(>=6.4)
-					if #available(macOS 27.0, *) {
-						if error is GeneratedContent.ParsingError { continue }
-						if let modelError = error as? LanguageModelError,
-							case .contextSizeExceeded = modelError
-						{
-							continue
-						}
-					}
-				#endif
-				if let generationError = error as? LanguageModelSession.GenerationError {
-					switch generationError {
-					case .decodingFailure, .exceededContextWindowSize: continue
-					default: break
-					}
-				}
-				if error is DecodingError { continue }
-				throw error
+				guard Self.canRetryGeneration(after: error) else { throw error }
+				continue
 			}
 			try Task.checkCancellation()
 			guard result.commits.flatMap(\.changeIDs).sorted() == Array(batch.indices) else { continue }
@@ -104,6 +82,30 @@ struct OnDeviceCommitAnalyzer {
 		let first = try await classify(Array(batch[..<middle]))
 		let second = try await classify(Array(batch[middle...]))
 		return first + second
+	}
+
+	static func canRetryGeneration(after error: any Error) -> Bool {
+		if let error = error as? GitCommitPlanError {
+			switch error {
+			case .invalidPlan, .contextTooLarge: return true
+			default: return false
+			}
+		}
+		#if compiler(>=6.4)
+			if #available(macOS 27.0, *) {
+				if error is GeneratedContent.ParsingError { return true }
+				if let error = error as? LanguageModelError, case .contextSizeExceeded = error {
+					return true
+				}
+			}
+		#endif
+		if let error = error as? LanguageModelSession.GenerationError {
+			switch error {
+			case .decodingFailure, .exceededContextWindowSize: return true
+			default: return false
+			}
+		}
+		return error is DecodingError
 	}
 
 	func split(_ text: String, path: String) async throws -> [String] {
@@ -154,12 +156,17 @@ struct OnDeviceCommitAnalyzer {
 		var batches: [[GitCommitTask]] = []
 		var batch: [GitCommitTask] = []
 		for var candidate in candidates {
-			let text = candidate.subject + "\n" + candidate.body
-			candidate.body = try await consolidate([text], path: "Change summary")
-			let fitsBatch = try await fits(groupPrompt(batch + [candidate]))
-			if !batch.isEmpty, !fitsBatch {
+			if try await fits(groupPrompt(batch + [candidate])) {
+				batch.append(candidate)
+				continue
+			}
+			if !batch.isEmpty {
 				batches.append(batch)
 				batch = []
+			}
+			if try await fits(groupPrompt([candidate])) == false {
+				candidate.body = try await consolidate(
+					[candidate.subject + "\n" + candidate.body], path: "Change summary")
 			}
 			guard try await fits(groupPrompt([candidate])) else {
 				throw GitCommitPlanError.contextTooLarge

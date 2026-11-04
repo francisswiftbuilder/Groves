@@ -49,9 +49,9 @@ Inspect and manage your working tree without leaving the app.
 
 Stage the changes you want to review, then choose the **Apple Intelligence** button (**Split Changes…**) in the commit bar. Apple Foundation Models groups related change blocks into tasks, including separate tasks within the same file. Draft messages follow the language, subject format, and body structure of recent commits on the current branch, with Conventional Commits as the default when no examples are available. Review each patch, edit the message, or move a change to another task before choosing **Commit**.
 
-Builds made with the macOS 27 SDK can prefer Private Cloud Compute on macOS 27 or later when the app has the approved PCC entitlement and the service is available. It falls back to the on-device model when PCC is unavailable. On macOS 26, it uses the on-device model. Apple Intelligence must be available and enabled. Large changes are split into analysis excerpts and summarized before related work is grouped into commits. The model input reserves space for instructions, structured output, and the response. Original patches and change IDs remain intact for review and commit. Analysis reports progress, supports cancellation, and reuses successful in-memory summaries when retrying a failed request.
+Builds made with the macOS 27 SDK can prefer Private Cloud Compute on macOS 27 or later when the app has the approved PCC entitlement and the service is available. It falls back to the on-device model when PCC is unavailable. On macOS 26, it uses the on-device model. Apple Intelligence must be available and enabled. Large change sets are analyzed in batches, summarizing only excerpts that exceed the model's input budget. Related work is grouped before commit messages are drafted from repository history. Messages generated in a different language are translated while preserving Conventional Commit prefixes and code identifiers. The model input reserves space for instructions, structured output, and the response. Original patches and change IDs remain intact for review and commit. Analysis reports progress, supports cancellation, and reuses successful in-memory summaries and task groups when retrying a failed request.
 
-Each task commits through a temporary Git index. Remaining staged changes and unstaged edits stay intact. Changes to the branch or index invalidate the previous plan. PCC calls require an eligible Apple Developer account and approved signing; ordinary development builds use the on-device model.
+Each task commits through a temporary Git index. Remaining staged changes and unstaged edits stay intact. The branch and index are checked again after generation and before committing, so changes made during analysis invalidate the previous plan. PCC calls require an eligible Apple Developer account and approved signing; ordinary development builds use the on-device model.
 
 ### History
 
@@ -220,6 +220,8 @@ Shared infrastructure and reusable UI components.
 Groves uses SwiftData for local application state.
 
 Repository access is restored between launches using macOS security-scoped bookmarks, allowing previously opened repositories to remain accessible without requesting the directory again.
+
+Closing a repository window keeps its saved repository entry. Closing the last window also allows the saved windows to be restored when a new repository window opens in the same app session. Development, staging, and production builds keep separate saved repository lists.
 
 ## Testing
 

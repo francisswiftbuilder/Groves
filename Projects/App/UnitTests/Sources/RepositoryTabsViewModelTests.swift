@@ -194,13 +194,13 @@ struct RepositoryTabsViewModelTests {
 	}
 
 	@Test
-	func testClosingSelectedRepositorySelectsNeighborAndPersistsSelection() {
+	func testRemovingSelectedRepositorySelectsNeighborAndPersistsSelection() {
 		let first = makeSavedRepository(name: "First", position: 0, isSelected: true)
 		let second = makeSavedRepository(name: "Second", position: 1, isSelected: false)
 		let store = SavedRepositoryStoreSpy(repositories: [first, second])
 		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
 
-		viewModel.didRequestCloseTab(first.id)
+		viewModel.didRequestRemoveRepository(first.id)
 
 		#expect(viewModel.tabs.map(\.id) == [second.id])
 		#expect(viewModel.selectedTabID == second.id)
@@ -250,7 +250,7 @@ struct RepositoryTabsViewModelTests {
 		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
 		store.removalError = SavedRepositoryStoreError.persistenceFailed
 
-		viewModel.didRequestCloseTab(repository.id)
+		viewModel.didRequestRemoveRepository(repository.id)
 
 		#expect(viewModel.tabs.map(\.id) == [repository.id])
 		#expect(store.repositories.map(\.id) == [repository.id])

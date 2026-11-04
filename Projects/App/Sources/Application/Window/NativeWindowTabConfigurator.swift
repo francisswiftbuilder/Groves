@@ -10,14 +10,13 @@ struct NativeWindowTabConfigurator: NSViewRepresentable {
 	}
 
 	func makeNSView(context: Context) -> WindowObservationView {
-		let view = WindowObservationView()
-		view.didMoveToWindow = { window in
-			context.coordinator.register(window, repositoryID: repositoryID, using: coordinator)
-		}
-		return view
+		WindowObservationView()
 	}
 
 	func updateNSView(_ nsView: WindowObservationView, context: Context) {
+		nsView.didMoveToWindow = { window in
+			context.coordinator.register(window, repositoryID: repositoryID, using: coordinator)
+		}
 		context.coordinator.register(nsView.window, repositoryID: repositoryID, using: coordinator)
 	}
 

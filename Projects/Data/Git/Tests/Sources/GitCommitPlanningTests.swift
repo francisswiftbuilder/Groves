@@ -37,6 +37,10 @@ struct GitCommitPlanningTests {
 		#expect(input.units.count == 2)
 		let first = try #require(input.units.first)
 		let second = try #require(input.units.last)
+		let analysis = GitCommitUnitParser.analysisPatch(for: first)
+		#expect(analysis.contains("+first task"))
+		#expect(!analysis.contains("diff --git"))
+		#expect(!analysis.contains("index "))
 		let index = try Data(contentsOf: context.url.appending(path: ".git/index"))
 		try await context.repository.requestCommitTask(
 			GitCommitTask(subject: "feat: first task", body: "", unitIDs: [first.id]),

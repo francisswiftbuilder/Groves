@@ -29,6 +29,10 @@ struct CommitPlanProgressView: View {
 
 	private var phaseTitle: String {
 		guard let progress else { return "Reading staged changes…" }
-		return progress.phase == .analyzing ? "Analyzing changes…" : "Grouping related changes…"
+		switch progress.phase {
+		case .analyzing: return "Analyzing changes…"
+		case .grouping: return "Grouping related changes…"
+		case .drafting: return "Writing commit messages…"
+		}
 	}
 }

@@ -79,7 +79,12 @@ final class AppDIContainer {
 				},
 				didCloseRepository: { id in
 					if case .success(let viewModel) = result {
-						viewModel.didRequestCloseTab(id)
+						viewModel.didCloseRepositoryWindow(id)
+					}
+				},
+				didCloseLastWindow: {
+					if case .success(let viewModel) = result {
+						viewModel.didCloseLastRepositoryWindow()
 					}
 				}
 			),
