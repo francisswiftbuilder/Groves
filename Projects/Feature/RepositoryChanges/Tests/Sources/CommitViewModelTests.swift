@@ -21,6 +21,41 @@ struct CommitViewModelTests {
 		func resume(_ index: Int, returning snapshot: RepositorySnapshot) {
 			continuations.removeValue(forKey: index)?.resume(returning: snapshot)
 		}
+		func fail(_ index: Int) {
+			continuations.removeValue(forKey: index)?.resume(
+				throwing: GitRepositoryError.commandFailed("Old repository failed"))
+		}
+	}
+
+	@Test(arguments: [false, true])
+	func repositoryChangeRejectsOldCommitResultsAndErrors(fails: Bool) async throws {
+		let gate = SnapshotGate()
+		var repositoryURL = URL(fileURLWithPath: "/first")
+		var published = 0
+		var errors: [String] = []
+		var useCase = ChangesUseCaseStub()
+		useCase.commitOperation = { _, _, _, _ in try await gate.load() }
+		let model = makeViewModel(
+			changesUseCase: useCase, repositoryURL: { repositoryURL },
+			didProduceSnapshot: { _ in published += 1 }, didReceiveError: { errors.append($0) })
+		defer { model.onDisappear() }
+		let snapshot = makeSnapshot(
+			changes: [
+				.init(
+					path: "Value.swift", previousPath: nil, indexState: .modified,
+					workingTreeState: .unchanged)
+			],
+			commits: [])
+		model.apply(snapshot)
+		model.subject = "Keep this draft"
+		model.didRequestCommit()
+		try await waitUntil { await gate.requestCount == 1 }
+		repositoryURL = URL(fileURLWithPath: "/second")
+		if fails { await gate.fail(0) } else { await gate.resume(0, returning: snapshot) }
+		try await waitUntil { !model.isLoading }
+		#expect(published == 0)
+		#expect(errors.isEmpty)
+		#expect(model.subject == "Keep this draft")
 	}
 
 	@Test
@@ -247,6 +282,7 @@ struct CommitViewModelTests {
 	private func makeViewModel(
 		contentUseCase: ChangesContentUseCaseStub = ChangesContentUseCaseStub(),
 		changesUseCase: ChangesUseCaseStub = ChangesUseCaseStub(),
+		repositoryURL: @escaping @MainActor () -> URL? = { URL(fileURLWithPath: "/tmp/Groves") },
 		didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void = { _ in },
 		didReceiveError: @escaping @MainActor (String) -> Void = { _ in }
 	) -> CommitViewModel {
@@ -254,7 +290,7 @@ struct CommitViewModelTests {
 			dependencies: CommitViewModel.Dependencies(
 				contentUseCase: contentUseCase,
 				changesUseCase: changesUseCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+				repositoryURL: repositoryURL
 			),
 			actions: CommitViewModel.Actions(
 				didProduceSnapshot: didProduceSnapshot,

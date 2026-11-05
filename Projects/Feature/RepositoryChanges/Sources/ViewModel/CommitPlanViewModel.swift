@@ -97,7 +97,8 @@ public final class CommitPlanViewModel {
 				selectedTaskID = plan.tasks.first?.id
 				selectedUnitID = nil
 			} catch {
-				guard let self, !Task.isCancelled, requestID == id else { return }
+				guard let self, !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url
+				else { return }
 				errorMessage = error.localizedDescription
 			}
 		}
@@ -161,16 +162,21 @@ public final class CommitPlanViewModel {
 					errorMessage = GitCommitPlanError.repositoryChanged.localizedDescription
 				}
 				let snapshot = try await dependencies.contentUseCase.loadSnapshot(at: url)
-				guard !Task.isCancelled, requestID == id else { return }
+				guard !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url else {
+					return
+				}
 				didProduceSnapshot(snapshot)
 			} catch {
-				guard let self, !Task.isCancelled, requestID == id else { return }
+				guard let self, !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url
+				else { return }
 				errorMessage = error.localizedDescription
 				if let error = error as? GitCommitPlanError, case .repositoryChanged = error {
 					needsRefresh = true
 				}
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(at: url) {
-					guard !Task.isCancelled, requestID == id else { return }
+					guard !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url else {
+						return
+					}
 					didProduceSnapshot(snapshot)
 				}
 			}

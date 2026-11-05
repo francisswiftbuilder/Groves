@@ -77,6 +77,10 @@ public final class CommitViewModel {
 		availability.hasStagedChanges
 	}
 
+	public var isMutating: Bool {
+		isLoading || planningViewModel?.isCommitting == true
+	}
+
 	var hasCommits: Bool {
 		availability.hasCommits
 	}
@@ -210,20 +214,26 @@ public final class CommitViewModel {
 				try Task.checkCancellation()
 				let snapshot = try await operation()
 				try Task.checkCancellation()
-				guard let self, self.activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				didSucceed()
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID else {
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else {
 					return
 				}
 				actions.didReceiveError(error.localizedDescription)
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: expectedRepositoryURL
 				) {
-					guard !Task.isCancelled, activeMutationRequestID == requestID else { return }
+					guard !Task.isCancelled, activeMutationRequestID == requestID,
+						dependencies.repositoryURL() == expectedRepositoryURL
+					else { return }
 					actions.didProduceSnapshot(snapshot)
 				}
 			}

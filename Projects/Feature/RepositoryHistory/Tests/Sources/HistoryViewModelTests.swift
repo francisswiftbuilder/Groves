@@ -7,6 +7,40 @@ import Testing
 
 @MainActor
 struct HistoryViewModelTests {
+	private actor DiffGate {
+		private(set) var count = 0
+		private var pending: [Int: CheckedContinuation<String, Error>] = [:]
+		func read() async throws -> String {
+			let id = count
+			count += 1
+			return try await withCheckedThrowingContinuation { pending[id] = $0 }
+		}
+		func fail(_ id: Int, message: String) {
+			pending.removeValue(forKey: id)?.resume(throwing: GitRepositoryError.commandFailed(message))
+		}
+	}
+
+	@Test
+	func aCancelledCommitDiffDoesNotPublishAnOutdatedError() async throws {
+		let gate = DiffGate()
+		let useCase = HistoryChangesUseCaseStub(commitDiffOperation: { _ in try await gate.read() })
+		var errors: [String] = []
+		let model = makeViewModel(useCase: useCase, didReceiveError: { errors.append($0) })
+		defer { model.onDisappear() }
+		let commits = [makeCommit(index: 0), makeCommit(index: 1)]
+		model.apply(makeSnapshot(commits: commits))
+		try await waitUntil { await gate.count == 1 }
+		await model.didSelectCommit(commits[1].id)
+		try await waitUntil { await gate.count == 2 }
+		await gate.fail(0, message: "Outdated error")
+		try await Task.sleep(for: .milliseconds(50))
+		#expect(errors.isEmpty)
+		await gate.fail(1, message: "Current error")
+		try await waitUntil { !model.isLoadingCommitDiff }
+		#expect(errors.count == 1)
+		#expect(errors.first?.contains("Current error") == true)
+	}
+
 	@Test
 	func testCommitGraphLayoutIsBuiltOffTheMainActor() async throws {
 		let viewModel = makeViewModel()
@@ -152,7 +186,8 @@ struct HistoryViewModelTests {
 	}
 
 	private func makeViewModel(
-		useCase: HistoryChangesUseCaseStub = HistoryChangesUseCaseStub()
+		useCase: HistoryChangesUseCaseStub = HistoryChangesUseCaseStub(),
+		didReceiveError: @escaping @MainActor (String) -> Void = { _ in }
 	) -> HistoryViewModel {
 		HistoryViewModel(
 			dependencies: HistoryViewModel.Dependencies(
@@ -161,7 +196,7 @@ struct HistoryViewModelTests {
 				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
 			),
 			actions: HistoryViewModel.Actions(
-				didReceiveError: { _ in },
+				didReceiveError: didReceiveError,
 				didRequestPresentation: {},
 				didFocusBranch: { _ in },
 				didFocusRemoteBranch: { _ in }
@@ -218,11 +253,11 @@ struct HistoryViewModelTests {
 
 	private func waitUntil(
 		timeout: Duration = .seconds(2),
-		condition: @escaping @MainActor () -> Bool
+		condition: @escaping @MainActor () async -> Bool
 	) async throws {
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: timeout)
-		while !condition() {
+		while await !condition() {
 			guard clock.now < deadline else {
 				Issue.record("Timed out waiting for condition")
 				return

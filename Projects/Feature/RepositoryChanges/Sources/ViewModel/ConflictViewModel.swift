@@ -174,14 +174,18 @@ public final class ConflictViewModel {
 					for: conflict,
 					at: repositoryURL
 				)
-				guard activeContentRequestID == requestID else { return }
+				guard !Task.isCancelled, activeContentRequestID == requestID,
+					dependencies.repositoryURL() == repositoryURL
+				else { return }
 				if content != loadedContent {
 					content = loadedContent
 				}
 			} catch is CancellationError {
 				return
 			} catch {
-				guard activeContentRequestID == requestID else { return }
+				guard !Task.isCancelled, activeContentRequestID == requestID,
+					dependencies.repositoryURL() == repositoryURL
+				else { return }
 				actions.didReceiveError(error.localizedDescription)
 			}
 		}
@@ -224,7 +228,9 @@ public final class ConflictViewModel {
 					for: conflict,
 					at: repositoryURL
 				)
-				guard activeMutationRequestID == requestID else { return }
+				guard !Task.isCancelled, activeMutationRequestID == requestID,
+					dependencies.repositoryURL() == repositoryURL
+				else { return }
 				if selectedConflict == conflict, content != refreshedContent {
 					content = refreshedContent
 				}
@@ -232,12 +238,16 @@ public final class ConflictViewModel {
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, activeMutationRequestID == requestID,
+					dependencies.repositoryURL() == repositoryURL
+				else { return }
 				actions.didReceiveError(error.localizedDescription)
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: repositoryURL
 				) {
-					guard activeMutationRequestID == requestID else { return }
+					guard !Task.isCancelled, activeMutationRequestID == requestID,
+						dependencies.repositoryURL() == repositoryURL
+					else { return }
 					actions.didProduceSnapshot(snapshot)
 				}
 			}
@@ -260,7 +270,9 @@ public final class ConflictViewModel {
 					for: conflict,
 					at: repositoryURL
 				)
-				guard activeMutationRequestID == requestID else { return }
+				guard !Task.isCancelled, activeMutationRequestID == requestID,
+					dependencies.repositoryURL() == repositoryURL
+				else { return }
 				if selectedConflict == conflict, content != loadedContent {
 					content = loadedContent
 				}
@@ -272,12 +284,16 @@ public final class ConflictViewModel {
 					path: conflict.path,
 					at: repositoryURL
 				)
-				guard activeMutationRequestID == requestID else { return }
+				guard !Task.isCancelled, activeMutationRequestID == requestID,
+					dependencies.repositoryURL() == repositoryURL
+				else { return }
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, activeMutationRequestID == requestID,
+					dependencies.repositoryURL() == repositoryURL
+				else { return }
 				actions.didReceiveError(error.localizedDescription)
 			}
 		}
@@ -337,17 +353,23 @@ public final class ConflictViewModel {
 			defer { self?.finishMutation(id: requestID) }
 			do {
 				let snapshot = try await operation()
-				guard let self, activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, activeMutationRequestID == requestID,
+					dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, activeMutationRequestID == requestID,
+					dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				actions.didReceiveError(error.localizedDescription)
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: expectedRepositoryURL
 				) {
-					guard activeMutationRequestID == requestID else { return }
+					guard !Task.isCancelled, activeMutationRequestID == requestID,
+						dependencies.repositoryURL() == expectedRepositoryURL
+					else { return }
 					actions.didProduceSnapshot(snapshot)
 				}
 			}

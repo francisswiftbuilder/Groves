@@ -324,6 +324,7 @@ public final class ChangesDiffViewModel {
 		source: GitDiffSource,
 		_ operation: @escaping @MainActor () async throws -> [WorkingTreeChange]
 	) {
+		guard let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		mutationTask?.cancel()
 		loadTask?.cancel()
 		clearLoad()
@@ -332,12 +333,16 @@ public final class ChangesDiffViewModel {
 			defer { self?.finishMutation(id: requestID) }
 			do {
 				let refreshedChanges = try await operation()
-				guard let self, self.activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				actions.didApplyMutation(refreshedChanges, change, source)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, self.activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				actions.didReceiveError(error.localizedDescription)
 			}
 		}

@@ -61,6 +61,7 @@ final class RepositoryWorkspaceAssembly {
 			),
 			actions: .init(
 				didApplyMutation: { refreshedChanges, originalChange, source in
+					output.workspaceViewModel?.didApplyDiffMutation()
 					output.changesViewModel?.didApplyDiffMutation(
 						refreshedChanges,
 						replacing: originalChange,
@@ -229,6 +230,7 @@ final class RepositoryWorkspaceAssembly {
 						weak commitViewModel, weak conflictViewModel,
 						weak operationViewModel,
 						weak referencesViewModel, weak syncViewModel, weak remotesViewModel,
+						weak stashesViewModel,
 					] in
 					guard
 						let changesViewModel,
@@ -238,19 +240,21 @@ final class RepositoryWorkspaceAssembly {
 						let operationViewModel,
 						let referencesViewModel,
 						let syncViewModel,
-						let remotesViewModel
+						let remotesViewModel,
+						let stashesViewModel
 					else {
 						return false
 					}
 					return !changesViewModel.isLoading
 						&& !changesDiffViewModel.isLoading
 						&& !changesDiffViewModel.isApplyingAction
-						&& !commitViewModel.isLoading
+						&& !commitViewModel.isMutating
 						&& !conflictViewModel.isLoading
 						&& !operationViewModel.isLoading
 						&& !referencesViewModel.isLoading
 						&& !syncViewModel.isLoading
 						&& !remotesViewModel.isLoading
+						&& !stashesViewModel.isLoading
 				}
 			),
 			actions: .init(
