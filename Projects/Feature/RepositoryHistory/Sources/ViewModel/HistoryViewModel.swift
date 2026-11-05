@@ -288,6 +288,9 @@ public final class HistoryViewModel {
 			} catch is CancellationError {
 				return
 			} catch {
+				guard !Task.isCancelled, activeCommitDiffRequestID == requestID,
+					self.repositoryURL() == repositoryURL
+				else { return }
 				didReceiveError(error.localizedDescription)
 			}
 		}
@@ -446,6 +449,9 @@ public final class HistoryViewModel {
 			} catch is CancellationError {
 				return
 			} catch {
+				guard !Task.isCancelled, activeCommitImageDiffRequestID == requestID,
+					self.repositoryURL() == repositoryURL
+				else { return }
 				didReceiveError(error.localizedDescription)
 			}
 		}

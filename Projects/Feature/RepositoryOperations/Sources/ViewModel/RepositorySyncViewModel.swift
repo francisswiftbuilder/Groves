@@ -134,6 +134,17 @@ public final class RepositorySyncViewModel {
 		activity != nil
 	}
 
+	public var canFetch: Bool { !isLoading && !remotes.isEmpty }
+	public var canPull: Bool {
+		!isLoading && operationState.isIdle && !operationState.isDetached && currentBranch != nil
+			&& !remotes.isEmpty
+	}
+	public var canPush: Bool { !isLoading && pushAction != .unavailable }
+	public var pushRemoteChoices: [String] {
+		if case .chooseRemote(let names, _) = pushAction { return names }
+		return []
+	}
+
 	var pushAction: RepositoryPushAction {
 		state.pushAction
 	}
@@ -200,7 +211,9 @@ public final class RepositorySyncViewModel {
 					at: repositoryURL
 				)
 				try Task.checkCancellation()
-				guard let self, self.activeNetworkRequestID == requestID else { return }
+				guard let self, self.activeNetworkRequestID == requestID,
+					self.dependencies.repositoryURL() == repositoryURL
+				else { return }
 				actions.didProduceSnapshot(preparation.snapshot)
 				if case .diverged(let divergence) = preparation.outcome {
 					pendingPullDivergence = divergence
@@ -208,7 +221,9 @@ public final class RepositorySyncViewModel {
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID else {
+				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID,
+					self.dependencies.repositoryURL() == repositoryURL
+				else {
 					return
 				}
 				actions.didReceiveError(error.localizedDescription)
@@ -264,7 +279,7 @@ public final class RepositorySyncViewModel {
 		}
 	}
 
-	func didRequestPush(remoteName: String? = nil) {
+	public func didRequestPush(remoteName: String? = nil) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
 			pushAction != .unavailable
@@ -349,12 +364,16 @@ public final class RepositorySyncViewModel {
 				try Task.checkCancellation()
 				let snapshot = try await operation()
 				try Task.checkCancellation()
-				guard let self, self.activeNetworkRequestID == requestID else { return }
+				guard let self, self.activeNetworkRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				actions.didProduceSnapshot(snapshot)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID else {
+				guard let self, !Task.isCancelled, self.activeNetworkRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else {
 					return
 				}
 				actions.didReceiveError(error.localizedDescription)
@@ -402,7 +421,9 @@ public final class RepositorySyncViewModel {
 
 	private func restoreSnapshot(at repositoryURL: URL, requestID: Int) async {
 		if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(at: repositoryURL) {
-			guard !Task.isCancelled, activeNetworkRequestID == requestID else { return }
+			guard !Task.isCancelled, activeNetworkRequestID == requestID,
+				dependencies.repositoryURL() == repositoryURL
+			else { return }
 			actions.didProduceSnapshot(snapshot)
 		}
 	}

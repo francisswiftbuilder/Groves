@@ -4,9 +4,14 @@ import Foundation
 actor HistoryChangesUseCaseStub: RepositoryChangesUseCase {
 	private var commitDiffRequests: [String] = []
 	private let commitDiffs: [String: String]
+	private let commitDiffOperation: (@Sendable (GitCommit) async throws -> String)?
 
-	init(commitDiffs: [String: String] = [:]) {
+	init(
+		commitDiffs: [String: String] = [:],
+		commitDiffOperation: (@Sendable (GitCommit) async throws -> String)? = nil
+	) {
 		self.commitDiffs = commitDiffs
+		self.commitDiffOperation = commitDiffOperation
 	}
 
 	func callCount(forCommit hash: String) -> Int {
@@ -19,6 +24,7 @@ actor HistoryChangesUseCaseStub: RepositoryChangesUseCase {
 		at repositoryURL: URL
 	) async throws -> String {
 		commitDiffRequests.append(commit.hash)
+		if let commitDiffOperation { return try await commitDiffOperation(commit) }
 		return commitDiffs[commit.hash] ?? ""
 	}
 

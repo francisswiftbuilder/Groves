@@ -69,11 +69,14 @@ public struct DiffView: View {
 	public var body: some View {
 		VStack(spacing: 0) {
 			diffContent
+				.clipped()
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		.safeAreaInset(edge: .top, spacing: 0) {
 			VStack(spacing: 0) {
 				diffHeader
+					.frame(maxWidth: .infinity)
+					.background(.bar)
 				Divider()
 				if options.ignoresWhitespace, !diff.isEmpty {
 					partialActionsDisabledBanner

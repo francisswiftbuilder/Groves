@@ -5,9 +5,27 @@ struct RepositoryCommands: Commands {
 
 	var body: some Commands {
 		CommandMenu("Repository") {
+			Button("New Branch…") { actions?.newBranch?() }
+				.disabled(actions?.newBranch == nil)
 			Button("Refresh") { actions?.refresh() }
 				.keyboardShortcut("r", modifiers: .command)
 				.disabled(actions == nil)
+			Divider()
+			Button("Fetch All Remotes") { actions?.fetchAll?() }
+				.disabled(actions?.fetchAll == nil)
+			Button("Pull Current Branch") { actions?.pull?() }
+				.disabled(actions?.pull == nil)
+			if let remoteNames = actions?.pushRemoteNames, !remoteNames.isEmpty {
+				Menu("Push Current Branch") {
+					ForEach(remoteNames, id: \.self) { remoteName in
+						Button(remoteName) { actions?.pushToRemote?(remoteName) }
+					}
+				}
+				.disabled(actions?.pushToRemote == nil)
+			} else {
+				Button("Push Current Branch") { actions?.push?() }
+					.disabled(actions?.push == nil)
+			}
 			Divider()
 			Button("Stage Selected Changes") { actions?.stageSelectedChanges?() }
 				.disabled(actions?.stageSelectedChanges == nil)

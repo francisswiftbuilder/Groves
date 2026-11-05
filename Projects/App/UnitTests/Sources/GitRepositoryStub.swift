@@ -278,7 +278,10 @@ struct GitRepositoryStub: GitRepository {
 	}
 	func requestCreateStash(
 		message: String, includeUntracked: Bool, at repositoryURL: URL
-	) async throws -> RepositoryStashOutcome { .completed }
+	) async throws -> RepositoryStashOutcome {
+		await mutationGate?.enter("createStash")
+		return .completed
+	}
 	func requestApplyStash(_ stash: GitStash, at repositoryURL: URL) async throws
 		-> RepositoryStashOutcome
 	{ .completed }

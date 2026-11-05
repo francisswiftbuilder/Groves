@@ -461,7 +461,9 @@ public final class ChangesViewModel {
 			defer { self?.finishMutation(id: requestID) }
 			do {
 				let snapshot = try await operation()
-				guard let self, self.activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				if let selection, selectedChangeIDs == expectedSelection,
 					isAmendingCommit == expectedAmendingCommit
 				{
@@ -471,10 +473,14 @@ public final class ChangesViewModel {
 			} catch is CancellationError {
 				return
 			} catch {
-				guard let self, self.activeMutationRequestID == requestID else { return }
+				guard let self, !Task.isCancelled, self.activeMutationRequestID == requestID,
+					self.dependencies.repositoryURL() == expectedRepositoryURL
+				else { return }
 				didReceiveError(error.localizedDescription)
 				if let snapshot = try? await contentUseCase.loadSnapshot(at: expectedRepositoryURL) {
-					guard activeMutationRequestID == requestID else { return }
+					guard !Task.isCancelled, activeMutationRequestID == requestID,
+						dependencies.repositoryURL() == expectedRepositoryURL
+					else { return }
 					didProduceSnapshot(snapshot)
 				}
 			}

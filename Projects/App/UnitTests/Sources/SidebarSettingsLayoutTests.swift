@@ -8,12 +8,28 @@ import Testing
 
 @MainActor
 struct SidebarSettingsLayoutTests {
-	@Test(arguments: [180.0, 220.0, 280.0], [ColorScheme.light, .dark])
+	@Test(
+		arguments: [
+			(180.0, 0), (180.0, 1), (180.0, 2), (220.0, 0), (220.0, 1), (220.0, 2), (280.0, 0),
+			(280.0, 1), (280.0, 2),
+		],
+		[ColorScheme.light, .dark])
 	func sidebarSectionsCollapseWithoutChangingTheSelectedDestination(
-		width: Double, colorScheme: ColorScheme
+		configuration: (Double, Int), colorScheme: ColorScheme
 	) async throws {
+		let (width, remoteCount) = configuration
 		let workspace = makeRepositoryWorkspace()
 		let repositoryID = UUID()
+		let remotes = ["origin", "upstream"].prefix(remoteCount).map { name in
+			GitRemote(
+				name: name, fetchURL: "https://example.com/\(name).git", pushURL: nil,
+				branches: ["main", "develop", "feat/repository-sidebar-and-account-settings"].map {
+					branch in
+					GitRemoteBranch(
+						name: branch, fullName: "\(name)/\(branch)", remoteName: name,
+						shortHash: "abcdef0", hash: "abcdef0")
+				})
+		}
 		workspace.viewModel.didProduceSnapshot(
 			.init(
 				changes: [
@@ -29,9 +45,7 @@ struct SidebarSettingsLayoutTests {
 						aheadCount: 2, behindCount: 1, isCurrent: true),
 					.init(name: "main", shortHash: "abcdef0", upstream: "origin/main", isCurrent: false),
 				],
-				remotes: [
-					.init(name: "origin", fetchURL: "https://example.com/repository.git", pushURL: nil)
-				],
+				remotes: remotes,
 				operationState: .normal,
 				tags: [
 					.init(
@@ -66,7 +80,8 @@ struct SidebarSettingsLayoutTests {
 		try await settle(controller.view)
 		let outlineView = try #require(outline(in: controller.view))
 		let expandedCount = outlineView.numberOfRows
-		try capture(controller.view, name: "sidebar-\(Int(width))-\(colorScheme)")
+		try capture(
+			controller.view, name: "sidebar-\(Int(width))-\(colorScheme)-\(remoteCount)-remotes")
 		let group = RepositorySidebarGroup(repositoryID: repositoryID, kind: .branches)
 		workspace.viewModel.setSidebarGroup(group, isExpanded: false)
 		try await settle(controller.view)
@@ -74,6 +89,19 @@ struct SidebarSettingsLayoutTests {
 		#expect(windowModel.sidebarSelection == selection)
 		workspace.viewModel.didPrepareSidebar(repositoryID: repositoryID)
 		#expect(!workspace.viewModel.expandedSidebarGroups.contains(group))
+		let beforeRemoteCollapse = outlineView.numberOfRows
+		workspace.viewModel.setSidebarGroup(
+			.init(repositoryID: repositoryID, kind: .remotes), isExpanded: false)
+		try await settle(controller.view)
+		#expect(beforeRemoteCollapse - outlineView.numberOfRows == remotes.flatMap(\.branches).count)
+		#expect(windowModel.sidebarSelection == selection)
+		let beforeStashCollapse = outlineView.numberOfRows
+		workspace.viewModel.setSidebarGroup(
+			.init(repositoryID: repositoryID, kind: .stashes), isExpanded: false)
+		try await settle(controller.view)
+		#expect(
+			beforeStashCollapse - outlineView.numberOfRows == workspace.stashesViewModel.stashes.count)
+		#expect(windowModel.sidebarSelection == selection)
 	}
 
 	@Test(
@@ -138,6 +166,65 @@ struct SidebarSettingsLayoutTests {
 			#expect(controller.view.bounds.insetBy(dx: 12, dy: 12).contains(rect))
 		}
 		try capture(controller.view, name: "settings-\(scenario)-\(colorScheme)")
+	}
+
+	@Test(arguments: [760.0, 1_280.0], [ColorScheme.light, .dark])
+	func repositoryToolbarFitsNarrowAndWideWindows(
+		width: Double, colorScheme: ColorScheme
+	)
+		async throws
+	{
+		let workspace = makeRepositoryWorkspace()
+		workspace.viewModel.didProduceSnapshot(
+			.init(
+				changes: [], amendChanges: [], commits: [],
+				branches: [
+					.init(name: "main", shortHash: "abcdef0", upstream: "origin/main", isCurrent: true)
+				],
+				remotes: [.init(name: "origin", fetchURL: "https://example.com/repo.git", pushURL: nil)],
+				operationState: .normal, tags: [], stashes: [], fileTree: []))
+		let controller = NSHostingController(
+			rootView: NavigationSplitView {
+				Text("Repository").navigationSplitViewColumnWidth(220)
+			} detail: {
+				Color(nsColor: .textBackgroundColor)
+			}
+			.navigationTitle("Groves")
+			.toolbar {
+				RepositoryWorkspaceToolbar(
+					viewModel: workspace.viewModel, operationViewModel: workspace.operationViewModel,
+					referencesViewModel: workspace.referencesViewModel,
+					syncViewModel: workspace.syncViewModel,
+					remotesViewModel: workspace.remotesViewModel, onCreateBranch: {})
+			}
+			.toolbarRole(.editor)
+			.frame(minWidth: width, minHeight: 520))
+		let window = NSWindow(
+			contentRect: .init(x: 0, y: 0, width: width, height: 520),
+			styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered,
+			defer: false)
+		window.isReleasedWhenClosed = false
+		controller.sizingOptions = []
+		window.toolbarStyle = .unified
+		window.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
+		window.contentViewController = controller
+		controller.viewWillAppear()
+		controller.viewDidAppear()
+		defer {
+			close(window: window, controller: controller)
+			workspace.onDisappear()
+		}
+		try await settle(controller.view)
+		#expect(window.contentLayoutRect.width >= width)
+		let toolbar = try #require(window.toolbar)
+		#expect(toolbar.isVisible)
+		for item in toolbar.visibleItems ?? [] {
+			if let view = item.view {
+				#expect(view.frame.width > 0)
+			}
+		}
+		let frameView = try #require(window.contentView?.superview)
+		try capture(frameView, name: "toolbar-\(Int(width))-\(colorScheme)")
 	}
 
 	private func makeWindow<Content: View>(

@@ -41,6 +41,9 @@ public final class RemotesViewModel {
 	var editorPresentation: RemoteEditorPresentation?
 	var pendingRename: GitRemote?
 	var pendingConfirmation: RepositoryRemoteConfirmation?
+	private(set) var deletionLocalBranches: [GitBranch] = []
+	private var branches: [GitBranch] = []
+	private var operationState: RepositoryOperationState = .normal
 
 	private let dependencies: Dependencies
 	private let actions: Actions
@@ -71,6 +74,8 @@ public final class RemotesViewModel {
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
+		branches = snapshot.branches
+		operationState = snapshot.operationState
 		if remotes != snapshot.remotes {
 			remotes = snapshot.remotes
 		}
@@ -89,7 +94,9 @@ public final class RemotesViewModel {
 		isLoading = false
 		editorPresentation = nil
 		pendingRename = nil
-		pendingConfirmation = nil
+		didDismissConfirmation()
+		branches = []
+		operationState = .normal
 		mutationErrorMessage = nil
 	}
 
@@ -124,7 +131,9 @@ public final class RemotesViewModel {
 	}
 
 	public func didPresentBranchDeletion(_ branch: GitRemoteBranch) {
-		guard !isLoading else { return }
+		guard !isLoading, operationState.isIdle else { return }
+		deletionLocalBranches = branches.filter { $0.upstream == branch.fullName }
+			.sorted { $0.name < $1.name }
 		pendingConfirmation = .deleteRemoteBranch(branch)
 	}
 
@@ -140,6 +149,7 @@ public final class RemotesViewModel {
 
 	func didDismissConfirmation() {
 		pendingConfirmation = nil
+		deletionLocalBranches = []
 	}
 
 	func didRequestAddRemote(name: String, fetchURL: String, pushURL: String?) {
@@ -196,14 +206,15 @@ public final class RemotesViewModel {
 		}
 	}
 
-	func didConfirmPendingConfirmation() {
+	func didConfirmPendingConfirmation(deleteLinkedBranch: Bool = false) {
 		guard !isLoading, let confirmation = pendingConfirmation else { return }
-		pendingConfirmation = nil
+		let localBranches = deleteLinkedBranch ? deletionLocalBranches : []
+		didDismissConfirmation()
 		switch confirmation {
 		case .deleteRemote(let remote):
 			requestDelete(remote)
 		case .deleteRemoteBranch(let branch):
-			requestDelete(branch)
+			requestDelete(branch, localBranches: localBranches)
 		}
 	}
 
@@ -218,14 +229,33 @@ public final class RemotesViewModel {
 		}
 	}
 
-	private func requestDelete(_ branch: GitRemoteBranch) {
-		guard let repositoryURL = dependencies.repositoryURL() else { return }
+	private func requestDelete(_ branch: GitRemoteBranch, localBranches: [GitBranch]) {
+		guard let repositoryURL = dependencies.repositoryURL(), operationState.isIdle else { return }
+		guard remoteBranches.contains(branch),
+			localBranches.allSatisfy({
+				!$0.isCurrent && branches.contains($0) && $0.upstream == branch.fullName
+			})
+		else {
+			actions.didReceiveError("The branches changed. Review the deletion again.")
+			return
+		}
 		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await referencesUseCase.deleteRemoteBranch(
-				branch,
-				at: repositoryURL
-			)
+			var deletedNames: [String] = []
+			do {
+				for localBranch in localBranches {
+					try Task.checkCancellation()
+					_ = try await referencesUseCase.deleteBranch(named: localBranch.name, at: repositoryURL)
+					deletedNames.append(localBranch.name)
+				}
+				try Task.checkCancellation()
+				return try await referencesUseCase.deleteRemoteBranch(branch, at: repositoryURL)
+			} catch {
+				guard !deletedNames.isEmpty else { throw error }
+				throw GitRepositoryError.commandFailed(
+					"Local branches already deleted: \(deletedNames.joined(separator: ", ")). The deletion could not be completed. \(error.localizedDescription)"
+				)
+			}
 		}
 	}
 

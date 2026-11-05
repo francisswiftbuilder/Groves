@@ -43,7 +43,13 @@ struct RepositorySidebar: View {
 				remotesViewModel: remotesViewModel,
 				stashesViewModel: stashesViewModel,
 				repositoryID: repositoryID,
-				onCreateBranch: { referencesViewModel.didPresentNewBranch() }
+				onCreateBranch: { referencesViewModel.didPresentNewBranch() },
+				onManageRemotes: {
+					windowViewModel.selectSidebarItem(.section(repositoryID: repositoryID, section: .remotes))
+				},
+				onManageStashes: {
+					windowViewModel.selectSidebarItem(.section(repositoryID: repositoryID, section: .stashes))
+				}
 			)
 		}
 		.listStyle(.sidebar)

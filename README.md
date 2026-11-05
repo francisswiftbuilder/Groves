@@ -31,6 +31,7 @@ Groves is built as a native Mac application rather than a cross-platform wrapper
 - Native window tabbing with `⌘T`
 - Multiple repositories across macOS tabs
 - System menus, keyboard shortcuts, and window behaviors
+- Native toolbar actions with direct Fetch and Push, additional options, and inline progress and cancellation
 - SwiftUI and AppKit integration
 - Persistent repository access through security-scoped bookmarks
 
@@ -68,6 +69,7 @@ Explore repository history through an interactive commit graph.
 Perform common Git operations directly from Groves.
 
 - Create and switch branches
+- Delete a local branch and optionally its tracked remote branch, or delete a remote branch and optionally its tracking local branches
 - Merge
 - Rebase
 - Cherry-pick
@@ -83,6 +85,7 @@ Manage temporary work without dropping into the terminal.
 - Create stashes
 - Browse stash history
 - Inspect stash diffs
+- Select stashes directly in the sidebar to inspect their files and diffs
 - Apply and pop stashes
 - Delete stashes
 
@@ -222,6 +225,8 @@ Groves uses SwiftData for local application state.
 Repository access is restored between launches using macOS security-scoped bookmarks, allowing previously opened repositories to remain accessible without requesting the directory again.
 
 Closing a repository window keeps its saved repository entry. Closing the last window also allows the saved windows to be restored when a new repository window opens in the same app session. Development, staging, and production builds keep separate saved repository lists.
+
+Repository changes refresh automatically while a window is active. Changes received during Git operations remain queued, and newer snapshots take precedence over older reads. Linked worktrees monitor both their private Git directory and shared references. Interrupted file monitoring reconnects, and system rescan signals trigger a full content revalidation. Returning to a window also checks for changes made while monitoring was paused.
 
 ## Testing
 

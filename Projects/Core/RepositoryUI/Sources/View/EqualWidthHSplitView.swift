@@ -4,7 +4,7 @@ import SwiftUI
 public struct EqualWidthHSplitView<Leading: View, Center: View, Trailing: View>: NSViewRepresentable
 {
 	private let leading: Leading
-	private let center: Center
+	private let center: Center?
 	private let trailing: Trailing
 	private let proportions: [CGFloat]
 	private let minimumWidths: [CGFloat]
@@ -23,6 +23,19 @@ public struct EqualWidthHSplitView<Leading: View, Center: View, Trailing: View>:
 		self.minimumWidths = minimumWidths
 	}
 
+	public init(
+		proportions: [CGFloat] = [1, 1],
+		minimumWidths: [CGFloat] = [220, 300],
+		@ViewBuilder leading: () -> Leading,
+		@ViewBuilder trailing: () -> Trailing
+	) where Center == EmptyView {
+		self.leading = leading()
+		self.center = nil
+		self.trailing = trailing()
+		self.proportions = proportions
+		self.minimumWidths = minimumWidths
+	}
+
 	public func makeCoordinator() -> Coordinator {
 		Coordinator()
 	}
@@ -36,36 +49,37 @@ public struct EqualWidthHSplitView<Leading: View, Center: View, Trailing: View>:
 		splitView.delegate = context.coordinator
 
 		let leadingView = hostingView(rootView: leading)
-		let centerView = hostingView(rootView: center)
+		let centerView = center.map { hostingView(rootView: $0) }
 		let trailingView = hostingView(rootView: trailing)
 		context.coordinator.leadingView = leadingView
 		context.coordinator.centerView = centerView
 		context.coordinator.trailingView = trailingView
 
 		splitView.addSubview(leadingView)
-		splitView.addSubview(centerView)
+		if let centerView { splitView.addSubview(centerView) }
 		splitView.addSubview(trailingView)
 		return splitView
 	}
 
 	public func updateNSView(_ splitView: ProportionalSplitView, context: Context) {
 		context.coordinator.leadingView?.rootView = SplitPaneRootView(content: leading)
-		context.coordinator.centerView?.rootView = SplitPaneRootView(content: center)
+		if let center { context.coordinator.centerView?.rootView = SplitPaneRootView(content: center) }
 		context.coordinator.trailingView?.rootView = SplitPaneRootView(content: trailing)
 		splitView.proportions = normalizedProportions
 		splitView.minimumWidths = normalizedMinimumWidths
 	}
 
 	private var normalizedProportions: [CGFloat] {
-		guard proportions.count == 3, proportions.allSatisfy({ $0 > 0 }) else {
-			return [1, 1, 1]
+		guard proportions.count == (center == nil ? 2 : 3), proportions.allSatisfy({ $0 > 0 }) else {
+			return center == nil ? [1, 1] : [1, 1, 1]
 		}
 		return proportions
 	}
 
 	private var normalizedMinimumWidths: [CGFloat] {
-		guard minimumWidths.count == 3, minimumWidths.allSatisfy({ $0 >= 0 }) else {
-			return [180, 260, 200]
+		guard minimumWidths.count == (center == nil ? 2 : 3), minimumWidths.allSatisfy({ $0 >= 0 })
+		else {
+			return center == nil ? [220, 300] : [180, 260, 200]
 		}
 		return minimumWidths
 	}
