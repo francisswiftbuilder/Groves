@@ -134,6 +134,17 @@ public final class RepositorySyncViewModel {
 		activity != nil
 	}
 
+	public var canFetch: Bool { !isLoading && !remotes.isEmpty }
+	public var canPull: Bool {
+		!isLoading && operationState.isIdle && !operationState.isDetached && currentBranch != nil
+			&& !remotes.isEmpty
+	}
+	public var canPush: Bool { !isLoading && pushAction != .unavailable }
+	public var pushRemoteChoices: [String] {
+		if case .chooseRemote(let names, _) = pushAction { return names }
+		return []
+	}
+
 	var pushAction: RepositoryPushAction {
 		state.pushAction
 	}
@@ -264,7 +275,7 @@ public final class RepositorySyncViewModel {
 		}
 	}
 
-	func didRequestPush(remoteName: String? = nil) {
+	public func didRequestPush(remoteName: String? = nil) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
 			pushAction != .unavailable

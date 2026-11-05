@@ -9,6 +9,10 @@ final class RepositoryFocusedActionsViewModel {
 
 	struct Actions {
 		let refresh: VoidAction
+		let newBranch: VoidAction
+		let fetchAll: VoidAction
+		let pull: VoidAction
+		let push: (String?) -> Void
 		let stageSelectedChanges: VoidAction
 		let unstageSelectedChanges: VoidAction
 		let stageAllChanges: VoidAction
@@ -28,6 +32,10 @@ final class RepositoryFocusedActionsViewModel {
 
 		init(
 			refresh: @escaping VoidAction,
+			newBranch: @escaping VoidAction,
+			fetchAll: @escaping VoidAction,
+			pull: @escaping VoidAction,
+			push: @escaping (String?) -> Void,
 			stageSelectedChanges: @escaping VoidAction,
 			unstageSelectedChanges: @escaping VoidAction,
 			stageAllChanges: @escaping VoidAction,
@@ -46,6 +54,10 @@ final class RepositoryFocusedActionsViewModel {
 			deleteRemote: @escaping (GitRemote) -> Void
 		) {
 			self.refresh = refresh
+			self.newBranch = newBranch
+			self.fetchAll = fetchAll
+			self.pull = pull
+			self.push = push
 			self.stageSelectedChanges = stageSelectedChanges
 			self.unstageSelectedChanges = unstageSelectedChanges
 			self.stageAllChanges = stageAllChanges
@@ -67,6 +79,11 @@ final class RepositoryFocusedActionsViewModel {
 
 	struct Dependencies {
 		let operationState: @MainActor () -> RepositoryOperationState
+		let canCreateBranch: @MainActor () -> Bool
+		let canFetch: @MainActor () -> Bool
+		let canPull: @MainActor () -> Bool
+		let canPush: @MainActor () -> Bool
+		let pushRemoteNames: @MainActor () -> [String]
 		let canStageSelection: @MainActor () -> Bool
 		let canUnstageSelection: @MainActor () -> Bool
 		let canStageAllChanges: @MainActor () -> Bool
@@ -77,6 +94,11 @@ final class RepositoryFocusedActionsViewModel {
 
 		init(
 			operationState: @escaping @MainActor () -> RepositoryOperationState,
+			canCreateBranch: @escaping @MainActor () -> Bool,
+			canFetch: @escaping @MainActor () -> Bool,
+			canPull: @escaping @MainActor () -> Bool,
+			canPush: @escaping @MainActor () -> Bool,
+			pushRemoteNames: @escaping @MainActor () -> [String],
 			canStageSelection: @escaping @MainActor () -> Bool,
 			canUnstageSelection: @escaping @MainActor () -> Bool,
 			canStageAllChanges: @escaping @MainActor () -> Bool,
@@ -86,6 +108,11 @@ final class RepositoryFocusedActionsViewModel {
 			selectedRemote: @escaping @MainActor () -> GitRemote?
 		) {
 			self.operationState = operationState
+			self.canCreateBranch = canCreateBranch
+			self.canFetch = canFetch
+			self.canPull = canPull
+			self.canPush = canPush
+			self.pushRemoteNames = pushRemoteNames
 			self.canStageSelection = canStageSelection
 			self.canUnstageSelection = canUnstageSelection
 			self.canStageAllChanges = canStageAllChanges
@@ -117,6 +144,21 @@ final class RepositoryFocusedActionsViewModel {
 		let selectedBranch = dependencies.selectedBranch()
 		let selectedCommit = dependencies.selectedCommit()
 		let selectedRemote = dependencies.selectedRemote()
+		let pushRemoteNames = dependencies.pushRemoteNames()
+		let push: VoidAction?
+		let pushToRemote: ((String) -> Void)?
+		if dependencies.canPush() {
+			if pushRemoteNames.isEmpty {
+				push = { actions.push(nil) }
+				pushToRemote = nil
+			} else {
+				push = nil
+				pushToRemote = { actions.push($0) }
+			}
+		} else {
+			push = nil
+			pushToRemote = nil
+		}
 		let continueOperation: VoidAction?
 		if operation != nil, !operationState.hasConflicts {
 			continueOperation = {
@@ -192,6 +234,12 @@ final class RepositoryFocusedActionsViewModel {
 		}
 		return RepositoryFocusedActions(
 			refresh: actions.refresh,
+			newBranch: dependencies.canCreateBranch() ? actions.newBranch : nil,
+			fetchAll: dependencies.canFetch() ? actions.fetchAll : nil,
+			pull: dependencies.canPull() ? actions.pull : nil,
+			push: push,
+			pushRemoteNames: pushRemoteNames,
+			pushToRemote: pushToRemote,
 			stageSelectedChanges: dependencies.canStageSelection() ? actions.stageSelectedChanges : nil,
 			unstageSelectedChanges: dependencies.canUnstageSelection()
 				? actions.unstageSelectedChanges : nil,

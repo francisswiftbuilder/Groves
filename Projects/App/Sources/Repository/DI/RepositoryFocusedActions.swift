@@ -1,6 +1,12 @@
 @MainActor
 public struct RepositoryFocusedActions {
 	public let refresh: () -> Void
+	public let newBranch: (() -> Void)?
+	public let fetchAll: (() -> Void)?
+	public let pull: (() -> Void)?
+	public let push: (() -> Void)?
+	public let pushRemoteNames: [String]
+	public let pushToRemote: ((String) -> Void)?
 	public let stageSelectedChanges: (() -> Void)?
 	public let unstageSelectedChanges: (() -> Void)?
 	public let stageAllChanges: (() -> Void)?
@@ -21,6 +27,12 @@ public struct RepositoryFocusedActions {
 
 	public init(
 		refresh: @escaping () -> Void,
+		newBranch: (() -> Void)?,
+		fetchAll: (() -> Void)?,
+		pull: (() -> Void)?,
+		push: (() -> Void)?,
+		pushRemoteNames: [String],
+		pushToRemote: ((String) -> Void)?,
 		stageSelectedChanges: (() -> Void)?,
 		unstageSelectedChanges: (() -> Void)?,
 		stageAllChanges: (() -> Void)?,
@@ -40,6 +52,12 @@ public struct RepositoryFocusedActions {
 		deleteSelectedRemote: (() -> Void)?
 	) {
 		self.refresh = refresh
+		self.newBranch = newBranch
+		self.fetchAll = fetchAll
+		self.pull = pull
+		self.push = push
+		self.pushRemoteNames = pushRemoteNames
+		self.pushToRemote = pushToRemote
 		self.stageSelectedChanges = stageSelectedChanges
 		self.unstageSelectedChanges = unstageSelectedChanges
 		self.stageAllChanges = stageAllChanges

@@ -358,6 +358,20 @@ final class RepositoryWorkspaceAssembly {
 		let focusedActionsViewModel = RepositoryFocusedActionsViewModel(
 			dependencies: .init(
 				operationState: { operationViewModel.operationState },
+				canCreateBranch: {
+					referencesViewModel.canCreateBranch && !operationViewModel.isLoading
+						&& !syncViewModel.isLoading
+				},
+				canFetch: {
+					syncViewModel.canFetch && !operationViewModel.isLoading && !referencesViewModel.isLoading
+				},
+				canPull: {
+					syncViewModel.canPull && !operationViewModel.isLoading && !referencesViewModel.isLoading
+				},
+				canPush: {
+					syncViewModel.canPush && !operationViewModel.isLoading && !referencesViewModel.isLoading
+				},
+				pushRemoteNames: { syncViewModel.pushRemoteChoices },
 				canStageSelection: {
 					viewModel.selectedSection == .changes && changesViewModel.canStageSelection
 				},
@@ -376,6 +390,10 @@ final class RepositoryWorkspaceAssembly {
 			),
 			actions: .init(
 				refresh: viewModel.didRequestRefresh,
+				newBranch: { referencesViewModel.didPresentNewBranch() },
+				fetchAll: syncViewModel.didRequestFetchAll,
+				pull: syncViewModel.didRequestPull,
+				push: syncViewModel.didRequestPush,
 				stageSelectedChanges: changesViewModel.didRequestStageSelectedChanges,
 				unstageSelectedChanges: changesViewModel.didRequestUnstageSelectedChanges,
 				stageAllChanges: changesViewModel.didRequestStageAllChanges,

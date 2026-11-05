@@ -38,7 +38,8 @@ public final class ProportionalSplitView: NSSplitView {
 	private func applyInitialDistributionIfNeeded() {
 		guard
 			!didApplyInitialDistribution,
-			subviews.count == 3,
+			subviews.count >= 2,
+			subviews.count == proportions.count,
 			window != nil,
 			bounds.width >= 480
 		else {
@@ -48,11 +49,11 @@ public final class ProportionalSplitView: NSSplitView {
 		let totalProportion = proportions.reduce(0, +)
 		guard totalProportion > 0 else { return }
 
-		let availableWidth = bounds.width - dividerThickness * 2
+		let availableWidth = bounds.width - dividerThickness * CGFloat(subviews.count - 1)
 		didApplyInitialDistribution = true
 
 		var position: CGFloat = 0
-		for dividerIndex in 0..<2 {
+		for dividerIndex in 0..<(subviews.count - 1) {
 			position += availableWidth * proportions[dividerIndex] / totalProportion
 			setPosition(position, ofDividerAt: dividerIndex)
 			position += dividerThickness

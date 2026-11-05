@@ -2,6 +2,11 @@ import DomainGitInterface
 import Foundation
 
 struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
+	var deleteBranchOperation: @Sendable (String, URL) async throws -> RepositorySnapshot = { _, _ in
+		fatalError()
+	}
+	var deleteRemoteBranchOperation:
+		@Sendable (GitRemoteBranch, URL) async throws -> RepositorySnapshot = { _, _ in fatalError() }
 	var createBranchOperation: @Sendable (String, String?, URL) async throws -> RepositorySnapshot = {
 		_, _, _ in fatalError()
 	}
@@ -90,7 +95,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 	func deleteBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		fatalError()
+		try await deleteBranchOperation(name, repositoryURL)
 	}
 
 	func renameBranch(
@@ -203,6 +208,6 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 	func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		fatalError()
+		try await deleteRemoteBranchOperation(branch, repositoryURL)
 	}
 }

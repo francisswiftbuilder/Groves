@@ -49,6 +49,8 @@ public final class RepositoryReferencesViewModel {
 	var newTagMessage = ""
 	private(set) var pendingTagCommit: GitCommit?
 	var pendingConfirmation: RepositoryReferenceConfirmation?
+	private(set) var deletionRemoteBranch: GitRemoteBranch?
+	private var remotes: [GitRemote] = []
 
 	private let dependencies: Dependencies
 	private let actions: Actions
@@ -103,6 +105,10 @@ public final class RepositoryReferencesViewModel {
 		branches.first { $0.id == selectedBranchID }
 	}
 
+	public var canCreateBranch: Bool {
+		operationState.isIdle && !isLoading && (currentBranch != nil || operationState.isDetached)
+	}
+
 	public var canCheckoutCommit: Bool {
 		operationState.isIdle && changes.isEmpty && !isLoading
 	}
@@ -118,6 +124,7 @@ public final class RepositoryReferencesViewModel {
 			operationState = snapshot.operationState
 		}
 		changes = snapshot.changes
+		remotes = snapshot.remotes
 		preserveSelection()
 	}
 
@@ -125,6 +132,7 @@ public final class RepositoryReferencesViewModel {
 		onDisappear()
 		selectedBranchID = nil
 		branches = []
+		remotes = []
 		tags = []
 		changes = []
 		operationState = .normal
@@ -132,7 +140,7 @@ public final class RepositoryReferencesViewModel {
 		didDismissNewBranch()
 		didDismissNewTag()
 		didDismissBranchRename()
-		pendingConfirmation = nil
+		didDismissPendingConfirmation()
 		mutationErrorMessage = nil
 	}
 
@@ -279,6 +287,7 @@ public final class RepositoryReferencesViewModel {
 
 	public func didPresentBranchDeletion(_ branch: GitBranch) {
 		guard !branch.isCurrent, operationState.isIdle, !isLoading else { return }
+		deletionRemoteBranch = remotes.flatMap(\.branches).first { $0.fullName == branch.upstream }
 		pendingConfirmation = .deleteBranch(branch)
 	}
 
@@ -323,14 +332,16 @@ public final class RepositoryReferencesViewModel {
 
 	func didDismissPendingConfirmation() {
 		pendingConfirmation = nil
+		deletionRemoteBranch = nil
 	}
 
-	func didConfirmPendingConfirmation() {
+	func didConfirmPendingConfirmation(deleteLinkedBranch: Bool = false) {
 		guard !isLoading, let confirmation = pendingConfirmation else { return }
-		pendingConfirmation = nil
+		let remoteBranch = deleteLinkedBranch ? deletionRemoteBranch : nil
+		didDismissPendingConfirmation()
 		switch confirmation {
 		case .deleteBranch(let branch):
-			requestDeleteBranch(branch)
+			requestDeleteBranch(branch, remoteBranch: remoteBranch)
 		case .deleteTag(let tag):
 			requestDeleteTag(tag)
 		case .checkoutCommit(let commit):
@@ -353,18 +364,35 @@ public final class RepositoryReferencesViewModel {
 		}
 	}
 
-	private func requestDeleteBranch(_ branch: GitBranch) {
+	private func requestDeleteBranch(_ branch: GitBranch, remoteBranch: GitRemoteBranch?) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
 			!branch.isCurrent,
 			operationState.isIdle
 		else { return }
+		guard branches.contains(branch) else {
+			actions.didReceiveError("The local branch changed. Review the deletion again.")
+			return
+		}
+		if let remoteBranch, !remotes.flatMap(\.branches).contains(remoteBranch) {
+			actions.didReceiveError("The remote branch changed. Review the deletion again.")
+			return
+		}
 		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			try await referencesUseCase.deleteBranch(
+			let snapshot = try await referencesUseCase.deleteBranch(
 				named: branch.name,
 				at: repositoryURL
 			)
+			guard let remoteBranch else { return snapshot }
+			do {
+				try Task.checkCancellation()
+				return try await referencesUseCase.deleteRemoteBranch(remoteBranch, at: repositoryURL)
+			} catch {
+				throw GitRepositoryError.commandFailed(
+					"The local branch “\(branch.name)” was deleted, but “\(remoteBranch.fullName)” could not be deleted. \(error.localizedDescription)"
+				)
+			}
 		}
 	}
 

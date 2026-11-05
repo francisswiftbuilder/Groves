@@ -17,7 +17,7 @@ struct RepositoryPullToolbarControl: View {
 			} label: {
 				Label("Pull", systemImage: "arrow.down")
 			}
-			.disabled(viewModel.isLoading)
+			.disabled(!viewModel.canPull)
 			.help("Pull Current Branch")
 		}
 	}

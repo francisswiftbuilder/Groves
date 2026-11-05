@@ -8,13 +8,18 @@ public struct RepositorySyncCancelButton: View {
 	}
 
 	public var body: some View {
-		Button {
-			viewModel.didRequestCancelOperation()
-		} label: {
-			Label(cancellationLabel, systemImage: "stop.fill")
+		HStack(spacing: 6) {
+			if let activity = viewModel.presentedActivity {
+				RepositorySyncProgressIndicator(activity: activity)
+			}
+			Button {
+				viewModel.didRequestCancelOperation()
+			} label: {
+				Label(cancellationLabel, systemImage: "stop.fill")
+			}
+			.accessibilityLabel(cancellationLabel)
+			.help("\(cancellationLabel) — \(statusDescription)")
 		}
-		.accessibilityLabel(cancellationLabel)
-		.help("\(cancellationLabel) — \(statusDescription)")
 	}
 
 	private var cancellationLabel: String {

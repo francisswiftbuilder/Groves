@@ -22,7 +22,7 @@ public struct StashesView: View {
 	}
 
 	public var body: some View {
-		Group {
+		VStack(spacing: 0) {
 			if stashesViewModel.stashes.isEmpty {
 				EmptyStateView(
 					title: "No Stashes",
@@ -30,70 +30,52 @@ public struct StashesView: View {
 					systemImage: "archivebox"
 				)
 			} else {
-				EqualWidthHSplitView(
-					proportions: [0.30, 0.30, 0.40],
-					minimumWidths: [220, 220, 300]
-				) {
-					List(selection: stashSelection) {
-						ForEach(stashesViewModel.stashes) { stash in
-							StashRow(stash: stash)
-								.tag(stash.id)
-								.listRowSeparator(.hidden)
-						}
-					}
-					.listStyle(.inset)
-					.safeAreaInset(edge: .top, spacing: 0) {
+				GeometryReader { geometry in
+					EqualWidthHSplitView(proportions: [0.28, 0.72], minimumWidths: [220, 300]) {
 						VStack(spacing: 0) {
-							Text("Stashes").font(.headline)
-								.frame(maxWidth: .infinity, alignment: .leading)
-								.padding(.horizontal, 12)
-								.frame(height: 52)
-								.background(.bar)
-							Divider()
-						}
-					}
-				} center: {
-					VStack(spacing: 0) {
-						if stashesViewModel.isLoadingDiff {
-							LoadingStateView(title: "Loading Stash Diff")
-						} else {
-							List(stashesViewModel.files, selection: fileSelection) { file in
-								CommitChangedFileRow(file: file)
-									.tag(file.id)
-									.listRowSeparator(.hidden)
+							if stashesViewModel.isLoadingDiff {
+								LoadingStateView(title: "Loading Stash Diff")
+							} else {
+								List(stashesViewModel.files, selection: fileSelection) { file in
+									CommitChangedFileRow(file: file)
+										.tag(file.id)
+										.listRowSeparator(.hidden)
+								}
+								.listStyle(.plain)
 							}
-							.listStyle(.plain)
 						}
-					}
-					.frame(maxWidth: .infinity, maxHeight: .infinity)
-					.safeAreaInset(edge: .top, spacing: 0) {
-						VStack(spacing: 0) {
-							Text("Files").font(.subheadline.weight(.semibold))
-								.frame(maxWidth: .infinity, alignment: .leading)
-								.padding(.horizontal, 12)
-								.frame(height: 52)
-								.background(.bar)
-							Divider()
+						.frame(maxWidth: .infinity, maxHeight: .infinity)
+						.safeAreaInset(edge: .top, spacing: 0) {
+							VStack(spacing: 0) {
+								Text("Files").font(.subheadline.weight(.semibold))
+									.frame(maxWidth: .infinity, alignment: .leading)
+									.padding(.horizontal, 12)
+									.frame(height: 52)
+									.background(.bar)
+								Divider()
+							}
 						}
+					} trailing: {
+						CommitDiffView(
+							searchModel: diffSearchViewModel,
+							options: $diffPreferences.options,
+							presentationMode: $diffPreferences.presentationMode,
+							file: stashesViewModel.selectedFile,
+							imageDiff: stashesViewModel.imageDiff,
+							beforeImageTitle: "Base",
+							afterImageTitle: "Stash",
+							changedFileCount: stashesViewModel.files.count,
+							isLoading: stashesViewModel.isLoadingDiff
+								|| stashesViewModel.isLoadingImageDiff,
+							onOptionsChanged: onDiffOptionsChanged
+						)
 					}
-				} trailing: {
-					CommitDiffView(
-						searchModel: diffSearchViewModel,
-						options: $diffPreferences.options,
-						presentationMode: $diffPreferences.presentationMode,
-						file: stashesViewModel.selectedFile,
-						imageDiff: stashesViewModel.imageDiff,
-						beforeImageTitle: "Base",
-						afterImageTitle: "Stash",
-						changedFileCount: stashesViewModel.files.count,
-						isLoading: stashesViewModel.isLoadingDiff
-							|| stashesViewModel.isLoadingImageDiff,
-						onOptionsChanged: onDiffOptionsChanged
-					)
+					.frame(width: geometry.size.width, height: geometry.size.height)
 				}
 			}
 		}
-		.safeAreaInset(edge: .bottom) {
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.safeAreaInset(edge: .bottom, spacing: 0) {
 			StashActionBar(viewModel: stashesViewModel) {
 				if let stash = stashesViewModel.selectedStash {
 					stashesViewModel.didPresentStashDrop(stash)
@@ -125,13 +107,6 @@ public struct StashesView: View {
 					stashesViewModel.didDismissStashDrop()
 				}
 			}
-		)
-	}
-
-	private var stashSelection: Binding<String?> {
-		Binding(
-			get: { stashesViewModel.selectedStashID },
-			set: { stashID in stashesViewModel.didSelectStash(stashID) }
 		)
 	}
 

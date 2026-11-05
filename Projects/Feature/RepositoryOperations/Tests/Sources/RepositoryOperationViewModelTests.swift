@@ -32,11 +32,19 @@ struct RepositoryOperationViewModelTests {
 	func testSyncIgnoresRepeatedRequestsWhileRunning() async throws {
 		let gate = SnapshotGate()
 		let viewModel = makeSyncViewModel(
-			referencesUseCase: OperationsReferencesUseCaseStub { _ in try await gate.load() }
+			referencesUseCase: OperationsReferencesUseCaseStub(
+				fetchAllOperation: { _ in try await gate.load() },
+				pushActionOperation: { _, _, _ in .upstream })
 		)
 		defer { viewModel.onDisappear() }
+		viewModel.apply(
+			makeSnapshot(
+				branches: [makeBranch(name: "main", isCurrent: true)],
+				remotes: [.init(name: "origin", fetchURL: "https://example.com/repo.git", pushURL: nil)]))
+		#expect(viewModel.canFetch && viewModel.canPull && viewModel.canPush)
 
 		viewModel.didRequestFetchAll()
+		#expect(!viewModel.canFetch && !viewModel.canPull && !viewModel.canPush)
 		viewModel.didRequestFetchAll()
 		try await waitUntil { await gate.requestCount >= 1 }
 		try await Task.sleep(for: .milliseconds(50))
@@ -45,6 +53,8 @@ struct RepositoryOperationViewModelTests {
 		for index in 0..<requestCount {
 			await gate.resume(index, returning: makeSnapshot())
 		}
+		try await waitUntil { !viewModel.isLoading }
+		#expect(viewModel.canFetch && viewModel.canPull && viewModel.canPush)
 	}
 
 	@Test
@@ -447,6 +457,7 @@ struct RepositoryOperationViewModelTests {
 	private func makeSnapshot(
 		changes: [WorkingTreeChange] = [],
 		branches: [GitBranch] = [],
+		remotes: [GitRemote] = [],
 		operationState: RepositoryOperationState = .normal
 	) -> RepositorySnapshot {
 		RepositorySnapshot(
@@ -454,7 +465,7 @@ struct RepositoryOperationViewModelTests {
 			amendChanges: [],
 			commits: [],
 			branches: branches,
-			remotes: [],
+			remotes: remotes,
 			operationState: operationState,
 			tags: [],
 			stashes: [],

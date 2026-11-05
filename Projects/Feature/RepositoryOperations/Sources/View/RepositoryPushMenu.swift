@@ -16,19 +16,43 @@ public struct RepositoryPushMenu: View {
 		if viewModel.presentedActivity?.isPush == true {
 			RepositorySyncCancelButton(viewModel: viewModel)
 		} else {
-			Menu {
-				branchPushControl(forceWithLease: false)
-				branchPushControl(forceWithLease: true)
-
-				Divider()
-
-				tagPushControl
-			} label: {
-				Label("Push", systemImage: "arrow.up")
+			Group {
+				if hasPrimaryPush {
+					Menu {
+						pushOptions
+					} label: {
+						Label("Push", systemImage: "arrow.up")
+					} primaryAction: {
+						viewModel.didRequestPush(remoteName: preferredRemoteName)
+					}
+				} else {
+					Menu {
+						pushOptions
+					} label: {
+						Label("Push", systemImage: "arrow.up")
+					}
+				}
 			}
 			.accessibilityLabel("Push")
 			.disabled(viewModel.isLoading || !hasAvailableAction)
 			.help("Push Current Branch or Tags")
+		}
+	}
+
+	private var pushOptions: some View {
+		Group {
+			branchPushControl(forceWithLease: false)
+			branchPushControl(forceWithLease: true)
+			Divider()
+			tagPushControl
+		}
+	}
+
+	private var hasPrimaryPush: Bool {
+		switch viewModel.pushAction {
+		case .upstream, .setUpstream: return true
+		case .chooseRemote(let names, _): return preferredRemoteName.map { names.contains($0) } == true
+		case .unavailable: return false
 		}
 	}
 

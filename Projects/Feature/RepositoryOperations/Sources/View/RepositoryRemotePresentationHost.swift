@@ -35,6 +35,20 @@ public struct RepositoryRemotePresentationHost<Content: View>: View {
 					viewModel.didRequestRename(remote, to: newName)
 				}
 			}
+			.sheet(isPresented: branchDeletionPresentation) {
+				if case .deleteRemoteBranch(let branch) = viewModel.pendingConfirmation {
+					BranchDeletionSheet(
+						title: "Delete “\(branch.fullName)”?",
+						message:
+							"This branch will be deleted from “\(branch.remoteName)” for all collaborators.",
+						optionTitle: localDeletionOptionTitle,
+						unavailableReason: localDeletionUnavailableReason,
+						onCancel: viewModel.didDismissConfirmation
+					) { deleteLinkedBranch in
+						viewModel.didConfirmPendingConfirmation(deleteLinkedBranch: deleteLinkedBranch)
+					}
+				}
+			}
 			.confirmationDialog(
 				viewModel.pendingConfirmation?.title ?? "Confirm Remote Operation",
 				isPresented: confirmationPresentation
@@ -52,9 +66,43 @@ public struct RepositoryRemotePresentationHost<Content: View>: View {
 			}
 	}
 
+	private var localDeletionOptionTitle: String {
+		let names = viewModel.deletionLocalBranches.map { "“\($0.name)”" }.joined(separator: ", ")
+		guard !names.isEmpty else { return "Also delete local branch" }
+		let label =
+			viewModel.deletionLocalBranches.count == 1
+			? "Also delete local branch" : "Also delete local branches"
+		return "\(label) \(names)"
+	}
+
+	private var localDeletionUnavailableReason: String? {
+		if viewModel.deletionLocalBranches.isEmpty {
+			return "No local branch tracks this remote branch."
+		}
+		if viewModel.deletionLocalBranches.contains(where: \.isCurrent) {
+			return "Switch to another branch before deleting the checked-out local branch."
+		}
+		return nil
+	}
+
+	private var branchDeletionPresentation: Binding<Bool> {
+		Binding(
+			get: {
+				if case .deleteRemoteBranch = viewModel.pendingConfirmation { return true }
+				return false
+			},
+			set: { isPresented in
+				if !isPresented { viewModel.didDismissConfirmation() }
+			})
+	}
+
 	private var confirmationPresentation: Binding<Bool> {
 		Binding(
-			get: { viewModel.pendingConfirmation != nil },
+			get: {
+				guard let confirmation = viewModel.pendingConfirmation else { return false }
+				if case .deleteRemoteBranch = confirmation { return false }
+				return true
+			},
 			set: { isPresented in
 				if !isPresented {
 					viewModel.didDismissConfirmation()
