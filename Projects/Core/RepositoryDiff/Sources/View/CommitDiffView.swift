@@ -42,11 +42,14 @@ public struct CommitDiffView: View {
 	public var body: some View {
 		VStack(spacing: 0) {
 			diffContent
+				.clipped()
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		.safeAreaInset(edge: .top, spacing: 0) {
 			VStack(spacing: 0) {
 				diffHeader
+					.frame(maxWidth: .infinity)
+					.background(.bar)
 				Divider()
 			}
 		}
@@ -101,7 +104,7 @@ public struct CommitDiffView: View {
 					.truncationMode(.middle)
 			}
 			.padding(.horizontal, 16)
-			.padding(.vertical, 12)
+			.padding(.vertical, 10)
 		} else {
 			HStack {
 				Text("Changes")

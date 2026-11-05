@@ -8,7 +8,10 @@ import Testing
 @MainActor
 struct OperationSheetLayoutTests {
 	@Test(
-		arguments: ["branch", "tag", "renameBranch", "remote", "renameRemote", "reset"],
+		arguments: [
+			"branch", "tag", "renameBranch", "remote", "renameRemote", "reset", "deleteLocal",
+			"deleteRemote",
+		],
 		[ColorScheme.light, .dark])
 	func editableFieldsStayWithinTheSheetContent(kind: String, colorScheme: ColorScheme) async throws
 	{
@@ -37,7 +40,11 @@ struct OperationSheetLayoutTests {
 			try await Task.sleep(for: .milliseconds(20))
 		}
 		let fields = editableFields(in: host)
-		#expect(kind == "reset" || !fields.isEmpty)
+		#expect(kind == "reset" || kind.hasPrefix("delete") || !fields.isEmpty)
+		if kind.hasPrefix("delete") {
+			#expect(host.bounds.width == 460)
+			#expect(host.bounds.height >= 150 && host.bounds.height <= 420)
+		}
 		for field in fields {
 			let rect = host.convert(field.bounds, from: field)
 			#expect(host.bounds.insetBy(dx: 12, dy: 12).contains(rect))
@@ -50,9 +57,73 @@ struct OperationSheetLayoutTests {
 		try png.write(to: URL(fileURLWithPath: "/tmp/groves-operation-\(kind)-\(colorScheme).png"))
 	}
 
+	@Test(arguments: [ColorScheme.light, .dark])
+	func syncProgressStaysWithTheCancelControl(colorScheme: ColorScheme) async throws {
+		let gate = OperationsMutationGate()
+		let snapshot = RepositorySnapshot(
+			changes: [], amendChanges: [], commits: [], branches: [], remotes: [],
+			operationState: .normal, tags: [], stashes: [], fileTree: [])
+		let model = RepositorySyncViewModel(
+			dependencies: .init(
+				contentUseCase: OperationsContentUseCaseStub(),
+				referencesUseCase: OperationsReferencesUseCaseStub { _ in try await gate.load() },
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }),
+			actions: .init(didProduceSnapshot: { _ in }, didReceiveError: { _ in }))
+		defer {
+			model.onDisappear()
+			Task { await gate.resume(0, with: .success(snapshot)) }
+		}
+		model.didRequestFetchAll()
+		try await gate.waitForRequests(1)
+		for _ in 0..<100 {
+			if model.presentedActivity != nil { break }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(model.presentedActivity == .fetchAll)
+		let controller = NSHostingController(
+			rootView: RepositorySyncCancelButton(viewModel: model)
+				.labelStyle(.iconOnly)
+				.padding(8)
+				.background(.bar)
+				.environment(\.colorScheme, colorScheme))
+		let size = controller.view.fittingSize
+		let window = NSWindow(
+			contentRect: .init(origin: .zero, size: size), styleMask: [.borderless],
+			backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
+		window.contentViewController = controller
+		controller.viewWillAppear()
+		controller.viewDidAppear()
+		defer {
+			controller.viewWillDisappear()
+			controller.viewDidDisappear()
+			window.close()
+		}
+		for _ in 0..<10 {
+			controller.view.layoutSubtreeIfNeeded()
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		let frame = controller.view
+		#expect(frame.bounds.width > frame.bounds.height)
+		let bitmap = try #require(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
+		frame.cacheDisplay(in: frame.bounds, to: bitmap)
+		let png = try #require(bitmap.representation(using: .png, properties: [:]))
+		try png.write(to: URL(fileURLWithPath: "/tmp/groves-sync-progress-\(colorScheme).png"))
+	}
+
 	@ViewBuilder
 	private func sheet(kind: String) -> some View {
 		switch kind {
+		case "deleteLocal", "deleteRemote":
+			BranchDeletionSheet(
+				title: "Delete “feature/repository-changes”?",
+				message: "The local branch will be deleted. Remote deletion affects all collaborators.",
+				optionTitle:
+					"Also delete remote branch “origin/feature/repository-changes-with-a-long-name”",
+				unavailableReason: kind == "deleteRemote"
+					? "Switch to another branch before deleting the checked-out local branch." : nil,
+				onCancel: {}, onDelete: { _ in })
 		case "branch":
 			NewBranchSheet(name: .constant("feat/repository-changes"), onCancel: {}, onCreate: {})
 		case "tag":

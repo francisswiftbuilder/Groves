@@ -42,6 +42,32 @@ struct CommitPlanViewModelTests {
 	}
 
 	@Test
+	func taskCommitParticipatesInTheParentMutationState() async throws {
+		let gate = Gate<GitCommitPlanInput>()
+		let plan = makePlan()
+		let snapshot = snapshot()
+		let parent = CommitViewModel(
+			dependencies: .init(
+				contentUseCase: ChangesContentUseCaseStub(snapshotOperation: { _ in snapshot }),
+				changesUseCase: ChangesUseCaseStub(),
+				repositoryURL: { URL(fileURLWithPath: "/repo") },
+				commitPlanningUseCase: UseCase(load: { plan }, submit: { try await gate.wait() })),
+			actions: .init(
+				didProduceSnapshot: { _ in }, didReceiveError: { _ in }, didChangeAmendingCommit: { _ in }))
+		let model = try #require(parent.planningViewModel)
+		defer { parent.onDisappear() }
+		model.didRequestPlan()
+		try await waitUntil { !model.isGenerating }
+		#expect(!parent.isMutating)
+		model.didRequestCommit()
+		try await waitUntil { await gate.count == 1 }
+		#expect(parent.isMutating)
+		await gate.resume(0, with: plan.input)
+		try await waitUntil { !model.isCommitting }
+		#expect(!parent.isMutating)
+	}
+
+	@Test
 	func cancellationKeepsAnOlderGenerationFromReplacingTheCurrentRequest() async throws {
 		let gate = Gate<GitCommitPlan>()
 		let viewModel = makeViewModel(useCase: UseCase(load: { try await gate.wait() }))

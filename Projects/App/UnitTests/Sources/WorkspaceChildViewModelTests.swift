@@ -249,6 +249,46 @@ struct WorkspaceChildViewModelTests {
 		#expect(workspace.focusedActionsViewModel.focusedActions.rebaseSelectedBranch == nil)
 	}
 
+	@Test(arguments: [0, 1, 2])
+	func testFocusedSyncActionsFollowRemoteAndHeadState(remoteCount: Int) {
+		let workspace = makeRepositoryWorkspace()
+		defer { workspace.onDisappear() }
+		let remotes = ["origin", "upstream"].prefix(remoteCount).map {
+			GitRemote(name: $0, fetchURL: "https://example.com/\($0).git", pushURL: nil)
+		}
+		let branches = [GitBranch(name: "main", shortHash: "abcdef0", upstream: nil, isCurrent: true)]
+		func apply(branches: [GitBranch], state: RepositoryOperationState) {
+			workspace.viewModel.didProduceSnapshot(
+				.init(
+					changes: [], amendChanges: [], commits: [], branches: branches, remotes: remotes,
+					operationState: state, tags: [], stashes: [], fileTree: []))
+		}
+
+		apply(branches: branches, state: .normal)
+		let actions = workspace.focusedActionsViewModel.focusedActions
+		#expect(actions.newBranch != nil)
+		#expect((actions.fetchAll != nil) == (remoteCount > 0))
+		#expect((actions.pull != nil) == (remoteCount > 0))
+		#expect((actions.push != nil) == (remoteCount == 1))
+		#expect((actions.pushToRemote != nil) == (remoteCount == 2))
+		#expect(actions.pushRemoteNames == (remoteCount == 2 ? ["origin", "upstream"] : []))
+
+		apply(branches: [], state: .detachedHead)
+		let detachedActions = workspace.focusedActionsViewModel.focusedActions
+		#expect(detachedActions.newBranch != nil)
+		#expect((detachedActions.fetchAll != nil) == (remoteCount > 0))
+		#expect(detachedActions.pull == nil)
+		#expect(detachedActions.push == nil)
+		#expect(detachedActions.pushToRemote == nil)
+
+		apply(branches: branches, state: .mergeInProgress)
+		let mergingActions = workspace.focusedActionsViewModel.focusedActions
+		#expect(mergingActions.newBranch == nil)
+		#expect(mergingActions.pull == nil)
+		#expect(mergingActions.push == nil)
+		#expect((mergingActions.fetchAll != nil) == (remoteCount > 0))
+	}
+
 	private func waitUntil(
 		timeout: Duration = .seconds(2),
 		condition: @escaping @MainActor () -> Bool

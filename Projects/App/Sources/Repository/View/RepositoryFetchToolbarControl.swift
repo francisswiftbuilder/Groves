@@ -17,24 +17,31 @@ struct RepositoryFetchToolbarControl: View {
 		if syncViewModel.presentedActivity?.isFetch == true {
 			RepositorySyncCancelButton(viewModel: syncViewModel)
 		} else {
-			Menu {
-				Button("Fetch All Remotes", systemImage: "arrow.triangle.2.circlepath") {
-					syncViewModel.didRequestFetchAll()
-				}
-
-				if !remotesViewModel.remotes.isEmpty {
-					Divider()
-					ForEach(remotesViewModel.remotes) { remote in
-						Button(remote.name, systemImage: "icloud.and.arrow.down") {
-							syncViewModel.didRequestFetch(remoteName: remote.name)
+			Group {
+				if remotesViewModel.remotes.count > 1 {
+					Menu {
+						Button("Fetch All Remotes", systemImage: "arrow.down.to.line") {
+							syncViewModel.didRequestFetchAll()
 						}
+						Divider()
+						ForEach(remotesViewModel.remotes) { remote in
+							Button(remote.name, systemImage: "icloud.and.arrow.down") {
+								syncViewModel.didRequestFetch(remoteName: remote.name)
+							}
+						}
+					} label: {
+						Label("Fetch", systemImage: "arrow.down.to.line")
+					} primaryAction: {
+						syncViewModel.didRequestFetchAll()
+					}
+				} else {
+					Button("Fetch", systemImage: "arrow.down.to.line") {
+						syncViewModel.didRequestFetchAll()
 					}
 				}
-			} label: {
-				Label("Fetch", systemImage: "arrow.triangle.2.circlepath")
 			}
 			.accessibilityLabel("Fetch")
-			.disabled(syncViewModel.isLoading || remotesViewModel.remotes.isEmpty)
+			.disabled(!syncViewModel.canFetch)
 			.help("Fetch Remote References")
 		}
 	}

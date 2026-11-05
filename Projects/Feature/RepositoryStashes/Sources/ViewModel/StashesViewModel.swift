@@ -45,7 +45,7 @@ public final class StashesViewModel {
 	private(set) var imageDiff: GitImageDiff?
 	private(set) var isLoadingDiff = false
 	private(set) var isLoadingImageDiff = false
-	private(set) var isLoading = false
+	public private(set) var isLoading = false
 	private(set) var hasChanges = false
 	var pendingDrop: StashDropConfirmation?
 	private(set) var mutationMessage: String?

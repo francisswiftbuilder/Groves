@@ -6,6 +6,7 @@ import Testing
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryHistory
 @testable import FeatureRepositoryOperations
+@testable import FeatureRepositoryStashes
 @testable import FeatureRepositoryTree
 @testable import Groves
 
@@ -75,7 +76,7 @@ struct WorkspaceViewModelTests {
 	}
 
 	@Test
-	func testCancelledAutomaticRefreshRevalidatesSelectedContentOnNextRefresh() async throws {
+	func testQueuedAutomaticRefreshRevalidatesSelectedContentOnNextRefresh() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.resolvingSymlinksInPath()
 			.appending(path: "GrovesAutomaticRefresh-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -119,12 +120,43 @@ struct WorkspaceViewModelTests {
 		try Data("working tree".utf8).write(to: repositoryURL.appending(path: "File.txt"))
 		try await waitUntilCallCount(2, of: snapshotLabel, in: contentGate, timeout: .seconds(5))
 		try Data("metadata".utf8).write(to: gitDirectoryURL.appending(path: "GROVES_EVENT"))
-		try await waitUntilCallCount(3, of: snapshotLabel, in: contentGate, timeout: .seconds(5))
 		await contentGate.resumeCall(1)
+		try await waitUntilCallCount(3, of: snapshotLabel, in: contentGate, timeout: .seconds(5))
 		await contentGate.resumeCall(2)
 
 		try await waitUntilCallCount(2, of: conflictLabel, in: diffGate, timeout: .seconds(3))
 		workspace.viewModel.onDisappear()
+	}
+
+	@Test
+	func automaticRefreshWaitsForStashMutationToFinish() async throws {
+		let directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+			.appending(path: "GrovesStashRefresh-\(UUID())", directoryHint: .isDirectory)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let mutationGate = GitDiffGate(suspendsRequests: true)
+		let contentGate = GitDiffGate()
+		let change = WorkingTreeChange(
+			path: "Value.swift", previousPath: nil, indexState: .unchanged, workingTreeState: .modified)
+		let workspace = makeRepositoryWorkspace(
+			repository: GitRepositoryStub(
+				changes: [change], mutationGate: mutationGate, contentGate: contentGate))
+		defer {
+			workspace.viewModel.onDisappear()
+			workspace.onDisappear()
+			Task { await mutationGate.resumeCall(0) }
+		}
+		workspace.viewModel.didChooseRepository(directory)
+		try await waitUntil { !workspace.viewModel.isLoading }
+		workspace.viewModel.onAppear(isSceneActive: true)
+		workspace.stashesViewModel.didRequestCreateStash()
+		try await waitUntil { workspace.stashesViewModel.isLoading }
+		try Data("updated".utf8).write(to: directory.appending(path: "Value.swift"))
+		try await Task.sleep(for: .milliseconds(1_200))
+		#expect(await contentGate.callCount(of: GitDiffGateLabel.workingTreeChanges) == 1)
+		await mutationGate.resumeCall(0)
+		try await waitUntilCallCount(
+			3, of: GitDiffGateLabel.workingTreeChanges, in: contentGate, timeout: .seconds(5))
 	}
 
 	@Test

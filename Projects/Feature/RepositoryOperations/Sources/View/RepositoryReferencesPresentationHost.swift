@@ -49,6 +49,24 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 					viewModel.didConfirmBranchRename()
 				}
 			}
+			.sheet(isPresented: branchDeletionPresentation) {
+				if case .deleteBranch(let branch) = viewModel.pendingConfirmation {
+					BranchDeletionSheet(
+						title: "Delete “\(branch.name)”?",
+						message:
+							"The local branch will be deleted. Remote deletion affects all collaborators.",
+						optionTitle: viewModel.deletionRemoteBranch.map {
+							"Also delete remote branch “\($0.fullName)”"
+						}
+							?? "Also delete remote branch",
+						unavailableReason: viewModel.deletionRemoteBranch == nil
+							? "This branch has no available upstream branch." : nil,
+						onCancel: viewModel.didDismissPendingConfirmation
+					) { deleteLinkedBranch in
+						viewModel.didConfirmPendingConfirmation(deleteLinkedBranch: deleteLinkedBranch)
+					}
+				}
+			}
 			.confirmationDialog(
 				viewModel.pendingConfirmation?.title ?? "Confirm Reference Operation",
 				isPresented: confirmationPresentation
@@ -88,9 +106,24 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 		)
 	}
 
+	private var branchDeletionPresentation: Binding<Bool> {
+		Binding(
+			get: {
+				if case .deleteBranch = viewModel.pendingConfirmation { return true }
+				return false
+			},
+			set: { isPresented in
+				if !isPresented { viewModel.didDismissPendingConfirmation() }
+			})
+	}
+
 	private var confirmationPresentation: Binding<Bool> {
 		Binding(
-			get: { viewModel.pendingConfirmation != nil },
+			get: {
+				guard let confirmation = viewModel.pendingConfirmation else { return false }
+				if case .deleteBranch = confirmation { return false }
+				return true
+			},
 			set: { isPresented in
 				if !isPresented {
 					viewModel.didDismissPendingConfirmation()

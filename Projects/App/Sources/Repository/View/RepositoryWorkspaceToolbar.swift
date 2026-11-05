@@ -26,48 +26,35 @@ struct RepositoryWorkspaceToolbar: ToolbarContent {
 	}
 
 	var body: some ToolbarContent {
-		ToolbarItem(placement: .primaryAction) {
-			Button {
-				onCreateBranch()
-			} label: {
-				Label("New Branch", systemImage: "arrow.triangle.branch")
-			}
-			.disabled(
-				operationViewModel.isLoading || referencesViewModel.isLoading || syncViewModel.isLoading
-					|| referencesViewModel.currentBranch == nil
-						&& !referencesViewModel.operationState.isDetached
-			)
-			.help("Create a Branch from \(referencesViewModel.currentBranchName)")
-		}
-
-		if let activity = syncViewModel.presentedActivity {
-			ToolbarItem(placement: .primaryAction) {
-				RepositorySyncProgressIndicator(activity: activity)
-			}
-		}
-
-		ToolbarSpacer(.fixed, placement: .primaryAction)
+		ToolbarSpacer(.flexible, placement: .primaryAction)
 
 		ToolbarItemGroup(placement: .primaryAction) {
-			Button {
+			Button("New Branch", systemImage: "arrow.triangle.branch", action: onCreateBranch)
+				.disabled(!referencesViewModel.canCreateBranch || isMutating || syncViewModel.isLoading)
+				.help("Create a Branch from \(referencesViewModel.currentBranchName)")
+
+			Button("Refresh", systemImage: "arrow.clockwise") {
 				viewModel.didRequestRefresh()
-			} label: {
-				Label("Refresh", systemImage: "arrow.clockwise")
 			}
-			.disabled(viewModel.isLoading || operationViewModel.isLoading || syncViewModel.isLoading)
+			.disabled(viewModel.isLoading || isMutating || syncViewModel.isLoading)
 			.help("Refresh Repository")
-
-			RepositoryFetchToolbarControl(
-				syncViewModel: syncViewModel,
-				remotesViewModel: remotesViewModel
-			)
 		}
 
 		ToolbarSpacer(.fixed, placement: .primaryAction)
 
 		ToolbarItemGroup(placement: .primaryAction) {
+			RepositoryFetchToolbarControl(
+				syncViewModel: syncViewModel, remotesViewModel: remotesViewModel
+			)
+			.disabled(isMutating)
 			RepositoryPullToolbarControl(viewModel: syncViewModel)
+				.disabled(isMutating)
 			RepositoryPushMenu(viewModel: syncViewModel)
+				.disabled(isMutating)
 		}
+	}
+
+	private var isMutating: Bool {
+		operationViewModel.isLoading || referencesViewModel.isLoading
 	}
 }

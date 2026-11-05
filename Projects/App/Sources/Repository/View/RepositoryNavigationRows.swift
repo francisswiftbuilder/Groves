@@ -12,6 +12,8 @@ struct RepositoryNavigationRows: View {
 	private let stashesViewModel: StashesViewModel
 	let repositoryID: RepositoryTab.ID
 	let onCreateBranch: () -> Void
+	let onManageRemotes: () -> Void
+	let onManageStashes: () -> Void
 
 	init(
 		workspace: WorkspaceViewModel,
@@ -20,7 +22,9 @@ struct RepositoryNavigationRows: View {
 		remotesViewModel: RemotesViewModel,
 		stashesViewModel: StashesViewModel,
 		repositoryID: RepositoryTab.ID,
-		onCreateBranch: @escaping () -> Void
+		onCreateBranch: @escaping () -> Void,
+		onManageRemotes: @escaping () -> Void,
+		onManageStashes: @escaping () -> Void
 	) {
 		self.workspace = workspace
 		self.changesViewModel = changesViewModel
@@ -29,6 +33,8 @@ struct RepositoryNavigationRows: View {
 		self.stashesViewModel = stashesViewModel
 		self.repositoryID = repositoryID
 		self.onCreateBranch = onCreateBranch
+		self.onManageRemotes = onManageRemotes
+		self.onManageStashes = onManageStashes
 	}
 
 	var body: some View {
@@ -49,21 +55,18 @@ struct RepositoryNavigationRows: View {
 			}
 		}
 
-		Section("Remotes", isExpanded: expansion(for: .remotes)) {
-			sectionRow(.remotes, title: "All Remotes")
-			ForEach(remotesViewModel.remotes) { remote in
-				DisclosureGroup {
-					ForEach(remote.branches) { branch in
-						RemoteBranchSidebarRow(branch: branch)
-							.tag(
-								RepositorySidebarSelection.remoteBranch(repositoryID: repositoryID, id: branch.id)
-							)
-							.help(branch.fullName)
-					}
-				} label: {
-					SidebarChildRow(title: remote.name, systemImage: "network", accessory: nil)
+		Section(isExpanded: expansion(for: .remotes)) {
+			ForEach(remotesViewModel.remoteBranches) { branch in
+				RemoteBranchSidebarRow(branch: branch, showsRemoteName: remotesViewModel.remotes.count > 1)
+					.tag(RepositorySidebarSelection.remoteBranch(repositoryID: repositoryID, id: branch.id))
+					.help(branch.fullName)
+			}
+		} header: {
+			Text("Remotes").contextMenu {
+				Button("Manage Remotes…", systemImage: "network", action: onManageRemotes)
+				Button("Add Remote…", systemImage: "plus") {
+					remotesViewModel.didPresentAddRemote()
 				}
-				.tag(RepositorySidebarSelection.remote(repositoryID: repositoryID, id: remote.id))
 			}
 		}
 
@@ -77,20 +80,23 @@ struct RepositoryNavigationRows: View {
 			}
 		}
 
-		Section("Stashes", isExpanded: expansion(for: .stashes)) {
-			sectionRow(.stashes, title: "All Stashes", badgeCount: stashesViewModel.stashes.count)
+		Section(isExpanded: expansion(for: .stashes)) {
 			ForEach(stashesViewModel.stashes) { stash in
 				SidebarChildRow(title: stash.subject, systemImage: "archivebox", accessory: nil)
 					.tag(RepositorySidebarSelection.stash(repositoryID: repositoryID, id: stash.id))
 					.help("\(stash.reference) · \(stash.subject)")
 			}
+		} header: {
+			Text("Stashes").contextMenu {
+				Button("Manage Stashes…", systemImage: "archivebox", action: onManageStashes)
+			}
 		}
 	}
 
 	private func sectionRow(
-		_ section: WorkspaceSection, title: String? = nil, badgeCount: Int? = nil
+		_ section: WorkspaceSection, badgeCount: Int? = nil
 	) -> some View {
-		SidebarSectionRow(section: section, title: title, badgeCount: badgeCount)
+		SidebarSectionRow(section: section, badgeCount: badgeCount)
 			.tag(RepositorySidebarSelection.section(repositoryID: repositoryID, section: section))
 	}
 

@@ -7,13 +7,17 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 	private var stream: FSEventStreamRef?
 	private var contextInfo: UnsafeMutableRawPointer?
 	private var isStopped = false
+	private var repositoryURL: URL?
+	private var monitoredPaths: [String] = []
 
-	private init(
+	init(
 		continuation: AsyncStream<[String]>.Continuation,
-		queue: DispatchQueue
+		queue: DispatchQueue,
+		repositoryURL: URL? = nil
 	) {
 		self.continuation = continuation
 		self.queue = queue
+		self.repositoryURL = repositoryURL
 	}
 
 	static func events(
@@ -27,13 +31,52 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 			let eventID = FSEventsGetCurrentEventId()
 			let monitor = RepositoryFileSystemMonitor(
 				continuation: continuation,
-				queue: queue
+				queue: queue,
+				repositoryURL: repositoryURL
 			)
 			continuation.onTermination = { @Sendable _ in
 				monitor.stop()
 			}
 			monitor.start(at: repositoryURL, sinceWhen: eventID)
 		}
+	}
+
+	static func gitDirectories(at repositoryURL: URL) -> [URL] {
+		let root = URL(fileURLWithPath: repositoryURL.path, isDirectory: true)
+		let dotGit = root.appending(path: ".git")
+		var gitDirectory = URL(fileURLWithPath: dotGit.path, isDirectory: true)
+		var isDirectory: ObjCBool = false
+		if FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDirectory),
+			!isDirectory.boolValue,
+			let pointer = try? String(contentsOf: dotGit, encoding: .utf8),
+			pointer.hasPrefix("gitdir: ")
+		{
+			let path = String(pointer.dropFirst(8)).trimmingCharacters(in: .newlines)
+			if !path.isEmpty {
+				gitDirectory = URL(fileURLWithPath: path, isDirectory: true, relativeTo: root)
+			}
+		}
+		gitDirectory = gitDirectory.standardizedFileURL.resolvingSymlinksInPath()
+		var directories = [gitDirectory]
+		if let commonPath = try? String(
+			contentsOf: gitDirectory.appending(path: "commondir"), encoding: .utf8
+		)
+		.trimmingCharacters(in: .newlines), !commonPath.isEmpty {
+			let common = URL(fileURLWithPath: commonPath, isDirectory: true, relativeTo: gitDirectory)
+				.standardizedFileURL.resolvingSymlinksInPath()
+			if common != gitDirectory { directories.append(common) }
+		}
+		return directories
+	}
+
+	private static func pathsToWatch(at repositoryURL: URL) -> [String] {
+		let root = repositoryURL.resolvingSymlinksInPath().path
+		let metadataPaths = gitDirectories(at: repositoryURL).map(\.path)
+			.filter { FileManager.default.fileExists(atPath: $0) }
+		let paths = Set([root] + metadataPaths)
+		return paths.filter { path in
+			!paths.contains { $0 != path && path.hasPrefix($0 + "/") }
+		}.sorted()
 	}
 
 	private func start(
@@ -51,6 +94,8 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 	) {
 		dispatchPrecondition(condition: .onQueue(queue))
 		guard !isStopped else { return }
+		self.repositoryURL = repositoryURL
+		monitoredPaths = Self.pathsToWatch(at: repositoryURL)
 
 		let contextInfo = Unmanaged.passRetained(self).toOpaque()
 		var context = FSEventStreamContext(
@@ -69,7 +114,7 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 				kCFAllocatorDefault,
 				repositoryFileSystemEventCallback,
 				&context,
-				[repositoryURL.path] as CFArray,
+				monitoredPaths as CFArray,
 				eventID,
 				0.35,
 				flags
@@ -116,8 +161,32 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 		continuation.finish()
 	}
 
-	func didReceiveEvents(at paths: [String]) {
-		continuation.yield(paths)
+	func didReceiveEvents(at paths: [String], flags: [FSEventStreamEventFlags] = []) {
+		let rescanMask = FSEventStreamEventFlags(
+			kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped
+				| kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged
+				| kFSEventStreamEventFlagEventIdsWrapped)
+		var paths = paths
+		if flags.contains(where: { $0 & rescanMask != 0 }), let repositoryURL {
+			paths.append(repositoryURL.standardizedFileURL.path)
+		}
+		if case .dropped(let pendingPaths) = continuation.yield(paths) {
+			continuation.yield(Array(Set(pendingPaths + paths)))
+		}
+		let restartMask = FSEventStreamEventFlags(
+			kFSEventStreamEventFlagRootChanged | kFSEventStreamEventFlagEventIdsWrapped)
+		if flags.contains(where: { $0 & restartMask != 0 }) {
+			continuation.finish()
+		}
+		if let repositoryURL,
+			paths.contains(where: {
+				let path = URL(fileURLWithPath: $0).standardizedFileURL.path
+				return path == repositoryURL.appending(path: ".git").standardizedFileURL.path
+					|| path.hasSuffix("/commondir")
+			}), Self.pathsToWatch(at: repositoryURL) != monitoredPaths
+		{
+			continuation.finish()
+		}
 	}
 }
 
@@ -137,5 +206,6 @@ private func repositoryFileSystemEventCallback(
 	let monitor = Unmanaged<RepositoryFileSystemMonitor>
 		.fromOpaque(contextInfo)
 		.takeUnretainedValue()
-	monitor.didReceiveEvents(at: paths)
+	monitor.didReceiveEvents(
+		at: paths, flags: Array(UnsafeBufferPointer(start: eventFlags, count: eventCount)))
 }

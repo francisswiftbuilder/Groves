@@ -61,6 +61,7 @@ final class RepositoryWorkspaceAssembly {
 			),
 			actions: .init(
 				didApplyMutation: { refreshedChanges, originalChange, source in
+					output.workspaceViewModel?.didApplyDiffMutation()
 					output.changesViewModel?.didApplyDiffMutation(
 						refreshedChanges,
 						replacing: originalChange,
@@ -229,6 +230,7 @@ final class RepositoryWorkspaceAssembly {
 						weak commitViewModel, weak conflictViewModel,
 						weak operationViewModel,
 						weak referencesViewModel, weak syncViewModel, weak remotesViewModel,
+						weak stashesViewModel,
 					] in
 					guard
 						let changesViewModel,
@@ -238,19 +240,21 @@ final class RepositoryWorkspaceAssembly {
 						let operationViewModel,
 						let referencesViewModel,
 						let syncViewModel,
-						let remotesViewModel
+						let remotesViewModel,
+						let stashesViewModel
 					else {
 						return false
 					}
 					return !changesViewModel.isLoading
 						&& !changesDiffViewModel.isLoading
 						&& !changesDiffViewModel.isApplyingAction
-						&& !commitViewModel.isLoading
+						&& !commitViewModel.isMutating
 						&& !conflictViewModel.isLoading
 						&& !operationViewModel.isLoading
 						&& !referencesViewModel.isLoading
 						&& !syncViewModel.isLoading
 						&& !remotesViewModel.isLoading
+						&& !stashesViewModel.isLoading
 				}
 			),
 			actions: .init(
@@ -358,6 +362,20 @@ final class RepositoryWorkspaceAssembly {
 		let focusedActionsViewModel = RepositoryFocusedActionsViewModel(
 			dependencies: .init(
 				operationState: { operationViewModel.operationState },
+				canCreateBranch: {
+					referencesViewModel.canCreateBranch && !operationViewModel.isLoading
+						&& !syncViewModel.isLoading
+				},
+				canFetch: {
+					syncViewModel.canFetch && !operationViewModel.isLoading && !referencesViewModel.isLoading
+				},
+				canPull: {
+					syncViewModel.canPull && !operationViewModel.isLoading && !referencesViewModel.isLoading
+				},
+				canPush: {
+					syncViewModel.canPush && !operationViewModel.isLoading && !referencesViewModel.isLoading
+				},
+				pushRemoteNames: { syncViewModel.pushRemoteChoices },
 				canStageSelection: {
 					viewModel.selectedSection == .changes && changesViewModel.canStageSelection
 				},
@@ -376,6 +394,10 @@ final class RepositoryWorkspaceAssembly {
 			),
 			actions: .init(
 				refresh: viewModel.didRequestRefresh,
+				newBranch: { referencesViewModel.didPresentNewBranch() },
+				fetchAll: syncViewModel.didRequestFetchAll,
+				pull: syncViewModel.didRequestPull,
+				push: syncViewModel.didRequestPush,
 				stageSelectedChanges: changesViewModel.didRequestStageSelectedChanges,
 				unstageSelectedChanges: changesViewModel.didRequestUnstageSelectedChanges,
 				stageAllChanges: changesViewModel.didRequestStageAllChanges,

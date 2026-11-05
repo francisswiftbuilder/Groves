@@ -59,6 +59,9 @@ public final class RepositoryTreeViewModel {
 
 	public func reset() {
 		filePreviewTask?.cancel()
+		filePreviewTask = nil
+		repositoryURL = nil
+		fileTree = []
 		selectedTreeNodeID = nil
 		expandedTreeNodeIDs = []
 		filePreview = .none
@@ -127,12 +130,18 @@ public final class RepositoryTreeViewModel {
 					at: node.path,
 					in: repositoryURL
 				)
-				guard !Task.isCancelled, selectedTreeNodeID == node.id else { return }
+				guard !Task.isCancelled, self.repositoryURL == repositoryURL, selectedTreeNodeID == node.id
+				else {
+					return
+				}
 				filePreview = RepositoryFilePreview.make(path: node.path, data: data)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard selectedTreeNodeID == node.id else { return }
+				guard !Task.isCancelled, self.repositoryURL == repositoryURL, selectedTreeNodeID == node.id
+				else {
+					return
+				}
 				if !preservesCurrentPreview || filePreview == .loading {
 					filePreview = .failure(error.localizedDescription)
 				}
