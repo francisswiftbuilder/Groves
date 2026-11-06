@@ -148,6 +148,26 @@ struct GitCommitPlanningTests {
 		#expect(!files.contains { $0.hasPrefix("groves-commit-") || $0 == "index.lock" })
 	}
 
+	@Test
+	func existingIndexLockIsPreservedWhenCommittingAPlan() async throws {
+		let context = try await makeContext()
+		try Data("staged\n".utf8).write(to: context.url.appending(path: "file.txt"))
+		try await run(["add", "."], in: context)
+		let input = try await context.repository.requestCommitPlanInput(at: context.url)
+		let lock = context.url.appending(path: ".git/index.lock")
+		let contents = Data("another Git operation".utf8)
+		try contents.write(to: lock)
+
+		await #expect(throws: GitRepositoryError.self) {
+			try await context.repository.requestCommitTask(
+				GitCommitTask(subject: "feat: locked", body: "", unitIDs: input.units.map(\.id)),
+				expecting: input, at: context.url)
+		}
+
+		#expect(try Data(contentsOf: lock) == contents)
+		#expect(try await context.repository.requestCommitHistory(at: context.url).isEmpty)
+	}
+
 	private func makeContext() async throws -> Context {
 		let url = try makeTemporaryRepository(name: "GrovesCommitPlanningTests")
 		let runner = GitProcessRunner(configuration: GitProcessConfiguration())

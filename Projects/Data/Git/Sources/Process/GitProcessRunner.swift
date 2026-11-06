@@ -111,6 +111,10 @@ actor GitProcessRunner {
 	) async throws -> GitCommandResult {
 		let standardOutputPipe = Pipe()
 		let standardErrorPipe = Pipe()
+		defer {
+			try? standardOutputPipe.fileHandleForWriting.close()
+			try? standardErrorPipe.fileHandleForWriting.close()
+		}
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/bin/sh")
 		process.arguments =
@@ -146,18 +150,20 @@ actor GitProcessRunner {
 			label: "stderr"
 		)
 
-		let terminationStatus = try await requestTerminationStatus(
+		let output = try await requestCommandOutput(
 			for: process,
 			standardInput: standardInput,
 			standardInputPipe: standardInputPipe,
+			standardOutputCollector: standardOutputCollector,
+			standardErrorCollector: standardErrorCollector,
 			timeout: isNetworkOperation ? configuration.networkPolicy.operationTimeout : nil
 		)
-		let standardOutputData = await standardOutputCollector.data()
-		let standardError = String(decoding: await standardErrorCollector.data(), as: UTF8.self)
+		let standardOutputData = output.standardOutput
+		let standardError = String(decoding: output.standardError, as: UTF8.self)
 		let standardOutput = String(decoding: standardOutputData, as: UTF8.self)
 		try Task.checkCancellation()
 
-		guard acceptedTerminationStatuses.contains(terminationStatus) else {
+		guard acceptedTerminationStatuses.contains(output.terminationStatus) else {
 			if standardError.contains("GROVES_ASKPASS_CANCELLED") {
 				throw CancellationError()
 			}
@@ -326,7 +332,13 @@ actor GitProcessRunner {
 		isNetworkOperation: Bool,
 		authenticationArguments: [String]
 	) -> [String] {
-		var result = [configuration.executableURL.path]
+		var result = [
+			configuration.executableURL.path,
+			"--no-optional-locks",
+			"-c", "diff.autoRefreshIndex=false",
+			"-c", "maintenance.auto=false",
+			"-c", "gc.auto=0",
+		]
 		if configuration.globalConfigurationURL != nil {
 			result += ["-c", "user.useConfigOnly=true"]
 			for prefix in [
@@ -355,26 +367,32 @@ actor GitProcessRunner {
 		return result
 	}
 
-	private func requestTerminationStatus(
+	private func requestCommandOutput(
 		for process: Process,
 		standardInput: String?,
 		standardInputPipe: Pipe?,
+		standardOutputCollector: GitProcessOutputCollector,
+		standardErrorCollector: GitProcessOutputCollector,
 		timeout: TimeInterval?
-	) async throws -> Int32 {
+	) async throws -> (terminationStatus: Int32, standardOutput: Data, standardError: Data) {
 		guard let timeout else {
-			return try await waitForTermination(
+			return try await waitForCommandOutput(
 				of: process,
 				standardInput: standardInput,
-				standardInputPipe: standardInputPipe
+				standardInputPipe: standardInputPipe,
+				standardOutputCollector: standardOutputCollector,
+				standardErrorCollector: standardErrorCollector
 			)
 		}
 
-		return try await withThrowingTaskGroup(of: Int32.self) { group in
+		return try await withThrowingTaskGroup(of: (Int32, Data, Data).self) { group in
 			group.addTask {
-				try await self.waitForTermination(
+				try await self.waitForCommandOutput(
 					of: process,
 					standardInput: standardInput,
-					standardInputPipe: standardInputPipe
+					standardInputPipe: standardInputPipe,
+					standardOutputCollector: standardOutputCollector,
+					standardErrorCollector: standardErrorCollector
 				)
 			}
 			group.addTask {
@@ -389,27 +407,39 @@ actor GitProcessRunner {
 		}
 	}
 
-	private func waitForTermination(
+	private func waitForCommandOutput(
 		of process: Process,
 		standardInput: String?,
-		standardInputPipe: Pipe?
-	) async throws -> Int32 {
+		standardInputPipe: Pipe?,
+		standardOutputCollector: GitProcessOutputCollector,
+		standardErrorCollector: GitProcessOutputCollector
+	) async throws -> (terminationStatus: Int32, standardOutput: Data, standardError: Data) {
 		let lifecycle = GitProcessLifecycle(
 			process: process,
 			gracePeriod: configuration.terminationGracePeriod
 		)
 		try Task.checkCancellation()
 		return try await withTaskCancellationHandler {
-			try await withCheckedThrowingContinuation { continuation in
-				let didStart = lifecycle.start(
-					onTermination: { continuation.resume(returning: $0) },
-					onFailure: { error in
-						try? standardInputPipe?.fileHandleForWriting.close()
-						continuation.resume(throwing: error)
-					}
-				)
-				guard didStart, let standardInput, let standardInputPipe else { return }
-				Self.write(standardInput, to: standardInputPipe)
+			do {
+				let status: Int32 = try await withCheckedThrowingContinuation { continuation in
+					let didStart = lifecycle.start(
+						onTermination: { continuation.resume(returning: $0) },
+						onFailure: { error in
+							try? standardInputPipe?.fileHandleForWriting.close()
+							continuation.resume(throwing: error)
+						}
+					)
+					guard didStart, let standardInput, let standardInputPipe else { return }
+					Self.write(standardInput, to: standardInputPipe)
+				}
+				let standardOutput = await standardOutputCollector.data()
+				let standardError = await standardErrorCollector.data()
+				try Task.checkCancellation()
+				return (status, standardOutput, standardError)
+			} catch {
+				lifecycle.cancel()
+				await lifecycle.waitForCancellation()
+				throw error
 			}
 		} onCancel: {
 			lifecycle.cancel()

@@ -1,3 +1,4 @@
+import Darwin
 import DomainGitInterface
 import Foundation
 import Testing
@@ -113,6 +114,141 @@ struct GitProcessRunnerTests {
 		} catch {
 			Issue.record("Unexpected error: \(error)")
 		}
+	}
+
+	@Test(arguments: [false, true])
+	func cancellationStopsChildrenThatIgnoreTermination(parentExits: Bool) async throws {
+		let url = try makeTemporaryDirectory()
+		defer { try? FileManager.default.removeItem(at: url) }
+		let executable = url.appending(path: "test-git")
+		let childURL = url.appending(path: "child.pid")
+		let escapedPath = childURL.path.replacingOccurrences(of: "'", with: "'\\''")
+		try """
+		#!/bin/sh
+		trap '\(parentExits ? "exit 0" : "")' TERM
+		/bin/sh -c 'trap "" TERM; printf "%s" "$$" > "$1"; exec /bin/sleep 30' child '\(escapedPath)' &
+		wait
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(
+				executableURL: executable, terminationGracePeriod: 0.05))
+		let task = Task { try await runner.requestRun(arguments: [], at: url) }
+		defer { task.cancel() }
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while !FileManager.default.fileExists(atPath: childURL.path), clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		let child = try #require(Int32(String(contentsOf: childURL, encoding: .utf8)))
+		defer { kill(child, SIGKILL) }
+		let start = clock.now
+
+		task.cancel()
+		await #expect(throws: CancellationError.self) { try await task.value }
+
+		#expect(clock.now - start < .seconds(2))
+		while kill(child, 0) == 0, clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		#expect(kill(child, 0) == -1)
+	}
+
+	@Test(arguments: [false, true])
+	func outputCollectionRemainsCancellableAfterTheParentExits(timesOut: Bool) async throws {
+		let url = try makeTemporaryDirectory()
+		defer { try? FileManager.default.removeItem(at: url) }
+		let executable = url.appending(path: "test-git")
+		let childURL = url.appending(path: "child.pid")
+		let parentURL = url.appending(path: "parent.pid")
+		let escapedChild = childURL.path.replacingOccurrences(of: "'", with: "'\\''")
+		let escapedParent = parentURL.path.replacingOccurrences(of: "'", with: "'\\''")
+		try """
+		#!/bin/sh
+		printf '%s' "$$" > '\(escapedParent)'
+		/bin/sh -c 'trap "" TERM; printf "%s" "$$" > "$1"; exec /bin/sleep 3' child '\(escapedChild)' &
+		while [ ! -s '\(escapedChild)' ]; do /bin/sleep 0.01; done
+		exit 0
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(
+				executableURL: executable,
+				networkPolicy: GitNetworkPolicy(operationTimeout: 0.5), terminationGracePeriod: 0.05))
+		let task = Task {
+			try await runner.requestRun(arguments: [], at: url, isNetworkOperation: timesOut)
+		}
+		defer { task.cancel() }
+		let clock = ContinuousClock()
+		let start = clock.now
+		let deadline = start.advanced(by: .seconds(2))
+		while !FileManager.default.fileExists(atPath: childURL.path), clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		let parent = try #require(Int32(String(contentsOf: parentURL, encoding: .utf8)))
+		let child = try #require(Int32(String(contentsOf: childURL, encoding: .utf8)))
+		defer { kill(child, SIGKILL) }
+		while kill(parent, 0) == 0, clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		#expect(kill(parent, 0) == -1)
+
+		if timesOut {
+			do {
+				_ = try await task.value
+				Issue.record("Expected timeout while collecting child process output")
+			} catch GitRepositoryError.timeout {}
+		} else {
+			task.cancel()
+			await #expect(throws: CancellationError.self) { try await task.value }
+		}
+
+		#expect(clock.now - start < .seconds(2))
+	}
+
+	@Test
+	func cancellationWaitsForChildrenThatCloseTheirOutputBeforeExiting() async throws {
+		let url = try makeTemporaryDirectory()
+		defer { try? FileManager.default.removeItem(at: url) }
+		let executable = url.appending(path: "test-git")
+		let childURL = url.appending(path: "child.pid")
+		let parentURL = url.appending(path: "parent.pid")
+		let escapedChild = childURL.path.replacingOccurrences(of: "'", with: "'\\''")
+		let escapedParent = parentURL.path.replacingOccurrences(of: "'", with: "'\\''")
+		try """
+		#!/bin/sh
+		printf '%s' "$$" > '\(escapedParent)'
+		/bin/sh -c 'trap "exec >/dev/null 2>&1" TERM; printf "%s" "$$" > "$1"; while :; do /bin/sleep 30; done' child '\(escapedChild)' &
+		while [ ! -s '\(escapedChild)' ]; do /bin/sleep 0.01; done
+		exit 0
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(executableURL: executable, terminationGracePeriod: 0.5)
+		)
+		let task = Task { try await runner.requestRun(arguments: [], at: url) }
+		defer { task.cancel() }
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while !FileManager.default.fileExists(atPath: childURL.path), clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		let parent = try #require(Int32(String(contentsOf: parentURL, encoding: .utf8)))
+		let child = try #require(Int32(String(contentsOf: childURL, encoding: .utf8)))
+		defer { kill(child, SIGKILL) }
+		while kill(parent, 0) == 0, clock.now < deadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		#expect(kill(parent, 0) == -1)
+
+		task.cancel()
+		await #expect(throws: CancellationError.self) { try await task.value }
+
+		let cleanupDeadline = clock.now.advanced(by: .milliseconds(100))
+		while kill(child, 0) == 0, clock.now < cleanupDeadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		#expect(kill(child, 0) == -1)
 	}
 
 	private func makeRepository() throws -> URL {

@@ -4,6 +4,7 @@ import Foundation
 final class GitCommitIndexTransaction {
 	let temporaryIndexURL: URL
 	private let lockURL: URL
+	private var ownsLock = false
 
 	init(indexURL: URL) throws {
 		lockURL = indexURL.appendingPathExtension("lock")
@@ -13,10 +14,12 @@ final class GitCommitIndexTransaction {
 		guard descriptor >= 0 else {
 			throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
 		}
+		ownsLock = true
 		close(descriptor)
 	}
 
 	deinit {
+		guard ownsLock else { return }
 		try? FileManager.default.removeItem(at: temporaryIndexURL.appendingPathExtension("lock"))
 		try? FileManager.default.removeItem(at: temporaryIndexURL)
 		try? FileManager.default.removeItem(at: lockURL)

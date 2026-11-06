@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 
@@ -22,4 +23,53 @@ struct AskPassParentMonitorTests {
 
 		monitor.stopMonitoring()
 	}
+	@Test
+	func stoppingMonitoringSuppressesParentExit() async throws {
+		let process = Process()
+		process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+		process.arguments = ["0.01"]
+		try process.run()
+		let monitor = AskPassParentMonitor(pollInterval: 0.01)
+
+		await confirmation(expectedCount: 0) { confirmation in
+			monitor.startMonitoring(parentProcessIdentifier: process.processIdentifier) {
+				confirmation()
+			}
+			monitor.stopMonitoring()
+			try? await Task.sleep(for: .milliseconds(150))
+		}
+	}
+
+	@Test
+	func restartingMonitoringCancelsThePreviousWatch() async throws {
+		let process = Process()
+		process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+		process.arguments = ["0.01"]
+		try process.run()
+		let monitor = AskPassParentMonitor(pollInterval: 0.01)
+		defer { monitor.stopMonitoring() }
+
+		await confirmation(expectedCount: 0) { confirmation in
+			monitor.startMonitoring(parentProcessIdentifier: process.processIdentifier) {
+				confirmation()
+			}
+			monitor.startMonitoring(parentProcessIdentifier: getpid()) {
+				confirmation()
+			}
+			try? await Task.sleep(for: .milliseconds(150))
+		}
+	}
+
+	@Test
+	func waitingForAParentDoesNotRetainTheMonitor() async throws {
+		var monitor: AskPassParentMonitor? = AskPassParentMonitor(pollInterval: 60)
+		weak var reference = monitor
+		monitor?.startMonitoring(parentProcessIdentifier: getpid()) {}
+		await Task.yield()
+
+		monitor = nil
+
+		#expect(reference == nil)
+	}
+
 }
