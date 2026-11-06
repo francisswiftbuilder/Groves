@@ -172,6 +172,23 @@ struct GitReferenceMutationTests {
 	}
 
 	@Test
+	func configurationUpdatesPreserveUnrelatedNestedLocks() async throws {
+		let context = try await makeContext()
+		_ = try await makeRemote(in: context)
+		let config = context.url.appending(path: ".git/config")
+		let lock = config.appendingPathExtension("lock.lock")
+		let contents = Data("another configuration writer".utf8)
+		try contents.write(to: lock)
+
+		try await context.repository.requestUpdateRemote(
+			named: "origin", fetchURL: "https://new.example/repo.git", pushURL: nil, at: context.url)
+
+		#expect(try Data(contentsOf: lock) == contents)
+		#expect(
+			try await run(["remote", "get-url", "origin"], in: context) == "https://new.example/repo.git")
+	}
+
+	@Test
 	func cancellationAfterStagingFetchURLLeavesTheOriginalConfigurationUntouched() async throws {
 		let context = try await makeContext()
 		_ = try await makeRemote(in: context)
@@ -184,6 +201,11 @@ struct GitReferenceMutationTests {
 		#!/bin/sh
 		case " $* " in
 		  *" --push "*|*" remote.origin.pushurl "*)
+		    previous=''
+		    for argument in "$@"; do
+		      if [ "$previous" = '--file' ]; then touch "$argument.lock"; fi
+		      previous="$argument"
+		    done
 		    touch '\(escapedMarker)'
 		    exec /bin/sleep 30
 		    ;;
@@ -214,6 +236,9 @@ struct GitReferenceMutationTests {
 		#expect(!FileManager.default.fileExists(atPath: config.appendingPathExtension("lock").path))
 		#expect(
 			!FileManager.default.fileExists(atPath: config.appendingPathExtension("lock.lock").path))
+		let files = try FileManager.default.contentsOfDirectory(
+			atPath: config.deletingLastPathComponent().path)
+		#expect(!files.contains { $0.hasPrefix("groves-config-") })
 	}
 
 	@Test

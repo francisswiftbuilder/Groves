@@ -4,10 +4,14 @@ import Foundation
 @MainActor
 public final class AskPassParentMonitor: AskPassParentMonitoring {
 	private let pollInterval: TimeInterval
-	private var timer: DispatchSourceTimer?
+	private var monitoringTask: Task<Void, Never>?
 
 	public init(pollInterval: TimeInterval = 0.25) {
 		self.pollInterval = pollInterval
+	}
+
+	deinit {
+		monitoringTask?.cancel()
 	}
 
 	public func startMonitoring(
@@ -15,20 +19,26 @@ public final class AskPassParentMonitor: AskPassParentMonitoring {
 		onParentExit: @escaping () -> Void
 	) {
 		stopMonitoring()
-		let timer = DispatchSource.makeTimerSource(queue: .main)
-		timer.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
-		timer.setEventHandler { [weak self] in
-			guard Self.processExists(parentProcessIdentifier) == false else { return }
-			self?.stopMonitoring()
-			onParentExit()
+		let interval = pollInterval
+		monitoringTask = Task { [weak self] in
+			while !Task.isCancelled {
+				do {
+					try await Task.sleep(for: .seconds(interval))
+				} catch {
+					return
+				}
+				guard let self, !Task.isCancelled else { return }
+				guard !Self.processExists(parentProcessIdentifier) else { continue }
+				stopMonitoring()
+				onParentExit()
+				return
+			}
 		}
-		timer.resume()
-		self.timer = timer
 	}
 
 	public func stopMonitoring() {
-		timer?.cancel()
-		timer = nil
+		monitoringTask?.cancel()
+		monitoringTask = nil
 	}
 
 	private static func processExists(_ processIdentifier: Int32) -> Bool {

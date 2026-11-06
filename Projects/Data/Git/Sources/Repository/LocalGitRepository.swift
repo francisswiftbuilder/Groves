@@ -14,7 +14,9 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	}
 
 	private func diffOptionArguments(_ options: GitDiffOptions) -> [String] {
-		var arguments = ["--unified=\(options.contextLineCount ?? 999_999)"]
+		var arguments = [
+			"--no-ext-diff", "--no-textconv", "--unified=\(options.contextLineCount ?? 999_999)",
+		]
 		if options.ignoresWhitespace {
 			arguments.append("--ignore-all-space")
 		}
@@ -61,17 +63,21 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		guard FileManager.default.fileExists(atPath: repositoryURL.path) == false else {
 			throw GitRepositoryError.repositoryAlreadyExists
 		}
-
+		let stagingURL = directoryURL.appending(
+			path: ".groves-clone-\(UUID().uuidString)", directoryHint: .isDirectory)
+		try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: false)
+		defer { try? FileManager.default.removeItem(at: stagingURL) }
+		_ = try await runner.requestRun(
+			arguments: ["clone", "--", remoteURL, stagingURL.path],
+			at: directoryURL,
+			isNetworkOperation: true,
+			requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(resolvedRemote)
+		)
+		try Task.checkCancellation()
 		do {
-			_ = try await runner.requestRun(
-				arguments: ["clone", "--", remoteURL, repositoryURL.path],
-				at: directoryURL,
-				isNetworkOperation: true,
-				requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(resolvedRemote)
-			)
-		} catch {
-			try? FileManager.default.removeItem(at: repositoryURL)
-			throw error
+			try FileManager.default.moveItem(at: stagingURL, to: repositoryURL)
+		} catch let error as CocoaError where error.code == .fileWriteFileExists {
+			throw GitRepositoryError.repositoryAlreadyExists
 		}
 		return repositoryURL
 	}
@@ -93,8 +99,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange] {
 		var arguments = [
-			"--no-optional-locks",
-			"status",
+			"--literal-pathspecs", "status",
 			"--porcelain=v1",
 			"-z",
 			"--untracked-files=all",
@@ -164,6 +169,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			let result = try await runner.requestRun(
 				arguments: [
 					"log",
+					"--no-show-signature",
+					"--no-notes",
 					"--branches",
 					"--remotes",
 					"--tags",
@@ -189,6 +196,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		return try await runner.requestRun(
 			arguments: [
 				"show",
+				"--no-show-signature",
+				"--no-notes",
 				"--format=",
 				"--diff-merges=first-parent",
 				"--no-color",
@@ -226,7 +235,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		-> RepositoryOperationState
 	{
 		async let statusResult = runner.requestRun(
-			arguments: ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z"],
+			arguments: ["status", "--porcelain=v2", "--branch", "-z"],
 			at: repositoryURL
 		)
 		async let markerResult = runner.requestRun(
@@ -319,7 +328,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	public func requestStashes(at repositoryURL: URL) async throws -> [GitStash] {
 		let format = "%gd%x1f%H%x1f%gs%x1f%ci%x1e"
 		let result = try await runner.requestRun(
-			arguments: ["stash", "list", "--format=\(format)"],
+			arguments: ["stash", "list", "--no-show-signature", "--no-notes", "--format=\(format)"],
 			at: repositoryURL
 		)
 		return GitOutputParser.parseStashes(result.standardOutput)
@@ -402,7 +411,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	{
 		if source == .unstaged, change.workingTreeState == .untracked {
 			return try await runner.requestRun(
-				arguments: ["diff", "--no-index", "--no-color"] + diffOptionArguments(options)
+				arguments: ["--literal-pathspecs", "diff", "--no-index", "--no-color"]
+					+ diffOptionArguments(options)
 					+ ["--", "/dev/null", change.path],
 				at: repositoryURL,
 				acceptedTerminationStatuses: [0, 1]
@@ -411,14 +421,17 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 
 		if source == .staged {
 			return try await runner.requestRun(
-				arguments: ["diff", "--cached", "--no-color"] + diffOptionArguments(options)
+				arguments: ["--literal-pathspecs", "diff", "--cached", "--no-color"]
+					+ diffOptionArguments(options)
 					+ ["--", change.path],
 				at: repositoryURL
 			).standardOutput
 		}
 
 		return try await runner.requestRun(
-			arguments: ["diff", "--no-color"] + diffOptionArguments(options) + ["--", change.path],
+			arguments: ["--literal-pathspecs", "diff", "--no-color"] + diffOptionArguments(options) + [
+				"--", change.path,
+			],
 			at: repositoryURL
 		).standardOutput
 	}
@@ -431,7 +444,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		guard let base = try await requestAmendBase(at: repositoryURL) else { return "" }
 		let paths = [change.path, change.previousPath].compactMap { $0 }
 		return try await runner.requestRun(
-			arguments: ["diff", "--cached", "--no-color", "--find-renames"]
+			arguments: ["--literal-pathspecs", "diff", "--cached", "--no-color", "--find-renames"]
 				+ diffOptionArguments(options) + [base, "--"] + paths,
 			at: repositoryURL
 		).standardOutput
@@ -536,14 +549,15 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 
 	public func requestStage(path: String, at repositoryURL: URL) async throws {
 		try await requestMutation(at: repositoryURL) {
-			_ = try await runner.requestRun(arguments: ["add", "--", path], at: repositoryURL)
+			_ = try await runner.requestRun(
+				arguments: ["--literal-pathspecs", "add", "--", path], at: repositoryURL)
 		}
 	}
 
 	public func requestUnstage(path: String, at repositoryURL: URL) async throws {
 		try await requestMutation(at: repositoryURL) {
 			_ = try await runner.requestRun(
-				arguments: ["restore", "--staged", "--", path], at: repositoryURL)
+				arguments: ["--literal-pathspecs", "restore", "--staged", "--", path], at: repositoryURL)
 		}
 	}
 
@@ -558,10 +572,17 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			let applyArguments: [String]
 			switch action {
 			case .stage:
-				diffArguments = ["diff", "--no-color", "--unified=0", "--", change.path]
+				diffArguments = [
+					"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-color",
+					"--unified=0", "--", change.path,
+				]
 				applyArguments = ["apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "-"]
 			case .unstage:
-				diffArguments = ["diff", "--cached", "--no-color", "--unified=0", "--", change.path]
+				diffArguments = [
+					"--literal-pathspecs", "diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color",
+					"--unified=0",
+					"--", change.path,
+				]
 				applyArguments = [
 					"apply",
 					"--cached",
@@ -598,17 +619,17 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			switch action {
 			case .stage:
 				diffArguments =
-					["diff", "--no-color"] + diffOptionArguments(options)
+					["--literal-pathspecs", "diff", "--no-color"] + diffOptionArguments(options)
 					+ ["--", change.path]
 				applyArguments = ["apply", "--cached", "--whitespace=nowarn", "-"]
 			case .unstage:
 				diffArguments =
-					["diff", "--cached", "--no-color"] + diffOptionArguments(options)
+					["--literal-pathspecs", "diff", "--cached", "--no-color"] + diffOptionArguments(options)
 					+ ["--", change.path]
 				applyArguments = ["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
 			case .discard:
 				diffArguments =
-					["diff", "--no-color"] + diffOptionArguments(options)
+					["--literal-pathspecs", "diff", "--no-color"] + diffOptionArguments(options)
 					+ ["--", change.path]
 				applyArguments = ["apply", "--reverse", "--whitespace=nowarn", "-"]
 			}
@@ -631,7 +652,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			let affectedPaths = [change.path, change.previousPath].compactMap { $0 }
 
 			let trackedPathsResult = try await runner.requestRun(
-				arguments: ["ls-files", "-z", "--"] + affectedPaths,
+				arguments: ["--literal-pathspecs", "ls-files", "-z", "--"] + affectedPaths,
 				at: repositoryURL
 			)
 			let trackedPaths = trackedPathsResult.standardOutput
@@ -641,14 +662,14 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 
 			if !trackedPaths.isEmpty {
 				_ = try await runner.requestRun(
-					arguments: ["restore", "--worktree", "--"] + trackedPaths,
+					arguments: ["--literal-pathspecs", "restore", "--worktree", "--"] + trackedPaths,
 					at: repositoryURL
 				)
 			}
 
 			if !untrackedPaths.isEmpty {
 				_ = try await runner.requestRun(
-					arguments: ["clean", "-f", "--"] + untrackedPaths,
+					arguments: ["--literal-pathspecs", "clean", "-f", "--"] + untrackedPaths,
 					at: repositoryURL
 				)
 			}
@@ -665,7 +686,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			}
 			let paths = [change.path, change.previousPath].compactMap { $0 }
 			_ = try await runner.requestRun(
-				arguments: ["reset", base, "--"] + paths,
+				arguments: ["--literal-pathspecs", "reset", base, "--"] + paths,
 				at: repositoryURL
 			)
 		}
@@ -982,12 +1003,12 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			if hasSelectedStage {
 				let option = resolution == .ours ? "--ours" : "--theirs"
 				_ = try await runner.requestRun(
-					arguments: ["checkout", option, "--", conflict.path],
+					arguments: ["--literal-pathspecs", "checkout", option, "--", conflict.path],
 					at: repositoryURL
 				)
 			} else {
 				_ = try await runner.requestRun(
-					arguments: ["rm", "-f", "--", conflict.path],
+					arguments: ["--literal-pathspecs", "rm", "-f", "--", conflict.path],
 					at: repositoryURL
 				)
 			}
@@ -1072,7 +1093,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	}
 
 	private func requestStageResolvedPath(_ path: String, at repositoryURL: URL) async throws {
-		_ = try await runner.requestRun(arguments: ["add", "-A", "--", path], at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: ["--literal-pathspecs", "add", "-A", "--", path], at: repositoryURL)
 	}
 
 	private func requestConflictStageData(
@@ -1858,7 +1880,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		guard parentHash.isEmpty else { return parentHash }
 
 		let emptyTree = try await runner.requestRun(
-			arguments: ["hash-object", "-t", "tree", "-w", "--stdin"],
+			arguments: ["hash-object", "-t", "tree", "--stdin"],
 			at: repositoryURL,
 			standardInput: ""
 		)
