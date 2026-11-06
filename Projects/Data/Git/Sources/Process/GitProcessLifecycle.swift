@@ -5,7 +5,6 @@ final class GitProcessLifecycle: @unchecked Sendable {
 	private enum State {
 		case notStarted
 		case running
-		case cancelled
 		case terminated
 	}
 
@@ -13,6 +12,9 @@ final class GitProcessLifecycle: @unchecked Sendable {
 	private let gracePeriod: TimeInterval
 	private let lock = NSLock()
 	private var state: State = .notStarted
+	private var isCancelled = false
+	private var processGroupIdentifier: pid_t?
+	private var cancellationTask: Task<Void, Never>?
 
 	init(process: Process, gracePeriod: TimeInterval) {
 		self.process = process
@@ -25,7 +27,7 @@ final class GitProcessLifecycle: @unchecked Sendable {
 		onFailure: @escaping @Sendable (any Error) -> Void
 	) -> Bool {
 		lock.lock()
-		guard state == .notStarted else {
+		guard state == .notStarted, !isCancelled else {
 			lock.unlock()
 			onFailure(CancellationError())
 			return false
@@ -36,6 +38,13 @@ final class GitProcessLifecycle: @unchecked Sendable {
 		}
 		do {
 			try process.run()
+			let identifier = process.processIdentifier
+			let groupIdentifier = getpgid(identifier)
+			if groupIdentifier == identifier
+				|| (groupIdentifier == -1 && errno == ESRCH && kill(-identifier, 0) == 0)
+			{
+				processGroupIdentifier = identifier
+			}
 			state = .running
 			lock.unlock()
 			return true
@@ -49,25 +58,41 @@ final class GitProcessLifecycle: @unchecked Sendable {
 
 	func cancel() {
 		lock.lock()
-		let wasRunning = state == .running
-		if state != .terminated {
-			state = .cancelled
+		guard !isCancelled else {
+			lock.unlock()
+			return
 		}
-		let processIdentifier = wasRunning ? process.processIdentifier : nil
+		isCancelled = true
+		let hasRunningGroup = processGroupIdentifier.map { kill(-$0, 0) == 0 } ?? false
+		guard state == .running || hasRunningGroup else {
+			lock.unlock()
+			return
+		}
+		if let processGroupIdentifier {
+			kill(-processGroupIdentifier, SIGTERM)
+		} else {
+			process.terminate()
+		}
+		cancellationTask = Task {
+			try? await Task.sleep(for: .seconds(gracePeriod))
+			forceTermination()
+		}
 		lock.unlock()
-
-		guard wasRunning, let processIdentifier else { return }
-		process.terminate()
-		DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + gracePeriod) {
-			guard self.isRunning else { return }
-			kill(processIdentifier, SIGKILL)
-		}
 	}
 
-	private var isRunning: Bool {
+	func waitForCancellation() async {
+		let task = lock.withLock { cancellationTask }
+		await task?.value
+	}
+
+	private func forceTermination() {
 		lock.lock()
 		defer { lock.unlock() }
-		return state == .running || state == .cancelled
+		if let processGroupIdentifier {
+			kill(-processGroupIdentifier, SIGKILL)
+		} else if state == .running {
+			kill(process.processIdentifier, SIGKILL)
+		}
 	}
 
 	private func markTerminated() {
