@@ -165,6 +165,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	public func requestCommitHistory(at repositoryURL: URL) async throws -> [GitCommit] {
 		let format =
 			"%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cn%x1f%ce%x1f%cI%x1f%D%x1f%s%x1f%b%x1e"
+		let head = try await requestCommitPlanHead(at: repositoryURL)
 		do {
 			let result = try await runner.requestRun(
 				arguments: [
@@ -176,7 +177,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 					"--tags",
 					"--topo-order",
 					"--pretty=format:\(format)",
-				],
+				] + [head].compactMap { $0 } + ["--"],
 				at: repositoryURL
 			)
 			return GitOutputParser.parseCommits(result.standardOutput)
@@ -554,10 +555,16 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		}
 	}
 
-	public func requestUnstage(path: String, at repositoryURL: URL) async throws {
+	public func requestUnstage(change: WorkingTreeChange, at repositoryURL: URL) async throws {
 		try await requestMutation(at: repositoryURL) {
+			let paths = [change.path, change.previousPath].compactMap { $0 }
+			let hasHead = try await requestCommitPlanHead(at: repositoryURL) != nil
+			let arguments =
+				hasHead
+				? ["--literal-pathspecs", "restore", "--staged", "--"]
+				: ["--literal-pathspecs", "rm", "--cached", "--force", "--ignore-unmatch", "--"]
 			_ = try await runner.requestRun(
-				arguments: ["--literal-pathspecs", "restore", "--staged", "--", path], at: repositoryURL)
+				arguments: arguments + paths, at: repositoryURL)
 		}
 	}
 
@@ -565,24 +572,16 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws {
 		try await requestMutation(at: repositoryURL) {
-			let diffArguments: [String]
 			let applyArguments: [String]
 			switch action {
 			case .stage:
-				diffArguments = [
-					"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-color",
-					"--unified=0", "--", change.path,
-				]
 				applyArguments = ["apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "-"]
 			case .unstage:
-				diffArguments = [
-					"--literal-pathspecs", "diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color",
-					"--unified=0",
-					"--", change.path,
-				]
 				applyArguments = [
 					"apply",
 					"--cached",
@@ -593,11 +592,10 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				]
 			}
 
-			let diff = try await runner.requestRun(
-				arguments: diffArguments,
-				at: repositoryURL
-			).standardOutput
-			let patch = try GitLinePatchBuilder.makePatch(from: diff, selection: selection)
+			try await requestValidateDiff(
+				expectedDiff, for: change, source: action == .stage ? .unstaged : .staged,
+				options: options, at: repositoryURL)
+			let patch = try GitLinePatchBuilder.makePatch(from: expectedDiff, selection: selection)
 			_ = try await runner.requestRun(
 				arguments: applyArguments,
 				at: repositoryURL,
@@ -610,35 +608,25 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws {
 		try await requestMutation(at: repositoryURL) {
-			let diffArguments: [String]
 			let applyArguments: [String]
 			switch action {
 			case .stage:
-				diffArguments =
-					["--literal-pathspecs", "diff", "--no-color"] + diffOptionArguments(options)
-					+ ["--", change.path]
 				applyArguments = ["apply", "--cached", "--whitespace=nowarn", "-"]
 			case .unstage:
-				diffArguments =
-					["--literal-pathspecs", "diff", "--cached", "--no-color"] + diffOptionArguments(options)
-					+ ["--", change.path]
 				applyArguments = ["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
 			case .discard:
-				diffArguments =
-					["--literal-pathspecs", "diff", "--no-color"] + diffOptionArguments(options)
-					+ ["--", change.path]
 				applyArguments = ["apply", "--reverse", "--whitespace=nowarn", "-"]
 			}
 
-			let diff = try await runner.requestRun(
-				arguments: diffArguments,
-				at: repositoryURL
-			).standardOutput
-			let patch = try GitHunkPatchBuilder.makePatch(from: diff, selection: selection)
+			try await requestValidateDiff(
+				expectedDiff, for: change, source: action == .unstage ? .staged : .unstaged,
+				options: options, at: repositoryURL)
+			let patch = try GitHunkPatchBuilder.makePatch(from: expectedDiff, selection: selection)
 			_ = try await runner.requestRun(
 				arguments: applyArguments,
 				at: repositoryURL,
@@ -649,7 +637,9 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 
 	public func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws {
 		try await requestMutation(at: repositoryURL) {
-			let affectedPaths = [change.path, change.previousPath].compactMap { $0 }
+			let affectedPaths =
+				change.workingTreeState == .renamed
+				? [change.path, change.previousPath].compactMap { $0 } : [change.path]
 
 			let trackedPathsResult = try await runner.requestRun(
 				arguments: ["--literal-pathspecs", "ls-files", "-z", "--"] + affectedPaths,
@@ -1065,12 +1055,20 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		_ hunk: GitConflictHunk,
 		in conflict: GitConflict,
 		using resolution: GitConflictHunkResolution,
+		expecting expectedContents: String,
 		at repositoryURL: URL
 	) async throws {
 		try await requestMutation(at: repositoryURL) {
 			let data = try await requestFileContents(at: conflict.path, in: repositoryURL)
 			guard let contents = String(data: data, encoding: .utf8) else {
 				throw GitRepositoryError.invalidOutput
+			}
+			let hunks = GitConflictMarkerParser.parse(contents)
+			guard contents == expectedContents, hunks.indices.contains(hunk.index),
+				hunks[hunk.index] == hunk
+			else {
+				throw GitRepositoryError.commandFailed(
+					"The conflict has changed. Review the current file before resolving it.")
 			}
 			let resolvedContents = try GitConflictMarkerParser.resolve(
 				hunk.index,
@@ -1282,20 +1280,26 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	}
 
 	public func requestFetch(remote name: String, at repositoryURL: URL) async throws {
+		try await requestFetch(remote: name, reference: nil, at: repositoryURL)
+	}
+
+	private func requestFetch(remote name: String, reference: String?, at repositoryURL: URL)
+		async throws
+	{
 		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
 			named: name,
 			usesPushURL: false,
 			at: repositoryURL
 		)
 		_ = try await runner.requestRun(
-			arguments: ["fetch", name],
+			arguments: ["fetch", "--", name] + [reference].compactMap { $0 },
 			at: repositoryURL,
 			isNetworkOperation: true,
 			requiresSSHTrustScope: requiresSSHTrustScope
 		)
 	}
 
-	public func requestFetchAll(at repositoryURL: URL) async throws {
+	public func requestFetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws {
 		let remoteNames = try await requestRemoteNames(at: repositoryURL)
 		var requiresSSHTrustScope = false
 		for remoteName in remoteNames {
@@ -1310,7 +1314,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			arguments: ["fetch", "--all"],
 			at: repositoryURL,
 			isNetworkOperation: true,
-			requiresSSHTrustScope: requiresSSHTrustScope
+			requiresSSHTrustScope: requiresSSHTrustScope,
+			allowsUserInteraction: allowsUserInteraction
 		)
 	}
 
@@ -1321,18 +1326,36 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				let currentBranch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
 				let upstream = currentBranch.upstream,
 				let remoteName = try await requestConfigurationValue(
-					"branch.\(currentBranch.name).remote", at: repositoryURL)
+					"branch.\(currentBranch.name).remote", at: repositoryURL),
+				let mergeReference = try await requestConfigurationValue(
+					"branch.\(currentBranch.name).merge", at: repositoryURL)
 			else {
 				throw GitRepositoryError.commandFailed(
 					"현재 브랜치에 upstream이 없습니다. 먼저 upstream을 설정해 주세요."
 				)
 			}
 
-			try await requestFetch(remote: remoteName, at: repositoryURL)
+			try await requestFetch(remote: remoteName, reference: mergeReference, at: repositoryURL)
 			guard
-				let updatedBranch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent)
+				let updatedBranch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
+				updatedBranch.name == currentBranch.name, updatedBranch.hash == currentBranch.hash,
+				updatedBranch.upstream == upstream
 			else {
-				throw GitRepositoryError.invalidOutput
+				throw GitRepositoryError.commandFailed(
+					"The current branch or upstream has changed. Pull again to review its history.")
+			}
+			let upstreamHash: String
+			do {
+				upstreamHash = try await runner.requestRun(
+					arguments: ["rev-parse", "--verify", "--end-of-options", "@{upstream}^{commit}"],
+					at: repositoryURL
+				).standardOutput.trimmingCharacters(in: .newlines)
+			} catch is CancellationError {
+				throw CancellationError()
+			} catch {
+				throw GitRepositoryError.commandFailed(
+					"The upstream branch \(upstream) is unavailable. Check the remote branch and tracking configuration before pulling."
+				)
 			}
 
 			switch (updatedBranch.aheadCount, updatedBranch.behindCount) {
@@ -1342,7 +1365,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				return .aheadOnly(aheadCount: aheadCount)
 			case (0, _):
 				_ = try await runner.requestRun(
-					arguments: ["merge", "--ff-only", "--", "@{upstream}"],
+					arguments: ["merge", "--ff-only", "--", upstreamHash],
 					at: repositoryURL
 				)
 				return .fastForwarded
@@ -1392,26 +1415,48 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 
 	public func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		try await requestEnsureIdle(at: repositoryURL)
-		let requiresSSHTrustScope = try await requestPushUsesSSH(target, at: repositoryURL)
+		let command = try await requestPushCommand(for: target, at: repositoryURL)
+		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
+			named: command.remoteName, usesPushURL: true, at: repositoryURL)
 		_ = try await runner.requestRun(
-			arguments: pushArguments(for: target),
+			arguments: command.arguments,
 			at: repositoryURL,
 			isNetworkOperation: true,
 			requiresSSHTrustScope: requiresSSHTrustScope
 		)
 	}
 
-	public func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
-		try await requestEnsureIdle(at: repositoryURL)
-		var arguments = pushArguments(for: target)
-		arguments.insert("--force-with-lease", at: 1)
-		let requiresSSHTrustScope = try await requestPushUsesSSH(target, at: repositoryURL)
-		_ = try await runner.requestRun(
-			arguments: arguments,
-			at: repositoryURL,
-			isNetworkOperation: true,
-			requiresSSHTrustScope: requiresSSHTrustScope
-		)
+	public func requestForcePush(
+		_ target: GitPushTarget, expecting branch: GitBranch, at repositoryURL: URL
+	) async throws {
+		try await requestMutation(at: repositoryURL) {
+			try await requestEnsureIdle(at: repositoryURL)
+			guard
+				let current = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
+				current.name == branch.name, current.hash == branch.hash,
+				current.upstream == branch.upstream
+			else {
+				throw GitRepositoryError.commandFailed(
+					"The current branch, HEAD or upstream has changed. Review the branch before force pushing."
+				)
+			}
+			let command = try await requestPushCommand(for: target, at: repositoryURL)
+			let expectedHash = try await requestPushTrackingHash(
+				source: command.sourceReference, destination: command.destinationReference,
+				remoteName: command.remoteName, at: repositoryURL)
+			if let expectedHash {
+				try await requestValidateForcePushHistory(
+					expecting: expectedHash, from: command.sourceReference, at: repositoryURL)
+			}
+			var arguments = command.arguments
+			arguments.insert(
+				"--force-with-lease=\(command.destinationReference):\(expectedHash ?? "")", at: 1)
+			let requiresSSHTrustScope = try await requestRemoteUsesSSH(
+				named: command.remoteName, usesPushURL: true, at: repositoryURL)
+			_ = try await runner.requestRun(
+				arguments: arguments, at: repositoryURL, isNetworkOperation: true,
+				requiresSSHTrustScope: requiresSSHTrustScope)
+		}
 	}
 
 	public func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
@@ -1534,25 +1579,6 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		)
 	}
 
-	private func requestPushUsesSSH(
-		_ target: GitPushTarget,
-		at repositoryURL: URL
-	) async throws -> Bool {
-		let remoteName: String?
-		switch target {
-		case .upstream:
-			remoteName = try await requestPushRemoteName(at: repositoryURL)
-		case .setUpstream(let name, _):
-			remoteName = name
-		}
-		guard let remoteName else { return false }
-		return try await requestRemoteUsesSSH(
-			named: remoteName,
-			usesPushURL: true,
-			at: repositoryURL
-		)
-	}
-
 	private func requestPushRemoteName(at repositoryURL: URL) async throws -> String? {
 		let branches = try await requestBranches(at: repositoryURL)
 		guard let currentBranch = branches.first(where: \.isCurrent) else { return nil }
@@ -1602,15 +1628,87 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		return remoteURLs.contains(where: GitRemoteURLValidator.isSSHRemote)
 	}
 
-	private func pushArguments(for target: GitPushTarget) -> [String] {
-		let arguments: [String]
+	private func requestPushCommand(for target: GitPushTarget, at repositoryURL: URL) async throws
+		-> (
+			arguments: [String], remoteName: String, sourceReference: String, destinationReference: String
+		)
+	{
 		switch target {
 		case .upstream:
-			arguments = ["push"]
+			guard
+				let branch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
+				branch.upstream != nil,
+				let remoteName = try await requestPushRemoteName(at: repositoryURL),
+				let upstreamRemote = try await requestConfigurationValue(
+					"branch.\(branch.name).remote", at: repositoryURL),
+				let upstreamReference = try await requestConfigurationValue(
+					"branch.\(branch.name).merge", at: repositoryURL),
+				upstreamReference.hasPrefix("refs/heads/")
+			else {
+				throw GitRepositoryError.commandFailed(
+					"현재 브랜치의 push 대상을 확인할 수 없습니다. 브랜치와 upstream 설정을 확인해 주세요.")
+			}
+			let source = "refs/heads/\(branch.name)"
+			let destination = remoteName == upstreamRemote ? upstreamReference : source
+			return (
+				["push", "--", remoteName, "\(source):\(destination)"], remoteName, source, destination
+			)
 		case .setUpstream(let remoteName, let branchName):
-			arguments = ["push", "--set-upstream", remoteName, branchName]
+			try await requestValidateReference(branchName, prefix: "refs/heads/", at: repositoryURL)
+			let reference = "refs/heads/\(branchName)"
+			return (
+				["push", "--set-upstream", "--", remoteName, "\(reference):\(reference)"],
+				remoteName, reference, reference
+			)
 		}
-		return arguments
+	}
+
+	private func requestPushTrackingHash(
+		source: String, destination: String, remoteName: String, at repositoryURL: URL
+	) async throws -> String? {
+		let metadata = try await runner.requestRun(
+			arguments: [
+				"for-each-ref", "--format=%(upstream)%09%(upstream:remotename)%09%(upstream:remoteref)",
+				source,
+			], at: repositoryURL
+		).standardOutput.trimmingCharacters(in: .newlines)
+		let fields = metadata.split(separator: "\t", omittingEmptySubsequences: false)
+		if fields.count == 3, fields[1] == remoteName, fields[2] == destination, !fields[0].isEmpty {
+			let result = try await runner.requestRun(
+				arguments: ["rev-parse", "--verify", "--quiet", "\(fields[0])^{commit}"], at: repositoryURL,
+				acceptedTerminationStatuses: [0, 1])
+			let hash = result.standardOutput.trimmingCharacters(in: .newlines)
+			return hash.isEmpty ? nil : hash
+		}
+		let branchName = String(destination.dropFirst("refs/heads/".count))
+		return try await requestRemotes(at: repositoryURL).first { $0.name == remoteName }?
+			.branches.first { $0.name == branchName }?.hash
+	}
+
+	private func requestValidateForcePushHistory(
+		expecting remoteHash: String, from source: String, at repositoryURL: URL
+	) async throws {
+		let currentHash = try await runner.requestRun(
+			arguments: ["rev-parse", "--verify", "\(source)^{commit}"], at: repositoryURL
+		).standardOutput.trimmingCharacters(in: .newlines)
+		let reflog = try await runner.requestRun(
+			arguments: ["reflog", "show", "--format=%H", source], at: repositoryURL)
+		var seen: Set<String> = []
+		let hashes =
+			([currentHash] + reflog.standardOutput.split(whereSeparator: \.isNewline).map(String.init))
+			.filter { seen.insert($0).inserted }
+		for start in stride(from: 0, to: hashes.count, by: 64) {
+			let chunk = Array(hashes[start..<min(start + 64, hashes.count)])
+			let bases = try await runner.requestRun(
+				arguments: ["merge-base", "--all", remoteHash] + chunk, at: repositoryURL,
+				acceptedTerminationStatuses: [0, 1])
+			if bases.standardOutput.split(whereSeparator: \.isNewline).contains(Substring(remoteHash)) {
+				return
+			}
+		}
+		throw GitRepositoryError.commandFailed(
+			"The remote branch contains commits that have not been included in this local branch. Pull and review them before force pushing."
+		)
 	}
 
 	private func resolvedGitPath(_ path: String, at repositoryURL: URL) -> URL {
@@ -1833,6 +1931,21 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			throw GitRepositoryError.commandFailed(
 				"Hard reset would overwrite untracked or ignored files: \(affectedPaths). Move these files before retrying."
 			)
+		}
+	}
+
+	private func requestValidateDiff(
+		_ expectedDiff: String,
+		for change: WorkingTreeChange,
+		source: GitDiffSource,
+		options: GitDiffOptions,
+		at repositoryURL: URL
+	) async throws {
+		let currentDiff = try await requestDiff(
+			for: change, source: source, options: options, at: repositoryURL)
+		guard currentDiff == expectedDiff else {
+			throw GitRepositoryError.commandFailed(
+				"The diff has changed. Review the current changes before applying this action.")
 		}
 	}
 

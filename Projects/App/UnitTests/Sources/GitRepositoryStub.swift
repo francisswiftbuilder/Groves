@@ -170,11 +170,13 @@ struct GitRepositoryStub: GitRepository {
 		await recorder?.record(.stage(path: path))
 		await mutationGate?.enter(GitDiffGateLabel.stage(path: path))
 	}
-	func requestUnstage(path: String, at repositoryURL: URL) async throws {}
+	func requestUnstage(change: WorkingTreeChange, at repositoryURL: URL) async throws {}
 	func requestApplyDiffLine(
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws {
 		await recorder?.record(.applyDiffLine(action))
@@ -184,6 +186,7 @@ struct GitRepositoryStub: GitRepository {
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws {}
@@ -249,6 +252,7 @@ struct GitRepositoryStub: GitRepository {
 		_ hunk: GitConflictHunk,
 		in conflict: GitConflict,
 		using resolution: GitConflictHunkResolution,
+		expecting expectedContents: String,
 		at repositoryURL: URL
 	) async throws {
 		await mutationGate?.enter(GitDiffGateLabel.resolveConflictHunk(path: conflict.path))
@@ -293,7 +297,7 @@ struct GitRepositoryStub: GitRepository {
 	{ .completed }
 
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws {}
-	func requestFetchAll(at repositoryURL: URL) async throws {}
+	func requestFetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws {}
 	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome {
 		.upToDate
 	}
@@ -305,7 +309,9 @@ struct GitRepositoryStub: GitRepository {
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		await recorder?.record(.push(target))
 	}
-	func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
+	func requestForcePush(_ target: GitPushTarget, expecting branch: GitBranch, at repositoryURL: URL)
+		async throws
+	{
 		await recorder?.record(.forcePush(target))
 	}
 	func requestPushTags(remote name: String, at repositoryURL: URL) async throws {

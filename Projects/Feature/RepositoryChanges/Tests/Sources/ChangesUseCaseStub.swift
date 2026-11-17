@@ -26,6 +26,11 @@ struct ChangesUseCaseStub: RepositoryChangesUseCase {
 		{ _, _ in
 			fatalError()
 		}
+	var hunkOperation:
+		@Sendable (
+			GitDiffHunkSelection, GitDiffHunkAction, WorkingTreeChange, String, GitDiffOptions, URL
+		)
+			async throws -> [WorkingTreeChange] = { _, _, _, _, _, _ in fatalError() }
 
 	func loadDiff(
 		for change: WorkingTreeChange,
@@ -98,6 +103,8 @@ struct ChangesUseCaseStub: RepositoryChangesUseCase {
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange] {
 		fatalError()
@@ -107,10 +114,11 @@ struct ChangesUseCaseStub: RepositoryChangesUseCase {
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange] {
-		fatalError()
+		try await hunkOperation(selection, action, change, expectedDiff, options, repositoryURL)
 	}
 
 	func discard(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws

@@ -1,20 +1,28 @@
 import DomainGitInterface
 import Foundation
+import OSLog
 import Observation
 
 @MainActor
 @Observable
 public final class RepositorySyncViewModel {
+	private static let logger = Logger(
+		subsystem: Bundle.main.bundleIdentifier ?? "io.github.francisswiftbuilder.Groves",
+		category: "RepositorySync")
+
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
+		public let didFetchAutomatically: (@MainActor () -> Void)?
 
 		public init(
 			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
-			didReceiveError: @escaping @MainActor (String) -> Void
+			didReceiveError: @escaping @MainActor (String) -> Void,
+			didFetchAutomatically: (@MainActor () -> Void)? = nil
 		) {
 			self.didProduceSnapshot = didProduceSnapshot
 			self.didReceiveError = didReceiveError
+			self.didFetchAutomatically = didFetchAutomatically
 		}
 	}
 
@@ -22,15 +30,21 @@ public final class RepositorySyncViewModel {
 		public let contentUseCase: any RepositoryContentUseCase
 		public let referencesUseCase: any RepositoryReferencesUseCase
 		public let repositoryURL: @MainActor () -> URL?
+		public let canAutomaticallyFetch: @MainActor () -> Bool
+		public let automaticFetchInterval: Duration
 
 		public init(
 			contentUseCase: any RepositoryContentUseCase,
 			referencesUseCase: any RepositoryReferencesUseCase,
-			repositoryURL: @escaping @MainActor () -> URL?
+			repositoryURL: @escaping @MainActor () -> URL?,
+			canAutomaticallyFetch: @escaping @MainActor () -> Bool = { true },
+			automaticFetchInterval: Duration = .seconds(60)
 		) {
 			self.contentUseCase = contentUseCase
 			self.referencesUseCase = referencesUseCase
 			self.repositoryURL = repositoryURL
+			self.canAutomaticallyFetch = canAutomaticallyFetch
+			self.automaticFetchInterval = automaticFetchInterval
 		}
 	}
 
@@ -110,6 +124,9 @@ public final class RepositorySyncViewModel {
 	private var operationState: RepositoryOperationState = .normal
 	@ObservationIgnored private var networkTask: Task<Void, Never>?
 	@ObservationIgnored private var activityPresentationTask: Task<Void, Never>?
+	@ObservationIgnored private var automaticFetchTask: Task<Void, Never>?
+	private var isAutomaticFetch = false
+	private var forcePushContext: (repositoryURL: URL, branch: GitBranch)?
 	private var activeNetworkRequestID: Int?
 	private var networkRequestSequence = 0
 
@@ -124,6 +141,7 @@ public final class RepositorySyncViewModel {
 	deinit {
 		networkTask?.cancel()
 		activityPresentationTask?.cancel()
+		automaticFetchTask?.cancel()
 	}
 
 	public var remotes: [GitRemote] {
@@ -136,8 +154,8 @@ public final class RepositorySyncViewModel {
 
 	public var canFetch: Bool { !isLoading && !remotes.isEmpty }
 	public var canPull: Bool {
-		!isLoading && operationState.isIdle && !operationState.isDetached && currentBranch != nil
-			&& !remotes.isEmpty
+		!isLoading && operationState.isIdle && !operationState.isDetached
+			&& currentBranch?.upstream != nil
 	}
 	public var canPush: Bool { !isLoading && pushAction != .unavailable }
 	public var pushRemoteChoices: [String] {
@@ -182,9 +200,12 @@ public final class RepositorySyncViewModel {
 		currentBranch = nil
 		operationState = .normal
 		state = .empty
+		isAutomaticFetch = false
+		forcePushContext = nil
 	}
 
 	public func onDisappear() {
+		updateAutomaticFetching(isActive: false)
 		networkTask?.cancel()
 		networkTask = nil
 		activityPresentationTask?.cancel()
@@ -192,13 +213,50 @@ public final class RepositorySyncViewModel {
 		activeNetworkRequestID = nil
 		activity = nil
 		presentedActivity = nil
+		isAutomaticFetch = false
+	}
+
+	public func updateAutomaticFetching(isActive: Bool) {
+		guard isActive else {
+			automaticFetchTask?.cancel()
+			automaticFetchTask = nil
+			if isAutomaticFetch { networkTask?.cancel() }
+			return
+		}
+		guard automaticFetchTask == nil else { return }
+		let interval = dependencies.automaticFetchInterval
+		automaticFetchTask = Task { @MainActor [weak self] in
+			var delay = min(interval, .seconds(1))
+			do {
+				while !Task.isCancelled {
+					try await Task.sleep(for: delay)
+					guard let self else { return }
+					delay = interval
+					guard !isLoading, dependencies.canAutomaticallyFetch(), pendingConfirmation == nil,
+						pendingPullDivergence == nil
+					else {
+						delay = min(interval, .seconds(1))
+						continue
+					}
+					guard canFetch else { continue }
+					requestAutomaticFetch()
+				}
+			} catch {}
+		}
+	}
+
+	private func requestAutomaticFetch() {
+		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		let referencesUseCase = dependencies.referencesUseCase
+		requestNetworkMutation(activity: .fetchAll, isAutomatic: true) {
+			try await referencesUseCase.fetchAll(at: repositoryURL, allowsUserInteraction: false)
+		}
 	}
 
 	public func didRequestPull() {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
-			operationState.isIdle,
-			!isLoading
+			canPull
 		else { return }
 		networkTask?.cancel()
 		let requestID = beginNetworkRequest(activity: .pull(currentBranch?.name))
@@ -300,7 +358,10 @@ public final class RepositorySyncViewModel {
 	}
 
 	public func didPresentForcePushConfirmation(remoteName: String? = nil) {
-		guard pushAction != .unavailable else { return }
+		guard !isLoading, pushAction != .unavailable, let currentBranch,
+			let repositoryURL = dependencies.repositoryURL()
+		else { return }
+		forcePushContext = (repositoryURL, currentBranch)
 		pendingConfirmation = .forcePush(remoteName: remoteName)
 	}
 
@@ -320,29 +381,39 @@ public final class RepositorySyncViewModel {
 
 	func didDismissPendingConfirmation() {
 		pendingConfirmation = nil
+		forcePushContext = nil
 	}
 
 	func didConfirmPendingConfirmation() {
 		guard let confirmation = pendingConfirmation else { return }
+		let context = forcePushContext
 		pendingConfirmation = nil
+		forcePushContext = nil
 		switch confirmation {
 		case .forcePush(let remoteName):
-			requestForcePush(remoteName: remoteName)
+			guard let context, dependencies.repositoryURL() == context.repositoryURL,
+				currentBranch?.name == context.branch.name, currentBranch?.hash == context.branch.hash,
+				currentBranch?.upstream == context.branch.upstream
+			else {
+				actions.didReceiveError(
+					"The repository or branch has changed. Review the branch before force pushing.")
+				return
+			}
+			requestForcePush(remoteName: remoteName, expecting: context.branch)
 		}
 	}
 
-	private func requestForcePush(remoteName: String?) {
+	private func requestForcePush(remoteName: String?, expecting branch: GitBranch) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
 			pushAction != .unavailable
 		else { return }
 		let referencesUseCase = dependencies.referencesUseCase
-		let currentBranch = currentBranch
 		let remotes = remotes
 		let operationState = operationState
-		requestNetworkMutation(activity: .forcePush(currentBranch?.name)) {
+		requestNetworkMutation(activity: .forcePush(branch.name)) {
 			try await referencesUseCase.forcePush(
-				currentBranch: currentBranch,
+				currentBranch: branch,
 				remotes: remotes,
 				operationState: operationState,
 				selectedRemoteName: remoteName,
@@ -353,11 +424,13 @@ public final class RepositorySyncViewModel {
 
 	private func requestNetworkMutation(
 		activity: Activity,
+		isAutomatic: Bool = false,
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
 	) {
 		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		networkTask?.cancel()
 		let requestID = beginNetworkRequest(activity: activity)
+		isAutomaticFetch = isAutomatic
 		networkTask = Task { [weak self] in
 			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
@@ -367,7 +440,11 @@ public final class RepositorySyncViewModel {
 				guard let self, self.activeNetworkRequestID == requestID,
 					self.dependencies.repositoryURL() == expectedRepositoryURL
 				else { return }
-				actions.didProduceSnapshot(snapshot)
+				if isAutomatic, let didFetchAutomatically = actions.didFetchAutomatically {
+					didFetchAutomatically()
+				} else {
+					actions.didProduceSnapshot(snapshot)
+				}
 			} catch is CancellationError {
 				return
 			} catch {
@@ -376,8 +453,17 @@ public final class RepositorySyncViewModel {
 				else {
 					return
 				}
-				actions.didReceiveError(error.localizedDescription)
-				await restoreSnapshot(at: expectedRepositoryURL, requestID: requestID)
+				if isAutomatic {
+					Self.logger.warning(
+						"Automatic fetch failed: \(error.localizedDescription, privacy: .private)")
+				} else {
+					actions.didReceiveError(error.localizedDescription)
+				}
+				if isAutomatic, let didFetchAutomatically = actions.didFetchAutomatically {
+					didFetchAutomatically()
+				} else {
+					await restoreSnapshot(at: expectedRepositoryURL, requestID: requestID)
+				}
 			}
 		}
 	}
@@ -398,6 +484,7 @@ public final class RepositorySyncViewModel {
 		activeNetworkRequestID = nil
 		activity = nil
 		presentedActivity = nil
+		isAutomaticFetch = false
 	}
 
 	private func presentActivityAfterDelay(_ activity: Activity, requestID: Int) {

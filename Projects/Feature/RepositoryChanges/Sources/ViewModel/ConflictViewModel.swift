@@ -209,6 +209,9 @@ public final class ConflictViewModel {
 	) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
+			let expectedContents = content?.workingTree,
+			selectedConflict == conflict,
+			content?.hunks.contains(hunk) == true,
 			!isLoadingContent,
 			!isLoading
 		else { return }
@@ -222,6 +225,7 @@ public final class ConflictViewModel {
 					hunk,
 					in: conflict,
 					using: resolution,
+					expecting: expectedContents,
 					at: repositoryURL
 				)
 				let refreshedContent = try await dependencies.operationsUseCase.loadConflictContent(

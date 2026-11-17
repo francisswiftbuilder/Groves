@@ -501,6 +501,9 @@ struct GitOutputParserTests {
 			GitDiffLineSelection(oldLineNumber: 2, newLineNumber: 2),
 			action: .stage,
 			for: change,
+			expecting: try await repository.requestDiff(
+				for: change, source: .unstaged, options: GitDiffOptions(), at: repositoryURL),
+			options: GitDiffOptions(),
 			at: repositoryURL
 		)
 
@@ -558,6 +561,9 @@ struct GitOutputParserTests {
 			GitDiffLineSelection(oldLineNumber: 2, newLineNumber: 2),
 			action: .unstage,
 			for: change,
+			expecting: try await repository.requestDiff(
+				for: change, source: .staged, options: GitDiffOptions(), at: repositoryURL),
+			options: GitDiffOptions(),
 			at: repositoryURL
 		)
 
@@ -949,7 +955,11 @@ struct GitOutputParserTests {
 		try requestRunGit(["add", "replacement.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Replacement history"], at: repositoryURL)
 
-		try await repository.requestForcePush(.upstream, at: repositoryURL)
+		try await repository.requestForcePush(
+			.upstream,
+			expecting: try #require(
+				try await repository.requestBranches(at: repositoryURL).first(where: \.isCurrent)),
+			at: repositoryURL)
 
 		let localHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
 			.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1421,6 +1431,7 @@ struct GitOutputParserTests {
 			try #require(selections.first),
 			action: .stage,
 			for: change,
+			expecting: diff,
 			options: GitDiffOptions(),
 			at: repositoryURL
 		)
@@ -1441,6 +1452,7 @@ struct GitOutputParserTests {
 			remainingSelection,
 			action: .discard,
 			for: change,
+			expecting: remainingDiff,
 			options: GitDiffOptions(),
 			at: repositoryURL
 		)
@@ -1488,6 +1500,7 @@ struct GitOutputParserTests {
 			selection,
 			action: .unstage,
 			for: change,
+			expecting: stagedDiff,
 			options: GitDiffOptions(),
 			at: repositoryURL
 		)
@@ -1583,6 +1596,7 @@ struct GitOutputParserTests {
 			try #require(content.hunks.first),
 			in: conflict,
 			using: .both,
+			expecting: try #require(content.workingTree),
 			at: repositoryURL
 		)
 		let resolved = try await repository.requestConflictContent(

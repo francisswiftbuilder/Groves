@@ -1,5 +1,7 @@
+import CoreRepositoryDiff
 import DomainGitInterface
 import Foundation
+import Synchronization
 import Testing
 
 @testable import FeatureRepositoryChanges
@@ -350,6 +352,73 @@ struct ChangesViewModelTests {
 		viewModel.apply(snapshot, revalidatesSelectedDiff: false)
 
 		#expect(reloadRequests.isEmpty)
+	}
+
+	@Test(arguments: ["diff", "repository", "source"])
+	func discardConfirmationKeepsTheDiffAndContextThatWereOriginallyReviewed(changeKind: String)
+		async throws
+	{
+		let original =
+			"diff --git a/File.txt b/File.txt\n--- a/File.txt\n+++ b/File.txt\n@@ -1 +1 @@\n-base\n+reviewed\n"
+		let current = original.replacingOccurrences(of: "+reviewed", with: "+new work")
+		let displayed = Mutex(original)
+		let received = Mutex<[String]>([])
+		let change = WorkingTreeChange(
+			path: "File.txt", previousPath: nil, indexState: .unchanged, workingTreeState: .modified)
+		var useCase = ChangesUseCaseStub()
+		useCase.diffOperation = { _, _, _, _ in displayed.withLock { $0 } }
+		useCase.hunkOperation = { _, action, _, expectedDiff, _, _ in
+			#expect(action == .discard)
+			received.withLock { $0.append(expectedDiff) }
+			throw GitRepositoryError.commandFailed("The diff has changed")
+		}
+		var errors: [String] = []
+		var repositoryURL = URL(fileURLWithPath: "/repo")
+		let model = ChangesDiffViewModel(
+			dependencies: .init(
+				changesUseCase: useCase, preferences: WorkspaceDiffPreferences(),
+				repositoryURL: { repositoryURL }),
+			actions: .init(
+				didApplyMutation: { _, _, _ in Issue.record("Stale mutation was applied") },
+				didReceiveError: { errors.append($0) }))
+		defer { model.onDisappear() }
+		let selection = ChangesDiffSelection.workingTree(.unstaged(change.id), change, .unstaged)
+		model.didSelect(selection)
+		for _ in 0..<200 {
+			if model.diff == original, !model.isLoading { break }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(model.diff == original)
+		model.didRequestApplyDiffHunk(.init(oldStartLine: 1, newStartLine: 1), action: .discard)
+		#expect(model.pendingConfirmation?.expectedDiff == original)
+		if changeKind == "diff" {
+			displayed.withLock { $0 = current }
+			model.didSelect(selection, forceReload: true)
+		} else if changeKind == "repository" {
+			repositoryURL = URL(fileURLWithPath: "/other")
+		} else {
+			model.didSelect(.workingTree(.staged(change.id), change, .staged))
+		}
+		for _ in 0..<200 {
+			if !model.isLoading, changeKind != "diff" || model.diff == current { break }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		if changeKind == "diff" { #expect(model.diff == current) }
+
+		model.didConfirmPendingConfirmation()
+
+		if changeKind == "diff" {
+			for _ in 0..<200 {
+				if !errors.isEmpty, !model.isApplyingAction { break }
+				try await Task.sleep(for: .milliseconds(10))
+			}
+			#expect(received.withLock { $0 } == [original])
+			#expect(errors == ["The diff has changed"])
+		} else {
+			#expect(received.withLock { $0 }.isEmpty)
+			#expect(errors.isEmpty)
+		}
+		#expect(model.pendingConfirmation == nil)
 	}
 
 	private func makeViewModel(

@@ -28,7 +28,8 @@ actor GitProcessRunner {
 		environment: [String: String] = [:],
 		acceptedTerminationStatuses: Set<Int32> = [0],
 		isNetworkOperation: Bool = false,
-		requiresSSHTrustScope: Bool = false
+		requiresSSHTrustScope: Bool = false,
+		allowsUserInteraction: Bool = true
 	) async throws -> GitCommandResult {
 		try Task.checkCancellation()
 		guard FileManager.default.isExecutableFile(atPath: configuration.executableURL.path) else {
@@ -86,7 +87,8 @@ actor GitProcessRunner {
 			operationID: operationID,
 			trustScope: trustScope,
 			authenticationArguments: authenticationArguments,
-			credentialSocketPath: broker?.socketPath
+			credentialSocketPath: broker?.socketPath,
+			allowsUserInteraction: allowsUserInteraction
 		)
 		broker?.stop()
 		if isNetworkOperation {
@@ -107,7 +109,8 @@ actor GitProcessRunner {
 		operationID: String,
 		trustScope: GitSSHTrustScope? = nil,
 		authenticationArguments: [String] = [],
-		credentialSocketPath: String? = nil
+		credentialSocketPath: String? = nil,
+		allowsUserInteraction: Bool = true
 	) async throws -> GitCommandResult {
 		let standardOutputPipe = Pipe()
 		let standardErrorPipe = Pipe()
@@ -134,7 +137,8 @@ actor GitProcessRunner {
 			operationID: operationID,
 			isNetworkOperation: isNetworkOperation,
 			trustScope: trustScope,
-			credentialSocketPath: credentialSocketPath
+			credentialSocketPath: credentialSocketPath,
+			allowsUserInteraction: allowsUserInteraction
 		)
 		process.standardOutput = standardOutputPipe
 		process.standardError = standardErrorPipe
@@ -270,7 +274,8 @@ actor GitProcessRunner {
 		operationID: String,
 		isNetworkOperation: Bool,
 		trustScope: GitSSHTrustScope?,
-		credentialSocketPath: String?
+		credentialSocketPath: String?,
+		allowsUserInteraction: Bool
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
 		result["GROVES_CREDENTIAL_SOCKET"] = nil
@@ -311,6 +316,12 @@ actor GitProcessRunner {
 				result["SSH_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS_REQUIRE"] = "force"
 				result["GROVES_OPERATION_IDENTIFIER"] = operationID
+			}
+			if !allowsUserInteraction {
+				result["GIT_ASKPASS"] = "/usr/bin/false"
+				result["SSH_ASKPASS"] = "/usr/bin/false"
+				result["SSH_ASKPASS_REQUIRE"] = "never"
+				result["GCM_INTERACTIVE"] = "Never"
 			}
 		}
 		if let trustScope {

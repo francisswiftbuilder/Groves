@@ -136,7 +136,8 @@ final class RepositoryWorkspaceAssembly {
 			dependencies: .init(
 				contentUseCase: dependencies.contentUseCase,
 				referencesUseCase: dependencies.referencesUseCase,
-				repositoryURL: { output.workspaceViewModel?.repositoryURL }
+				repositoryURL: { output.workspaceViewModel?.repositoryURL },
+				canAutomaticallyFetch: { output.workspaceViewModel?.canAutomaticallyRefresh == true }
 			),
 			actions: .init(
 				didProduceSnapshot: { snapshot in
@@ -144,6 +145,9 @@ final class RepositoryWorkspaceAssembly {
 				},
 				didReceiveError: { message in
 					output.workspaceViewModel?.alertMessage = message
+				},
+				didFetchAutomatically: {
+					output.workspaceViewModel?.didFetchRemoteState()
 				}
 			)
 		)

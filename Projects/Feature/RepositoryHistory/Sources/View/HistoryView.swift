@@ -7,7 +7,7 @@ public struct HistoryView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	private let diffSearchViewModel: RepositorySearchViewModel
 	private let historyViewModel: HistoryViewModel
-	@Bindable private var diffPreferences: WorkspaceDiffPreferences
+	private let diffPreferences: WorkspaceDiffPreferences
 	let repositoryName: String
 	let currentBranchStatus: String
 	let operationState: RepositoryOperationState
@@ -32,7 +32,7 @@ public struct HistoryView: View {
 	) {
 		self.diffSearchViewModel = diffSearchViewModel
 		self.historyViewModel = historyViewModel
-		_diffPreferences = Bindable(wrappedValue: diffPreferences)
+		self.diffPreferences = diffPreferences
 		self.repositoryName = repositoryName
 		self.currentBranchStatus = currentBranchStatus
 		self.operationState = operationState
@@ -58,27 +58,17 @@ public struct HistoryView: View {
 					historyList
 						.frame(maxWidth: .infinity)
 				} center: {
-					CommitDiffView(
-						searchModel: diffSearchViewModel,
-						options: $diffPreferences.options,
-						presentationMode: $diffPreferences.presentationMode,
-						file: historyViewModel.selectedCommitFile,
-						imageDiff: historyViewModel.commitImageDiff,
-						beforeImageTitle: "Parent",
-						afterImageTitle: "Commit",
-						changedFileCount: commitFiles.count,
-						isLoading: historyViewModel.isLoadingCommitDiff
-							|| historyViewModel.isLoadingCommitImageDiff,
+					HistoryCommitDiffView(
+						historyViewModel: historyViewModel,
+						searchViewModel: diffSearchViewModel,
+						preferences: diffPreferences,
 						onOptionsChanged: onDiffOptionsChanged
 					)
 					.frame(maxWidth: .infinity)
 				} trailing: {
 					CommitInspectorView(
-						commit: historyViewModel.selectedCommit,
-						files: commitFiles,
-						isLoadingFiles: historyViewModel.isLoadingCommitDiff,
-						remoteNames: remoteNames,
-						selectedFileID: selectedCommitFileBinding
+						viewModel: historyViewModel,
+						remoteNames: remoteNames
 					)
 					.frame(maxWidth: .infinity)
 				}
@@ -179,24 +169,11 @@ public struct HistoryView: View {
 		}
 	}
 
-	private var commitFiles: [CommitDiffFile] {
-		historyViewModel.selectedCommitFiles
-	}
-
 	private var selectedCommitBinding: Binding<String?> {
 		Binding(
 			get: { historyViewModel.selectedCommitID },
 			set: { commitID in
 				Task { await historyViewModel.didSelectCommit(commitID) }
-			}
-		)
-	}
-
-	private var selectedCommitFileBinding: Binding<CommitDiffFile.ID?> {
-		Binding(
-			get: { historyViewModel.selectedCommitFileID },
-			set: { fileID in
-				Task { await historyViewModel.didSelectCommitFile(fileID) }
 			}
 		)
 	}

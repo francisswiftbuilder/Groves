@@ -29,6 +29,7 @@ struct OperationsUseCaseStub: RepositoryOperationsUseCase {
 	{ fatalError() }
 	func resolveHunk(
 		_ hunk: GitConflictHunk, in conflict: GitConflict, using resolution: GitConflictHunkResolution,
+		expecting expectedContents: String,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot { fatalError() }
 	func markResolved(path: String, at repositoryURL: URL) async throws -> RepositorySnapshot {

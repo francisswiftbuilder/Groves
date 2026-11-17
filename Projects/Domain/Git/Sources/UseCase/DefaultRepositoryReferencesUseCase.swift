@@ -128,8 +128,11 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	public func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot {
-		try await repository.requestFetchAll(at: repositoryURL)
+	public func fetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws
+		-> RepositorySnapshot
+	{
+		try await repository.requestFetchAll(
+			at: repositoryURL, allowsUserInteraction: allowsUserInteraction)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
@@ -182,7 +185,8 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 			operationState: operationState,
 			selectedRemoteName: selectedRemoteName
 		)
-		try await repository.requestForcePush(target, at: repositoryURL)
+		guard let currentBranch else { throw GitRepositoryError.invalidOutput }
+		try await repository.requestForcePush(target, expecting: currentBranch, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 

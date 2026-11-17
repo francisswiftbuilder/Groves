@@ -5,6 +5,8 @@ public struct ChangesDiffConfirmation {
 	let selection: GitDiffHunkSelection
 	let change: WorkingTreeChange
 	let options: GitDiffOptions
+	let expectedDiff: String
+	let repositoryURL: URL
 
 	var title: String {
 		let fileName = URL(fileURLWithPath: change.path).lastPathComponent
