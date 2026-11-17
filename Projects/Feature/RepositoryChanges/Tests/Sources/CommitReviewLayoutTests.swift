@@ -33,6 +33,16 @@ struct CommitReviewLayoutTests {
 		func commit(_ task: GitCommitTask, from plan: GitCommitPlan, at repositoryURL: URL) async throws
 			-> GitCommitPlanInput
 		{
+			if scenario == "committing" { try await Task.sleep(for: .seconds(30)) }
+			if scenario == "partialFailure" {
+				if task.id == self.plan.tasks.first?.id {
+					return .init(
+						headHash: "next-head", indexFingerprint: "next-index",
+						units: Array(plan.input.units.dropFirst()))
+				}
+				throw GitRepositoryError.commandFailed(
+					"The commit hook rejected this commit. Review the message and try again.")
+			}
 			throw GitCommitPlanError.invalidPlan
 		}
 	}
@@ -297,7 +307,9 @@ struct CommitReviewLayoutTests {
 					"/tmp/groves-selection-flow-\(Int(width))-\(multiple ? "multiple" : "single").png"))
 	}
 
-	@Test(arguments: ["review", "preparing", "analyzing", "failure"], [ColorScheme.light, .dark])
+	@Test(
+		arguments: ["review", "preparing", "analyzing", "failure", "committing", "partialFailure"],
+		[ColorScheme.light, .dark])
 	func renderReviewSheetWithLongMessagesAndPaths(scenario: String, colorScheme: ColorScheme)
 		async throws
 	{
@@ -308,18 +320,26 @@ struct CommitReviewLayoutTests {
 			patch:
 				"diff --git a/Example.swift b/Example.swift\n--- a/Example.swift\n+++ b/Example.swift\n@@ -1 +1 @@\n-let value = 1\n+let value = 2\n",
 			hunk: .init(oldStartLine: 1, newStartLine: 1))
+		let additionalUnits = ["Tests/CommitPlanTests.swift", "README.md"].map {
+			GitCommitUnit(id: $0, path: $0, patch: unit.patch, hunk: unit.hunk)
+		}
 		let plan = GitCommitPlan(
-			input: .init(headHash: "head", indexFingerprint: "index", units: [unit]),
+			input: .init(headHash: "head", indexFingerprint: "index", units: [unit] + additionalUnits),
 			tasks: [
 				.init(
 					subject: "fix(review): 긴 파일 경로와 여러 줄 커밋 설명을 검토 화면에 표시",
 					body: "- 상단 메시지 입력 영역 배치\n- 하단 버튼과 diff 영역 분리\n- 긴 경로 표시 처리", unitIDs: [unit.id])
-			],
+			]
+				+ additionalUnits.map {
+					.init(subject: "test: update \($0.path)", body: "", unitIDs: [$0.id])
+				},
 			model: .onDevice)
 		let viewModel = CommitPlanViewModel(
 			dependencies: .init(
 				useCase: PlanningUseCase(plan: plan, scenario: scenario),
-				contentUseCase: ChangesContentUseCaseStub(),
+				contentUseCase: ChangesContentUseCaseStub(snapshotOperation: { _ in
+					throw GitRepositoryError.invalidOutput
+				}),
 				repositoryURL: { URL(fileURLWithPath: "/tmp/ReviewFixture") }),
 			didProduceSnapshot: { _ in })
 		viewModel.apply(
@@ -340,12 +360,25 @@ struct CommitReviewLayoutTests {
 		if scenario == "review" { #expect(viewModel.plan?.isValid == true) }
 		if scenario == "analyzing" { #expect(viewModel.analysisProgress?.completed == 12) }
 		if scenario == "failure" { #expect(viewModel.errorMessage != nil) }
+		if scenario == "committing" || scenario == "partialFailure" {
+			viewModel.didRequestCommitAll()
+			for _ in 0..<50 {
+				if scenario == "committing", viewModel.isCommitting { break }
+				if scenario == "partialFailure", !viewModel.isCommitting { break }
+				try await Task.sleep(for: .milliseconds(10))
+			}
+			if scenario == "committing" { #expect(viewModel.isCommitting) }
+			if scenario == "partialFailure" {
+				#expect(viewModel.completedCount == 1)
+				#expect(viewModel.errorMessage != nil)
+			}
+		}
 		let controller = NSHostingController(
 			rootView: CommitPlanSheet(viewModel: viewModel)
 				.background { Color(nsColor: .windowBackgroundColor) }
 				.environment(\.colorScheme, colorScheme))
 		let size =
-			scenario == "review" ? CGSize(width: 980, height: 700) : CGSize(width: 460, height: 240)
+			viewModel.tasks.isEmpty ? CGSize(width: 460, height: 240) : CGSize(width: 980, height: 700)
 		let window = NSWindow(
 			contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless],
 			backing: .buffered, defer: false)

@@ -12,7 +12,10 @@ struct CommitPlanSheet: View {
 		} footer: {
 			footer
 		}
-		.frame(width: hasTasks ? 980 : 460, height: hasTasks ? 700 : 240)
+		.frame(
+			width: hasTasks || viewModel.isCommitting ? 980 : 460,
+			height: hasTasks || viewModel.isCommitting ? 700 : 240
+		)
 		.interactiveDismissDisabled(viewModel.isCommitting)
 		.onChange(of: viewModel.selectedTaskID) { _, _ in viewModel.selectedUnitID = nil }
 		.onDisappear { viewModel.onDisappear() }
@@ -48,6 +51,9 @@ struct CommitPlanSheet: View {
 				CommitTaskEditor(viewModel: viewModel)
 					.frame(minWidth: 480)
 			}
+		} else if viewModel.isCommitting {
+			ProgressView("Updating repository…")
+				.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else if let message = viewModel.errorMessage {
 			ScrollView {
 				Text(message)
@@ -68,7 +74,14 @@ struct CommitPlanSheet: View {
 
 	private var header: some View {
 		HStack {
-			Text(title).font(.headline)
+			VStack(alignment: .leading, spacing: 4) {
+				Text(title).font(.headline)
+				if hasTasks {
+					Text("Review the messages and changes, then create all commits in order.")
+						.font(.callout)
+						.foregroundStyle(.secondary)
+				}
+			}
 			Spacer()
 			if hasTasks {
 				Text("\(viewModel.tasks.count) remaining")
@@ -97,25 +110,45 @@ struct CommitPlanSheet: View {
 					.textSelection(.enabled)
 			}
 			HStack(spacing: 12) {
+				if viewModel.isCommitting {
+					ProgressView().controlSize(.small)
+					Text("Creating commits…")
+						.font(.callout)
+						.foregroundStyle(.secondary)
+				}
 				if hasTasks, viewModel.completedCount > 0 {
-					Text("\(viewModel.completedCount) committed")
+					Text("\(viewModel.completedCount) created")
 						.font(.caption)
 						.foregroundStyle(.secondary)
 				}
 				Spacer()
-				if viewModel.isCommitting { ProgressView().controlSize(.small) }
 				Button(closeTitle) { viewModel.onDisappear() }
 					.keyboardShortcut(.cancelAction)
 					.disabled(viewModel.isCommitting)
-				if viewModel.errorMessage != nil {
-					Button("Try Again") { viewModel.didRequestPlan() }
+				if viewModel.needsRefresh || (!hasTasks && viewModel.errorMessage != nil) {
+					Button("Review Again") { viewModel.didRequestPlan() }
 						.disabled(viewModel.isBusy)
 				}
 				if hasTasks {
-					Button("Commit") { viewModel.didRequestCommit() }
-						.buttonStyle(.borderedProminent)
-						.keyboardShortcut(.return, modifiers: .command)
-						.disabled(!viewModel.canCommit)
+					if viewModel.tasks.count > 1 {
+						Menu("Commit Options", systemImage: "ellipsis.circle") {
+							Button("Create Selected Commit") { viewModel.didRequestCommit() }
+								.disabled(!viewModel.canCommit)
+						}
+						.labelStyle(.iconOnly)
+						.menuStyle(.borderlessButton)
+						.menuIndicator(.hidden)
+						.fixedSize()
+						.disabled(viewModel.isBusy)
+					}
+					Button(
+						viewModel.tasks.count == 1 ? "Create Commit" : "Create \(viewModel.tasks.count) Commits"
+					) {
+						viewModel.didRequestCommitAll()
+					}
+					.buttonStyle(.borderedProminent)
+					.keyboardShortcut(.return, modifiers: .command)
+					.disabled(!viewModel.canCommitAll)
 				}
 			}
 		}

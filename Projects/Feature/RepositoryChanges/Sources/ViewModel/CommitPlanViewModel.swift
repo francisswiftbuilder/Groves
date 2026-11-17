@@ -59,7 +59,10 @@ public final class CommitPlanViewModel {
 		selectedUnits.first { $0.id == selectedUnitID } ?? selectedUnits.first
 	}
 	var canCommit: Bool {
-		!isBusy && !needsRefresh && plan?.isValid == true && selectedTask != nil
+		canCommitAll && selectedTask != nil
+	}
+	var canCommitAll: Bool {
+		!isBusy && !needsRefresh && plan?.isValid == true
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot) {
@@ -137,7 +140,16 @@ public final class CommitPlanViewModel {
 	}
 
 	func didRequestCommit() {
-		guard canCommit, let submitted = selectedTask, let plan,
+		guard canCommit, let selectedTask else { return }
+		requestCommits([selectedTask])
+	}
+
+	func didRequestCommitAll() {
+		requestCommits(tasks)
+	}
+
+	private func requestCommits(_ submittedTasks: [GitCommitTask]) {
+		guard canCommitAll, !submittedTasks.isEmpty, let plan,
 			let url = dependencies.repositoryURL()
 		else { return }
 		let id = UUID()
@@ -148,24 +160,32 @@ public final class CommitPlanViewModel {
 		task = Task { [weak self] in
 			defer { self?.finishRequest(id) }
 			do {
-				let input = try await dependencies.useCase.commit(submitted, from: plan, at: url)
-				try Task.checkCancellation()
-				guard let self, requestID == id, dependencies.repositoryURL() == url else { return }
-				completedCount += 1
-				let remaining = plan.tasks.filter { $0.id != submitted.id }
-				let next = GitCommitPlan(input: input, tasks: remaining, model: plan.model)
-				self.plan = next
-				selectedTaskID = remaining.first?.id
-				selectedUnitID = nil
-				if !remaining.isEmpty, !next.isValid {
-					needsRefresh = true
-					errorMessage = GitCommitPlanError.repositoryChanged.localizedDescription
+				var current = plan
+				for submitted in submittedTasks {
+					try Task.checkCancellation()
+					guard let self, requestID == id, dependencies.repositoryURL() == url else { return }
+					selectedTaskID = submitted.id
+					selectedUnitID = nil
+					let input = try await dependencies.useCase.commit(submitted, from: current, at: url)
+					try Task.checkCancellation()
+					guard requestID == id, dependencies.repositoryURL() == url else { return }
+					completedCount += 1
+					let remaining = current.tasks.filter { $0.id != submitted.id }
+					current = GitCommitPlan(input: input, tasks: remaining, model: current.model)
+					self.plan = current
+					selectedTaskID = remaining.first?.id
+					selectedUnitID = nil
+					if remaining.isEmpty ? !input.units.isEmpty : !current.isValid {
+						throw GitCommitPlanError.repositoryChanged
+					}
 				}
 				let snapshot = try await dependencies.contentUseCase.loadSnapshot(at: url)
-				guard !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url else {
+				guard let self, !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url
+				else {
 					return
 				}
 				didProduceSnapshot(snapshot)
+				if tasks.isEmpty { isPresented = false }
 			} catch {
 				guard let self, !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url
 				else { return }
