@@ -60,11 +60,11 @@ struct OnDeviceCommitAnalyzerTests {
 	}
 
 	@Test
-	@available(macOS 27.0, *)
 	func nativeParsingFailureRetriesOnlyTheFailedSummaryAndKeepsTheCache() async throws {
 		let recorder = Recorder()
 		await recorder.setFailure(
-			GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated summary"))
+			LanguageModelSession.GenerationError.decodingFailure(
+				.init(debugDescription: "Truncated summary")))
 		let analyzer = makeAnalyzer(summarize: { try await recorder.summarize($0) })
 		let input = input(patch: (0..<300).map { "+unique change \($0)\n" }.joined())
 		#expect(try await analyzer.analyze(input).isValid)

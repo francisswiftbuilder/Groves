@@ -256,7 +256,6 @@ struct FoundationModelCommitPlanGeneratorTests {
 	}
 
 	@Test
-	@available(macOS 27.0, *)
 	func nativeMessageParsingFailureIsRetriedWithoutRepeatingGrouping() async throws {
 		let calls = Calls()
 		let generator = FoundationModelCommitPlanGenerator(
@@ -271,7 +270,7 @@ struct FoundationModelCommitPlanGeneratorTests {
 			messageGeneration: { _ in
 				await calls.recordDevice()
 				if await calls.device == 1 {
-					throw GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated draft")
+					throw parsingFailure("Truncated draft")
 				}
 				return GeneratedCommitMessage(subject: "fix: update helper", body: "").plan
 			})
@@ -284,7 +283,6 @@ struct FoundationModelCommitPlanGeneratorTests {
 	}
 
 	@Test(arguments: [false, true])
-	@available(macOS 27.0, *)
 	func exhaustedParsingRetriesProduceARecoverableError(duringSummary: Bool) async throws {
 		let calls = Calls()
 		let generator = FoundationModelCommitPlanGenerator(
@@ -293,14 +291,14 @@ struct FoundationModelCommitPlanGeneratorTests {
 			deviceSummary: { _ in
 				await calls.recordSummary()
 				if duringSummary {
-					throw GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated summary")
+					throw parsingFailure("Truncated summary")
 				}
 				return "Update helper behavior."
 			},
 			deviceFits: { $0.utf8.count < 1_000 }, groupGeneration: { _ in response() },
 			messageGeneration: { _ in
 				await calls.recordDevice()
-				throw GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated draft")
+				throw parsingFailure("Truncated draft")
 			})
 		do {
 			_ = try await generator.generatePlan(
@@ -498,5 +496,9 @@ struct FoundationModelCommitPlanGeneratorTests {
 
 	private func response() -> GeneratedCommitPlan {
 		GeneratedCommitPlan(commits: [.init(subject: "fix: update file", body: "", changeIDs: [0])])
+	}
+
+	private func parsingFailure(_ description: String) -> LanguageModelSession.GenerationError {
+		.decodingFailure(.init(debugDescription: description))
 	}
 }
