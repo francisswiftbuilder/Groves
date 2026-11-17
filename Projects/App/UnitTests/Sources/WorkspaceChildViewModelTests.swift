@@ -1,5 +1,8 @@
+import AppKit
+import CoreRepositoryDiff
 import DomainGitInterface
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import FeatureRepositoryChanges
@@ -268,10 +271,18 @@ struct WorkspaceChildViewModelTests {
 		let actions = workspace.focusedActionsViewModel.focusedActions
 		#expect(actions.newBranch != nil)
 		#expect((actions.fetchAll != nil) == (remoteCount > 0))
-		#expect((actions.pull != nil) == (remoteCount > 0))
+		#expect(actions.pull == nil)
 		#expect((actions.push != nil) == (remoteCount == 1))
 		#expect((actions.pushToRemote != nil) == (remoteCount == 2))
 		#expect(actions.pushRemoteNames == (remoteCount == 2 ? ["origin", "upstream"] : []))
+
+		let trackedBranches = [
+			GitBranch(
+				name: "main", shortHash: "abcdef0", upstream: remoteCount > 0 ? "origin/main" : nil,
+				isCurrent: true)
+		]
+		apply(branches: trackedBranches, state: .normal)
+		#expect((workspace.focusedActionsViewModel.focusedActions.pull != nil) == (remoteCount > 0))
 
 		apply(branches: [], state: .detachedHead)
 		let detachedActions = workspace.focusedActionsViewModel.focusedActions
@@ -287,6 +298,143 @@ struct WorkspaceChildViewModelTests {
 		#expect(mergingActions.pull == nil)
 		#expect(mergingActions.push == nil)
 		#expect((mergingActions.fetchAll != nil) == (remoteCount > 0))
+	}
+
+	@Test(arguments: [CGFloat(900), CGFloat(2_400)])
+	func holdingHistoryArrowKeysKeepsNativeScrollingInOneDirection(width: CGFloat) async throws {
+		let commit = GitCommit(
+			hash: String(repeating: "a", count: 40), shortHash: "aaaaaaa",
+			parentHashes: [String(repeating: "b", count: 40)], author: "Groves",
+			authorEmail: "developer@example.com", date: .distantPast,
+			committerEmail: "developer@example.com", references: ["origin/refactor/practice-test"],
+			subject: "wip: 실전문제풀이 리팩터링 및 SwiftUICore 대응", body: "")
+		let diff = (0..<112).map { index in
+			let path =
+				index.isMultiple(of: 3)
+				? "File\(index).swift"
+				: "Projects/Domain/PracticeTest/Interface/Sources/UseCase/PracticeTestAction\(index)UseCase.swift"
+			let lineCount = index.isMultiple(of: 5) ? 643 : index % 87 + 1
+			return """
+				diff --git a/\(path) b/\(path)
+				--- a/\(path)
+				+++ b/\(path)
+				@@ -0,0 +1,\(lineCount) @@
+				""" + "\n" + (0..<lineCount).map { "+let value\($0) = \($0)" }.joined(separator: "\n")
+		}.joined(separator: "\n")
+		let workspace = makeRepositoryWorkspace()
+		defer { workspace.onDisappear() }
+		let model = workspace.historyViewModel
+		model.apply(
+			RepositorySnapshot(
+				changes: [], amendChanges: [], commits: [commit], branches: [], remotes: [],
+				operationState: .normal, tags: [], stashes: [], fileTree: []))
+		try await waitUntil { model.commitGraphItems.count == 1 }
+		model.selectedCommitFiles = CommitDiffFileParser.parse(diff)
+		model.selectedCommitFileID = model.selectedCommitFiles.first?.id
+		#expect(NSApplication.shared.isRunning)
+
+		let controller = NSHostingController(
+			rootView: HistoryView(
+				diffSearchViewModel: RepositorySearchViewModel(), historyViewModel: model,
+				diffPreferences: WorkspaceDiffPreferences(), repositoryName: "Groves",
+				currentBranchStatus: "main", operationState: .normal, isOperationLoading: false,
+				canCheckoutCommit: true, remoteNames: [],
+				commitActions: RepositoryCommitActions(
+					cherryPick: { _ in }, revert: { _ in }, createBranch: { _ in },
+					checkoutCommit: { _ in }, createTag: { _ in }, reset: { _ in }),
+				onDiffOptionsChanged: {}
+			).frame(width: width, height: 1_000))
+		let window = NSWindow(
+			contentRect: NSRect(x: 0, y: 0, width: width, height: 1_000), styleMask: [.titled],
+			backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentViewController = controller
+		controller.viewWillAppear()
+		controller.viewDidAppear()
+		window.makeKeyAndOrderFront(nil)
+		defer {
+			controller.viewWillDisappear()
+			controller.viewDidDisappear()
+			window.close()
+		}
+		try await settleLayout(controller.view)
+		let table = try #require(fileTable(in: controller.view))
+		let scrollView = try #require(table.enclosingScrollView)
+		#expect(window.makeFirstResponder(table))
+		let firstFileRow = table.numberOfRows - model.selectedCommitFiles.count
+		table.selectRowIndexes(IndexSet(integer: firstFileRow), byExtendingSelection: false)
+		table.scrollRowToVisible(firstFileRow)
+		try await settleLayout(controller.view)
+		try #require(table.selectedRow == firstFileRow)
+		let trace = HistoryScrollTrace()
+		let clip = scrollView.contentView
+		let postsBoundsChangedNotifications = clip.postsBoundsChangedNotifications
+		clip.postsBoundsChangedNotifications = true
+		defer { clip.postsBoundsChangedNotifications = postsBoundsChangedNotifications }
+		let observer = NotificationCenter.default.addObserver(
+			forName: NSView.boundsDidChangeNotification, object: clip, queue: .main
+		) { _ in
+			MainActor.assumeIsolated { trace.offsets.append(clip.bounds.minY) }
+		}
+		defer { NotificationCenter.default.removeObserver(observer) }
+		for direction in [1, -1] {
+			trace.offsets = [clip.bounds.minY]
+			for _ in 0..<160 {
+				try pressArrow(direction, in: table, isARepeat: true)
+				try await Task.sleep(for: .milliseconds(16))
+			}
+			try await settleLayout(controller.view, passes: 30)
+			try #require(trace.offsets.count > 2)
+			let expectedIndex = direction > 0 ? model.selectedCommitFiles.count - 1 : 0
+			#expect(table.selectedRow == firstFileRow + expectedIndex)
+			#expect(model.selectedCommitFileID == model.selectedCommitFiles[expectedIndex].id)
+			let reversed = zip(trace.offsets, trace.offsets.dropFirst()).filter {
+				($0.1 - $0.0) * CGFloat(direction) < -1
+			}
+			#expect(reversed.isEmpty, "direction \(direction), reversed scroll \(reversed)")
+			let row = table.rect(ofRow: table.selectedRow)
+			let viewport = fileViewport(
+				in: table, headerHeight: table.rect(ofRow: firstFileRow - 1).height)
+			#expect(row.minY >= viewport.minY - 1 && row.maxY <= viewport.maxY + 1)
+		}
+	}
+
+	@MainActor
+	private final class HistoryScrollTrace {
+		var offsets: [CGFloat] = []
+	}
+
+	private func pressArrow(_ direction: Int, in table: NSTableView, isARepeat: Bool = false) throws {
+		let window = try #require(table.window)
+		let characters = direction > 0 ? "\u{F701}" : "\u{F700}"
+		let event = try #require(
+			NSEvent.keyEvent(
+				with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function],
+				timestamp: ProcessInfo.processInfo.systemUptime,
+				windowNumber: window.windowNumber, context: nil,
+				characters: characters, charactersIgnoringModifiers: characters,
+				isARepeat: isARepeat, keyCode: direction > 0 ? 125 : 126))
+		NSApplication.shared.sendEvent(event)
+	}
+
+	private func settleLayout(_ view: NSView, passes: Int = 10) async throws {
+		for _ in 0..<passes {
+			view.layoutSubtreeIfNeeded()
+			try await Task.sleep(for: .milliseconds(10))
+		}
+	}
+
+	private func fileTable(in view: NSView) -> NSTableView? {
+		if let table = view as? NSTableView, table.numberOfRows >= 80 { return table }
+		return view.subviews.lazy.compactMap { fileTable(in: $0) }.first
+	}
+
+	private func fileViewport(in table: NSTableView, headerHeight: CGFloat) -> NSRect {
+		let insets = table.enclosingScrollView?.contentInsets ?? NSEdgeInsets()
+		let visible = table.visibleRect
+		return NSRect(
+			x: visible.minX, y: visible.minY + insets.top + headerHeight,
+			width: visible.width, height: visible.height - insets.top - insets.bottom - headerHeight)
 	}
 
 	private func waitUntil(

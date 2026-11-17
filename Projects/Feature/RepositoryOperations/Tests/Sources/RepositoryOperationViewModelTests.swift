@@ -59,7 +59,7 @@ struct RepositoryOperationViewModelTests {
 		defer { viewModel.onDisappear() }
 		viewModel.apply(
 			makeSnapshot(
-				branches: [makeBranch(name: "main", isCurrent: true)],
+				branches: [makeBranch(name: "main", isCurrent: true, upstream: "origin/main")],
 				remotes: [.init(name: "origin", fetchURL: "https://example.com/repo.git", pushURL: nil)]))
 		#expect(viewModel.canFetch && viewModel.canPull && viewModel.canPush)
 
@@ -426,6 +426,181 @@ struct RepositoryOperationViewModelTests {
 		#expect(viewModel.pushAction == .unavailable)
 	}
 
+	@Test(arguments: [false, true])
+	func pullRequiresAnUpstreamForBothAvailabilityAndExecution(hasUpstream: Bool) async throws {
+		let calls = Mutex(0)
+		let snapshot = makeSnapshot(
+			branches: [
+				makeBranch(name: "main", isCurrent: true, upstream: hasUpstream ? "origin/main" : nil)
+			],
+			remotes: [.init(name: "origin", fetchURL: "https://example.com/repo.git", pushURL: nil)])
+		var references = OperationsReferencesUseCaseStub()
+		references.preparePullOperation = { _ in
+			calls.withLock { $0 += 1 }
+			return .init(outcome: .upToDate, snapshot: snapshot)
+		}
+		let model = makeSyncViewModel(referencesUseCase: references)
+		defer { model.onDisappear() }
+		model.apply(snapshot)
+
+		#expect(model.canPull == hasUpstream)
+		model.didRequestPull()
+
+		if hasUpstream {
+			try await waitUntil { calls.withLock { $0 } == 1 && !model.isLoading }
+		} else {
+			try await Task.sleep(for: .milliseconds(50))
+			#expect(calls.withLock { $0 } == 0)
+			#expect(!model.isLoading)
+		}
+	}
+
+	@Test
+	func automaticFetchWaitsForIdleRepeatsAndStopsWithTheWindow() async throws {
+		let gate = SnapshotGate()
+		let interactions = Mutex<[Bool]>([])
+		let snapshot = makeSnapshot(
+			remotes: [.init(name: "origin", fetchURL: "https://example.com/repo.git", pushURL: nil)])
+		var references = OperationsReferencesUseCaseStub { _ in try await gate.load() }
+		references.fetchAllInteractionHandler = { value in interactions.withLock { $0.append(value) } }
+		var isIdle = false
+		var published = 0
+		let model = makeSyncViewModel(
+			referencesUseCase: references,
+			didProduceSnapshot: { _ in published += 1 },
+			canAutomaticallyFetch: { isIdle }, automaticFetchInterval: .milliseconds(30))
+		defer {
+			model.onDisappear()
+			Task { for index in 0..<4 { await gate.resume(index, returning: snapshot) } }
+		}
+		model.apply(snapshot)
+		model.updateAutomaticFetching(isActive: true)
+		try await Task.sleep(for: .milliseconds(100))
+		#expect(await gate.requestCount == 0)
+		isIdle = true
+		try await waitUntil { await gate.requestCount == 1 }
+		model.updateAutomaticFetching(isActive: true)
+		await gate.resume(0, returning: snapshot)
+		try await waitUntil { published == 1 }
+		try await waitUntil { await gate.requestCount == 2 }
+		model.updateAutomaticFetching(isActive: false)
+		await gate.resume(1, returning: snapshot)
+		try await waitUntil { !model.isLoading }
+		try await Task.sleep(for: .milliseconds(100))
+		#expect(await gate.requestCount == 2)
+		#expect(published == 1)
+		#expect(interactions.withLock { $0 } == [false, false])
+		model.updateAutomaticFetching(isActive: true)
+		try await waitUntil { await gate.requestCount == 3 }
+	}
+
+	@Test
+	func automaticFetchErrorsStayQuietAndManualFetchStillReportsErrors() async throws {
+		let interactions = Mutex<[Bool]>([])
+		let snapshot = makeSnapshot(
+			remotes: [.init(name: "origin", fetchURL: "https://example.com/repo.git", pushURL: nil)])
+		var references = OperationsReferencesUseCaseStub { _ in
+			throw GitRepositoryError.authentication("Authentication required")
+		}
+		references.fetchAllInteractionHandler = { value in interactions.withLock { $0.append(value) } }
+		var errors: [String] = []
+		let model = makeSyncViewModel(
+			contentUseCase: OperationsContentUseCaseStub(snapshotOperation: { _ in snapshot }),
+			referencesUseCase: references, didReceiveError: { errors.append($0) },
+			automaticFetchInterval: .milliseconds(50))
+		defer { model.onDisappear() }
+		model.apply(snapshot)
+		model.updateAutomaticFetching(isActive: true)
+		try await waitUntil { !interactions.withLock { $0 }.isEmpty && !model.isLoading }
+		model.updateAutomaticFetching(isActive: false)
+		#expect(errors.isEmpty)
+		#expect(interactions.withLock { $0 }.allSatisfy { !$0 })
+
+		model.didRequestFetchAll()
+
+		try await waitUntil { errors.count == 1 && !model.isLoading }
+		#expect(interactions.withLock { $0.last } == true)
+		#expect(errors.first?.contains("Authentication required") == true)
+	}
+
+	@Test
+	func automaticFetchDoesNotRetainTheViewModel() async throws {
+		var model: RepositorySyncViewModel? = makeSyncViewModel(
+			referencesUseCase: OperationsReferencesUseCaseStub(),
+			automaticFetchInterval: .milliseconds(20))
+		model?.updateAutomaticFetching(isActive: true)
+		try await Task.sleep(for: .milliseconds(50))
+		weak var reference = model
+
+		model = nil
+
+		try await waitUntil { reference == nil }
+	}
+
+	@Test(arguments: [false, true])
+	func automaticFetchQueuesRefreshInsteadOfPublishingItsSnapshot(fails: Bool) async throws {
+		let snapshot = makeSnapshot(
+			remotes: [.init(name: "origin", fetchURL: "https://example.com/repo.git", pushURL: nil)])
+		var refreshes = 0
+		var published = 0
+		let model = makeSyncViewModel(
+			referencesUseCase: OperationsReferencesUseCaseStub { _ in
+				if fails { throw GitRepositoryError.network("Offline") }
+				return snapshot
+			},
+			didProduceSnapshot: { _ in published += 1 },
+			didFetchAutomatically: { refreshes += 1 }, automaticFetchInterval: .milliseconds(30))
+		defer { model.onDisappear() }
+		model.apply(snapshot)
+
+		model.updateAutomaticFetching(isActive: true)
+
+		try await waitUntil { refreshes >= 1 && !model.isLoading }
+		model.updateAutomaticFetching(isActive: false)
+		#expect(published == 0)
+	}
+
+	@Test(arguments: ["repository", "branch", "head", "upstream"])
+	func forcePushConfirmationRejectsAChangedContext(change: String) async throws {
+		let original = GitBranch(
+			name: "main", shortHash: "original", hash: "original-head", upstream: "origin/main",
+			isCurrent: true)
+		var repositoryURL = URL(fileURLWithPath: "/first")
+		var errors: [String] = []
+		let model = RepositorySyncViewModel(
+			dependencies: .init(
+				contentUseCase: OperationsContentUseCaseStub(),
+				referencesUseCase: OperationsReferencesUseCaseStub(pushActionOperation: { _, _, _ in
+					.upstream
+				}),
+				repositoryURL: { repositoryURL }),
+			actions: .init(
+				didProduceSnapshot: { _ in Issue.record("Unexpected force push") },
+				didReceiveError: { errors.append($0) }))
+		defer { model.onDisappear() }
+		model.apply(makeSnapshot(branches: [original]))
+		model.didPresentForcePushConfirmation()
+		#expect(model.pendingConfirmation != nil)
+		if change == "repository" {
+			repositoryURL = URL(fileURLWithPath: "/second")
+		} else {
+			model.apply(
+				makeSnapshot(branches: [
+					GitBranch(
+						name: change == "branch" ? "other" : original.name,
+						shortHash: "original", hash: change == "head" ? "new-head" : original.hash,
+						upstream: change == "upstream" ? "fork/main" : original.upstream, isCurrent: true)
+				]))
+		}
+
+		model.didConfirmPendingConfirmation()
+
+		#expect(!model.isLoading)
+		#expect(model.pendingConfirmation == nil)
+		#expect(errors.count == 1)
+		#expect(errors.first?.contains("changed") == true)
+	}
+
 	private func makeViewModel(
 		didRequestViewConflicts: @escaping @MainActor (GitConflict) -> Void = { _ in }
 	) -> RepositoryOperationViewModel {
@@ -447,17 +622,24 @@ struct RepositoryOperationViewModelTests {
 	private func makeSyncViewModel(
 		contentUseCase: OperationsContentUseCaseStub = OperationsContentUseCaseStub(),
 		referencesUseCase: OperationsReferencesUseCaseStub,
-		didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void = { _ in }
+		didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void = { _ in },
+		didReceiveError: @escaping @MainActor (String) -> Void = { _ in },
+		didFetchAutomatically: (@MainActor () -> Void)? = nil,
+		canAutomaticallyFetch: @escaping @MainActor () -> Bool = { true },
+		automaticFetchInterval: Duration = .seconds(60)
 	) -> RepositorySyncViewModel {
 		RepositorySyncViewModel(
 			dependencies: .init(
 				contentUseCase: contentUseCase,
 				referencesUseCase: referencesUseCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") },
+				canAutomaticallyFetch: canAutomaticallyFetch,
+				automaticFetchInterval: automaticFetchInterval
 			),
 			actions: .init(
 				didProduceSnapshot: didProduceSnapshot,
-				didReceiveError: { _ in }
+				didReceiveError: didReceiveError,
+				didFetchAutomatically: didFetchAutomatically
 			)
 		)
 	}
@@ -493,11 +675,11 @@ struct RepositoryOperationViewModelTests {
 		)
 	}
 
-	private func makeBranch(name: String, isCurrent: Bool) -> GitBranch {
+	private func makeBranch(name: String, isCurrent: Bool, upstream: String? = nil) -> GitBranch {
 		GitBranch(
 			name: name,
 			shortHash: "abc1234",
-			upstream: nil,
+			upstream: upstream,
 			isCurrent: isCurrent
 		)
 	}

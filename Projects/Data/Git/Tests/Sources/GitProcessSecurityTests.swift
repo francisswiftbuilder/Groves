@@ -241,7 +241,7 @@ struct GitProcessSecurityTests {
 		try await repository.requestStage(path: path, at: url)
 		let staged = try await repository.requestWorkingTreeChanges(at: url).filter(\.isStaged)
 		#expect(staged.map(\.path) == [path])
-		try await repository.requestUnstage(path: path, at: url)
+		try await repository.requestUnstage(change: try #require(staged.first), at: url)
 		let change = WorkingTreeChange(
 			path: path, previousPath: nil, indexState: .unchanged, workingTreeState: .modified)
 		try await repository.requestDiscard(change: change, at: url)

@@ -57,7 +57,10 @@ struct WorkspaceView: View {
 				}
 			}
 		}
-		.modifier(RepositoryMonitoringModifier(viewModel: workspace.viewModel))
+		.modifier(
+			RepositoryMonitoringModifier(
+				viewModel: workspace.viewModel, syncViewModel: workspace.syncViewModel)
+		)
 		.onAppear {
 			workspace.onAppear()
 		}

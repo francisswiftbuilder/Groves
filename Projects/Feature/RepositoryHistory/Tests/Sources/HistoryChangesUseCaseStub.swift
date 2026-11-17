@@ -91,6 +91,8 @@ actor HistoryChangesUseCaseStub: RepositoryChangesUseCase {
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange] {
 		fatalError()
@@ -100,6 +102,7 @@ actor HistoryChangesUseCaseStub: RepositoryChangesUseCase {
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange] {

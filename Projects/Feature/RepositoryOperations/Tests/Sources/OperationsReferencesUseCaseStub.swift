@@ -31,6 +31,10 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 	var pushOperation: @Sendable (URL) async throws -> RepositorySnapshot = { _ in
 		fatalError()
 	}
+	var preparePullOperation: @Sendable (URL) async throws -> RepositoryPullPreparation = { _ in
+		fatalError()
+	}
+	var fetchAllInteractionHandler: @Sendable (Bool) -> Void = { _ in }
 	let fetchAllOperation: @Sendable (URL) async throws -> RepositorySnapshot
 	let pushActionOperation:
 		@Sendable (GitBranch?, [GitRemote], RepositoryOperationState) -> RepositoryPushAction
@@ -131,12 +135,15 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		fatalError()
 	}
 
-	func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot {
-		try await fetchAllOperation(repositoryURL)
+	func fetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws
+		-> RepositorySnapshot
+	{
+		fetchAllInteractionHandler(allowsUserInteraction)
+		return try await fetchAllOperation(repositoryURL)
 	}
 
 	func preparePull(at repositoryURL: URL) async throws -> RepositoryPullPreparation {
-		fatalError()
+		try await preparePullOperation(repositoryURL)
 	}
 
 	func resolvePull(

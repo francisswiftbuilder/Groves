@@ -38,8 +38,8 @@ struct WorkspaceAutomaticRefreshTests {
 		func loadFileContents(at path: String, in repositoryURL: URL) async throws -> Data { Data() }
 	}
 
-	@Test
-	func busyWorkspaceRetainsTheLastFileChange() async throws {
+	@Test(arguments: [false, true])
+	func busyWorkspaceRetainsTheLastFileChange(fromRemoteFetch: Bool) async throws {
 		let content = ContentStub()
 		let (events, continuation) = AsyncStream<[String]>.makeStream()
 		var canRefresh = true
@@ -55,7 +55,11 @@ struct WorkspaceAutomaticRefreshTests {
 		try await waitUntil { paths == ["Revision1.swift"] }
 		canRefresh = false
 		await content.update(revision: 2)
-		continuation.yield(["/repo/Source.swift"])
+		if fromRemoteFetch {
+			model.didFetchRemoteState()
+		} else {
+			continuation.yield(["/repo/Source.swift"])
+		}
 		try await Task.sleep(for: .milliseconds(650))
 		#expect(paths == ["Revision1.swift"])
 		canRefresh = true

@@ -94,7 +94,7 @@ public struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		-> RepositorySnapshot
 	{
 		for change in changes where change.isStaged {
-			try await repository.requestUnstage(path: change.path, at: repositoryURL)
+			try await repository.requestUnstage(change: change, at: repositoryURL)
 		}
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
@@ -112,12 +112,16 @@ public struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange] {
 		try await repository.requestApplyDiffLine(
 			selection,
 			action: action,
 			for: change,
+			expecting: expectedDiff,
+			options: options,
 			at: repositoryURL
 		)
 		return try await repository.requestWorkingTreeChanges(
@@ -130,6 +134,7 @@ public struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange] {
@@ -137,6 +142,7 @@ public struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 			selection,
 			action: action,
 			for: change,
+			expecting: expectedDiff,
 			options: options,
 			at: repositoryURL
 		)
