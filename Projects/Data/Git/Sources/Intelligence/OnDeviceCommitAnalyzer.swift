@@ -85,6 +85,7 @@ struct OnDeviceCommitAnalyzer {
 	}
 
 	static func canRetryGeneration(after error: any Error) -> Bool {
+		if isParsingFailure(error) { return true }
 		if let error = error as? GitCommitPlanError {
 			switch error {
 			case .invalidPlan, .contextTooLarge: return true
@@ -93,7 +94,6 @@ struct OnDeviceCommitAnalyzer {
 		}
 		#if compiler(>=6.4)
 			if #available(macOS 27.0, *) {
-				if error is GeneratedContent.ParsingError { return true }
 				if let error = error as? LanguageModelError, case .contextSizeExceeded = error {
 					return true
 				}
@@ -101,9 +101,19 @@ struct OnDeviceCommitAnalyzer {
 		#endif
 		if let error = error as? LanguageModelSession.GenerationError {
 			switch error {
-			case .decodingFailure, .exceededContextWindowSize: return true
+			case .exceededContextWindowSize: return true
 			default: return false
 			}
+		}
+		return false
+	}
+
+	static func isParsingFailure(_ error: any Error) -> Bool {
+		#if compiler(>=6.4)
+			if #available(macOS 27.0, *), error is GeneratedContent.ParsingError { return true }
+		#endif
+		if let error = error as? LanguageModelSession.GenerationError, case .decodingFailure = error {
+			return true
 		}
 		return error is DecodingError
 	}
@@ -128,12 +138,20 @@ struct OnDeviceCommitAnalyzer {
 		let prompt = summaryPrompt(text, path: path)
 		let key = GitCommitUnitParser.fingerprint(prompt)
 		if let summary = await cache.summary(for: key) { return summary }
-		try Task.checkCancellation()
-		let summary = try await summarize(prompt).trimmingCharacters(in: .whitespacesAndNewlines)
-		try Task.checkCancellation()
-		guard !summary.isEmpty else { throw GitCommitPlanError.invalidPlan }
-		await cache.store(summary, for: key)
-		return summary
+		for attempt in 0..<2 {
+			try Task.checkCancellation()
+			do {
+				let summary = try await summarize(prompt).trimmingCharacters(in: .whitespacesAndNewlines)
+				try Task.checkCancellation()
+				guard !summary.isEmpty else { throw GitCommitPlanError.invalidPlan }
+				await cache.store(summary, for: key)
+				return summary
+			} catch {
+				try Task.checkCancellation()
+				guard Self.canRetryGeneration(after: error), attempt == 0 else { throw error }
+			}
+		}
+		throw GitCommitPlanError.invalidPlan
 	}
 
 	private func consolidate(_ initial: [String], path: String) async throws -> String {
