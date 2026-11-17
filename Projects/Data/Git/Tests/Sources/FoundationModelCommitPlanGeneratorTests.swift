@@ -1,5 +1,6 @@
 import DomainGitInterface
 import Foundation
+import FoundationModels
 import Testing
 
 @testable import DataGit
@@ -9,10 +10,12 @@ struct FoundationModelCommitPlanGeneratorTests {
 		var cloud = 0
 		var device = 0
 		var grouping = 0
+		var summaries = 0
 
 		func recordCloud() { cloud += 1 }
 		func recordDevice() { device += 1 }
 		func recordGrouping() { grouping += 1 }
+		func recordSummary() { summaries += 1 }
 	}
 
 	@Test
@@ -234,6 +237,78 @@ struct FoundationModelCommitPlanGeneratorTests {
 		#expect(try await generator.generatePlan(for: input).isValid)
 		#expect(await calls.grouping == 1)
 		#expect(await calls.device == 2)
+	}
+
+	@Test
+	func singleMessageSchemaDoesNotRequireACommitArrayOrChangeAssignments() throws {
+		let content = try GeneratedContent(
+			json: #"{"subject":"fix: update helper","body":"Preserve the active selection."}"#)
+		let message = try GeneratedCommitMessage(content)
+		#expect(message.plan.commits.count == 1)
+		#expect(message.plan.commits.first?.subject == "fix: update helper")
+		#expect(message.plan.commits.first?.body == "Preserve the active selection.")
+		#expect(message.plan.commits.first?.changeIDs.isEmpty == true)
+		let conventionalContent = try GeneratedContent(
+			json: #"{"type":"fix","scope":"selection","subject":"선택한 파일 유지","body":""}"#)
+		let conventional = try GeneratedConventionalCommitMessage(conventionalContent)
+		#expect(conventional.plan.commits.first?.subject == "fix(selection): 선택한 파일 유지")
+		#expect(conventional.plan.commits.first?.changeIDs.isEmpty == true)
+	}
+
+	@Test
+	@available(macOS 27.0, *)
+	func nativeMessageParsingFailureIsRetriedWithoutRepeatingGrouping() async throws {
+		let calls = Calls()
+		let generator = FoundationModelCommitPlanGenerator(
+			cloudGeneration: { _ in nil },
+			deviceGeneration: { _ in throw GitRepositoryError.invalidOutput },
+			deviceSummary: { _ in "Update helper behavior." },
+			deviceFits: { $0.utf8.count < 1_000 },
+			groupGeneration: { _ in
+				await calls.recordGrouping()
+				return response()
+			},
+			messageGeneration: { _ in
+				await calls.recordDevice()
+				if await calls.device == 1 {
+					throw GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated draft")
+				}
+				return GeneratedCommitMessage(subject: "fix: update helper", body: "").plan
+			})
+		let plan = try await generator.generatePlan(
+			for: input(patch: String(repeating: "+change\n", count: 800)))
+		#expect(plan.isValid)
+		#expect(plan.tasks.first?.unitIDs == ["block"])
+		#expect(await calls.device == 2)
+		#expect(await calls.grouping == 1)
+	}
+
+	@Test(arguments: [false, true])
+	@available(macOS 27.0, *)
+	func exhaustedParsingRetriesProduceARecoverableError(duringSummary: Bool) async throws {
+		let calls = Calls()
+		let generator = FoundationModelCommitPlanGenerator(
+			cloudGeneration: { _ in nil },
+			deviceGeneration: { _ in throw GitRepositoryError.invalidOutput },
+			deviceSummary: { _ in
+				await calls.recordSummary()
+				if duringSummary {
+					throw GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated summary")
+				}
+				return "Update helper behavior."
+			},
+			deviceFits: { $0.utf8.count < 1_000 }, groupGeneration: { _ in response() },
+			messageGeneration: { _ in
+				await calls.recordDevice()
+				throw GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated draft")
+			})
+		do {
+			_ = try await generator.generatePlan(
+				for: input(patch: String(repeating: "+change\n", count: 800)))
+			Issue.record("Expected parsing failure after bounded retries")
+		} catch GitCommitPlanError.generationFailed {}
+		#expect(await calls.device == (duringSummary ? 0 : 2))
+		if duringSummary { #expect(await calls.summaries == 2) }
 	}
 
 	@Test

@@ -9,12 +9,15 @@ struct OnDeviceCommitAnalyzerTests {
 	private actor Recorder {
 		var prompts: [String] = []
 		var shouldFail = true
+		var failure: any Error = URLError(.networkConnectionLost)
+
+		func setFailure(_ error: any Error) { failure = error }
 
 		func summarize(_ prompt: String) throws -> String {
 			prompts.append(prompt)
 			if shouldFail, prompts.count == 2 {
 				shouldFail = false
-				throw URLError(.networkConnectionLost)
+				throw failure
 			}
 			return "Update greeting behavior."
 		}
@@ -54,6 +57,23 @@ struct OnDeviceCommitAnalyzerTests {
 		#expect(result.isValid)
 		let prompts = await recorder.prompts
 		#expect(prompts.filter { $0 == first }.count == 1)
+	}
+
+	@Test
+	@available(macOS 27.0, *)
+	func nativeParsingFailureRetriesOnlyTheFailedSummaryAndKeepsTheCache() async throws {
+		let recorder = Recorder()
+		await recorder.setFailure(
+			GeneratedContent.ParsingError(rawContent: "", debugDescription: "Truncated summary"))
+		let analyzer = makeAnalyzer(summarize: { try await recorder.summarize($0) })
+		let input = input(patch: (0..<300).map { "+unique change \($0)\n" }.joined())
+		#expect(try await analyzer.analyze(input).isValid)
+		let prompts = await recorder.prompts
+		#expect(prompts.count > 2)
+		#expect(prompts[1] == prompts[2])
+		#expect(prompts.filter { $0 == prompts[0] }.count == 1)
+		#expect(try await analyzer.analyze(input).isValid)
+		#expect(await recorder.prompts.count == prompts.count)
 	}
 
 	@Test
