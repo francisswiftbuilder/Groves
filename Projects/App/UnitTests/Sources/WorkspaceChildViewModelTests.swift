@@ -384,10 +384,10 @@ struct WorkspaceChildViewModelTests {
 				try await Task.sleep(for: .milliseconds(16))
 			}
 			try await settleLayout(controller.view, passes: 30)
-			try #require(trace.offsets.count > 2)
 			let expectedIndex = direction > 0 ? model.selectedCommitFiles.count - 1 : 0
 			#expect(table.selectedRow == firstFileRow + expectedIndex)
 			#expect(model.selectedCommitFileID == model.selectedCommitFiles[expectedIndex].id)
+			try #require(trace.offsets.count > 2)
 			let reversed = zip(trace.offsets, trace.offsets.dropFirst()).filter {
 				($0.1 - $0.0) * CGFloat(direction) < -1
 			}
@@ -414,7 +414,7 @@ struct WorkspaceChildViewModelTests {
 				windowNumber: window.windowNumber, context: nil,
 				characters: characters, charactersIgnoringModifiers: characters,
 				isARepeat: isARepeat, keyCode: direction > 0 ? 125 : 126))
-		NSApplication.shared.sendEvent(event)
+		window.sendEvent(event)
 	}
 
 	private func settleLayout(_ view: NSView, passes: Int = 10) async throws {
