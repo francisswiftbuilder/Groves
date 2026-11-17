@@ -1,6 +1,8 @@
+import CoreRepositoryDiff
 import DomainGitInterface
 import Foundation
 import Observation
+import SwiftUI
 import Testing
 
 @testable import FeatureRepositoryHistory
@@ -8,6 +10,67 @@ import Testing
 
 @MainActor
 struct RepositoryObservationTests {
+	@Test(arguments: [false, true])
+	func filePreviewChangesDoNotInvalidateTheHistorySplit(changesImagePreview: Bool) async throws {
+		let workspace = makeRepositoryWorkspace()
+		defer { workspace.onDisappear() }
+		let model = workspace.historyViewModel
+		let commit = GitCommit(
+			hash: "1234567890abcdef", shortHash: "1234567", parentHashes: [], author: "Groves",
+			date: .distantPast, references: [], subject: "Preview selection", body: "")
+		model.apply(makeSnapshot(commits: [commit]))
+		for _ in 0..<200 {
+			if !model.commitGraphItems.isEmpty { break }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		try #require(model.commitGraphItems.count == 1)
+		model.selectedCommitFiles = CommitDiffFileParser.parse(
+			["First.swift", "Second.swift"].map { path in
+				"""
+				diff --git a/\(path) b/\(path)
+				--- a/\(path)
+				+++ b/\(path)
+				@@ -1 +1 @@
+				-old
+				+new
+				"""
+			}.joined(separator: "\n"))
+		model.selectedCommitFileID = model.selectedCommitFiles.first?.id
+		let search = RepositorySearchViewModel()
+		let history = HistoryView(
+			diffSearchViewModel: search, historyViewModel: model,
+			diffPreferences: workspace.diffPreferences, repositoryName: "Groves",
+			currentBranchStatus: "main", operationState: .normal, isOperationLoading: false,
+			canCheckoutCommit: true, remoteNames: [],
+			commitActions: RepositoryCommitActions(
+				cherryPick: { _ in }, revert: { _ in }, createBranch: { _ in },
+				checkoutCommit: { _ in }, createTag: { _ in }, reset: { _ in }),
+			onDiffOptionsChanged: {})
+		let preview = HistoryCommitDiffView(
+			historyViewModel: model, searchViewModel: search, preferences: workspace.diffPreferences,
+			onOptionsChanged: {})
+		await confirmation("Preview changes preserve the split contents", expectedCount: 0) {
+			splitChanged in
+			await confirmation("Preview observes file and image changes") { previewChanged in
+				withObservationTracking {
+					_ = history.body
+				} onChange: {
+					splitChanged()
+				}
+				withObservationTracking {
+					_ = preview.body
+				} onChange: {
+					previewChanged()
+				}
+				if changesImagePreview {
+					model.isLoadingCommitImageDiff = true
+				} else {
+					model.didSelectCommitFile(model.selectedCommitFiles.last?.id)
+				}
+			}
+		}
+	}
+
 	@Test
 	func stagingCommandsFollowTheSelectionAndVisibleSection() async {
 		let workspace = makeRepositoryWorkspace()

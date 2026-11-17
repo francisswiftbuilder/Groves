@@ -88,6 +88,10 @@ final class WorkspaceViewModel {
 		repositoryURL?.lastPathComponent ?? "No Repository"
 	}
 
+	var canAutomaticallyRefresh: Bool {
+		hasLoadedContent && !isLoading && dependencies.canAutomaticallyRefresh()
+	}
+
 	func didSelectSection(_ section: WorkspaceSection) {
 		selectedSection = section
 	}
@@ -202,6 +206,12 @@ final class WorkspaceViewModel {
 
 	func didChangeMonitoredRepository() {
 		updateRepositoryMonitoring()
+	}
+
+	func didFetchRemoteState() {
+		guard let repositoryURL else { return }
+		scheduleAutomaticRefresh(
+			at: repositoryURL, delay: .zero, revalidatesSelectedContent: false)
 	}
 
 	private func resumeContentLoadIfNeeded() {

@@ -167,11 +167,15 @@ public final class ChangesDiffViewModel {
 			!isLoading,
 			!isApplyingAction
 		else { return }
+		let expectedDiff = diff
+		let options = preferences.options
 		requestMutation(replacing: change, source: source) {
 			try await self.dependencies.changesUseCase.applyDiffLine(
 				lineSelection,
 				action: action,
 				for: change,
+				expecting: expectedDiff,
+				options: options,
 				at: repositoryURL
 			)
 		}
@@ -192,16 +196,21 @@ public final class ChangesDiffViewModel {
 			pendingConfirmation = ChangesDiffConfirmation(
 				selection: hunkSelection,
 				change: change,
-				options: preferences.options
+				options: preferences.options,
+				expectedDiff: diff,
+				repositoryURL: repositoryURL
 			)
 			return
 		}
+		let expectedDiff = diff
+		let options = preferences.options
 		requestMutation(replacing: change, source: source) {
 			try await self.dependencies.changesUseCase.applyDiffHunk(
 				hunkSelection,
 				action: action,
 				for: change,
-				options: self.preferences.options,
+				expecting: expectedDiff,
+				options: options,
 				at: repositoryURL
 			)
 		}
@@ -211,7 +220,9 @@ public final class ChangesDiffViewModel {
 		guard
 			let confirmation = pendingConfirmation,
 			let repositoryURL = dependencies.repositoryURL(),
+			repositoryURL == confirmation.repositoryURL,
 			case .workingTree(_, let selectedChange, let source) = selection,
+			source == .unstaged,
 			selectedChange == confirmation.change,
 			!isLoading,
 			!isApplyingAction
@@ -225,6 +236,7 @@ public final class ChangesDiffViewModel {
 				confirmation.selection,
 				action: .discard,
 				for: confirmation.change,
+				expecting: confirmation.expectedDiff,
 				options: confirmation.options,
 				at: repositoryURL
 			)

@@ -4,11 +4,17 @@ import DomainGitInterface
 import SwiftUI
 
 struct CommitInspectorView: View {
-	let commit: GitCommit?
-	let files: [CommitDiffFile]
-	let isLoadingFiles: Bool
+	let viewModel: HistoryViewModel
 	let remoteNames: Set<String>
-	@Binding var selectedFileID: CommitDiffFile.ID?
+
+	private var commit: GitCommit? { viewModel.selectedCommit }
+	private var files: [CommitDiffFile] { viewModel.selectedCommitFiles }
+	private var isLoadingFiles: Bool { viewModel.isLoadingCommitDiff }
+	private var fileSelection: Binding<CommitDiffFile.ID?> {
+		Binding(
+			get: { viewModel.selectedCommitFileID },
+			set: { viewModel.didSelectCommitFile($0) })
+	}
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -45,7 +51,7 @@ struct CommitInspectorView: View {
 	@ViewBuilder
 	private var inspectorContent: some View {
 		if let commit {
-			List(selection: $selectedFileID) {
+			List(selection: fileSelection) {
 				commitSummary(commit)
 					.padding(.vertical, 8)
 					.selectionDisabled()

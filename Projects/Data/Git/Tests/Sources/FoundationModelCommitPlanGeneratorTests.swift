@@ -97,11 +97,11 @@ struct FoundationModelCommitPlanGeneratorTests {
 		}
 	}
 
-	private func input() -> GitCommitPlanInput {
+	private func input(patch: String = "+updated") -> GitCommitPlanInput {
 		GitCommitPlanInput(
 			headHash: "head", indexFingerprint: "index",
 			units: [
-				GitCommitUnit(id: "block", path: "file.swift", patch: "+updated", hunk: nil)
+				GitCommitUnit(id: "block", path: "file.swift", patch: patch, hunk: nil)
 			])
 	}
 
@@ -250,6 +250,78 @@ struct FoundationModelCommitPlanGeneratorTests {
 			})
 		#expect(
 			try await generator.generatePlan(for: input).tasks.first?.subject == "Update the greeting")
+	}
+
+	@Test(arguments: [[], [1], [99, 99]] as [[Int]])
+	func messageDraftsKeepTheAssignmentsFromCompletedGrouping(ids: [Int]) async throws {
+		let input = GitCommitPlanInput(
+			headHash: "head", indexFingerprint: "index",
+			units: [
+				.init(
+					id: "original", path: "Helper.swift", patch: String(repeating: "+change\n", count: 800),
+					hunk: nil)
+			])
+		let calls = Calls()
+		let generator = FoundationModelCommitPlanGenerator(
+			cloudGeneration: { _ in nil },
+			deviceGeneration: { _ in
+				await calls.recordDevice()
+				return .init(commits: [.init(subject: "fix: update helper", body: "", changeIDs: ids)])
+			},
+			deviceSummary: { _ in "Update helper behavior." }, deviceFits: { $0.utf8.count < 1_000 },
+			groupGeneration: { _ in
+				await calls.recordGrouping()
+				return response()
+			})
+		let plan = try await generator.generatePlan(for: input)
+		#expect(plan.isValid)
+		#expect(plan.input == input)
+		#expect(plan.tasks.count == 1)
+		#expect(plan.tasks.first?.unitIDs == ["original"])
+		#expect(await calls.device == 1)
+		#expect(await calls.grouping == 1)
+	}
+
+	@Test(arguments: [
+		("", ""), ("fix: update helper\nDetails", ""),
+		("fix: update helper", "Co-Authored-By: Someone"),
+	])
+	func invalidMessagesAreStillRejectedAfterGrouping(message: (String, String)) async throws {
+		let generator = FoundationModelCommitPlanGenerator(
+			cloudGeneration: { _ in nil },
+			deviceGeneration: { _ in
+				.init(commits: [.init(subject: message.0, body: message.1, changeIDs: [])])
+			}, deviceSummary: { _ in "Update helper behavior." },
+			deviceFits: { $0.utf8.count < 1_000 }, groupGeneration: { _ in response() })
+		await #expect(throws: GitCommitPlanError.self) {
+			try await generator.generatePlan(
+				for: input(patch: String(repeating: "+change\n", count: 800)))
+		}
+	}
+
+	@Test
+	func messageDraftsCannotSplitAnAlreadyGroupedTask() async throws {
+		let calls = Calls()
+		let generator = FoundationModelCommitPlanGenerator(
+			cloudGeneration: { _ in nil },
+			deviceGeneration: { _ in
+				await calls.recordDevice()
+				return .init(commits: [
+					.init(subject: "fix: first message", body: "", changeIDs: []),
+					.init(subject: "fix: second message", body: "", changeIDs: []),
+				])
+			}, deviceSummary: { _ in "Update helper behavior." },
+			deviceFits: { $0.utf8.count < 1_000 },
+			groupGeneration: { _ in
+				await calls.recordGrouping()
+				return response()
+			})
+		await #expect(throws: GitCommitPlanError.self) {
+			try await generator.generatePlan(
+				for: input(patch: String(repeating: "+change\n", count: 800)))
+		}
+		#expect(await calls.device == 2)
+		#expect(await calls.grouping == 1)
 	}
 
 	@Test

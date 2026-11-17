@@ -146,22 +146,51 @@ public struct FoundationModelCommitPlanGenerator: CommitPlanGenerating {
 				.sorted()
 			let files = paths.prefix(8).map { URL(fileURLWithPath: $0).lastPathComponent }.joined(
 				separator: ", ")
-			let unit = GitCommitUnit(
-				id: task.id.uuidString, path: paths.first ?? "Task",
-				patch: "TASK: \(task.subject)\n\(task.body)\nEXAMPLE FILES: \(files)", hunk: nil)
-			guard
-				let messages = try await generateTasks(
-					[unit], characterLimit: 4_500, historyContext: historyContext,
-					request:
-						"Write one commit message for this task summary. Use the repository language and format. Do not split the task.",
-					using: generate),
-				messages.count == 1, let message = messages.first
-			else { throw GitCommitPlanError.invalidPlan }
+			let summary = "TASK: \(task.subject)\n\(task.body)\nEXAMPLE FILES: \(files)"
+			let message = try await generateMessage(
+				summary, historyContext: historyContext, using: generate)
 			tasks.append(
 				.init(id: task.id, subject: message.subject, body: message.body, unitIDs: task.unitIDs))
 			await progress(.init(phase: .drafting, completed: index + 1, total: grouped.tasks.count))
 		}
 		return try validatedPlan(input: input, tasks: tasks, model: .onDevice)
+	}
+
+	private func generateMessage(
+		_ summary: String,
+		historyContext: String,
+		using generate: @Sendable (String) async throws -> GeneratedCommitPlan
+	) async throws -> (subject: String, body: String) {
+		let prompt =
+			historyContext
+			+ "Write exactly one commit message for this completed task summary. Use the repository language and format. The changes are already assigned; do not split or reassign them.\n\n"
+			+ summary
+		guard try await deviceFits(prompt) else { throw GitCommitPlanError.contextTooLarge }
+		for attempt in 0..<2 {
+			try Task.checkCancellation()
+			let reminder =
+				attempt == 0
+				? ""
+				: "\nReturn exactly one commit with a nonempty single-line subject. Put details in body. Do not include attribution or trailers. Keep Conventional Commit types in English."
+			let result: GeneratedCommitPlan
+			do {
+				result = try await generate(prompt + reminder)
+			} catch {
+				try Task.checkCancellation()
+				guard OnDeviceCommitAnalyzer.canRetryGeneration(after: error), attempt == 0 else {
+					throw error
+				}
+				continue
+			}
+			try Task.checkCancellation()
+			guard result.commits.count == 1, let message = result.commits.first else { continue }
+			let draft = GitCommitTask(
+				subject: message.subject.trimmingCharacters(in: .whitespacesAndNewlines),
+				body: message.body.trimmingCharacters(in: .whitespacesAndNewlines), unitIDs: [])
+			guard draft.hasValidMessage else { continue }
+			return (draft.subject, draft.body)
+		}
+		throw GitCommitPlanError.invalidPlan
 	}
 
 	private func validatedPlan(
@@ -176,7 +205,6 @@ public struct FoundationModelCommitPlanGenerator: CommitPlanGenerating {
 		_ units: [GitCommitUnit],
 		characterLimit: Int,
 		historyContext: String,
-		request: String = "Organize these staged change blocks into commits:",
 		using generate: @Sendable (String) async throws -> GeneratedCommitPlan?
 	) async throws -> [GitCommitTask]? {
 		var batches: [[GitCommitUnit]] = []
@@ -212,7 +240,7 @@ public struct FoundationModelCommitPlanGenerator: CommitPlanGenerating {
 				do {
 					guard
 						let generated = try await generate(
-							historyContext + request + "\n\n" + blocks
+							historyContext + "Organize these staged change blocks into commits:\n\n" + blocks
 								+ reminder)
 					else { return nil }
 					result = generated

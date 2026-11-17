@@ -42,12 +42,15 @@ public protocol RepositoryChangesUseCase: Sendable {
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange]
 	func applyDiffHunk(
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange]

@@ -10,7 +10,7 @@ enum RepositorySyncConfirmation {
 		case .forcePush(let remoteName):
 			let destination = remoteName.map { " to \($0)" } ?? ""
 			return
-				"Remote history\(destination) may be rewritten. The push uses --force-with-lease to reject unexpected remote changes."
+				"Remote history\(destination) may be rewritten. Only commits previously included in this local branch can be replaced, and further remote changes will be rejected."
 		}
 	}
 

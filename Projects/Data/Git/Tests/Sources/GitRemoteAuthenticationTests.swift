@@ -176,6 +176,43 @@ struct GitRemoteAuthenticationTests {
 		}
 	}
 
+	@Test(arguments: [false, true])
+	func backgroundOperationsNeverInvokeTheAuthenticationPrompt(hasSavedCredential: Bool) async throws
+	{
+		let url = try makeTemporaryRepository()
+		defer { try? FileManager.default.removeItem(at: url) }
+		let marker = url.appending(path: ".git/prompt-started")
+		let helper = url.appending(path: ".git/test-askpass")
+		let response =
+			hasSavedCredential ? "printf 'username=saved\\npassword=saved-secret\\n\\n'" : ":"
+		try """
+		#!/bin/sh
+		if [ "$1" = credential ]; then
+		  \(response)
+		  exit 0
+		fi
+		touch '\(marker.path)'
+		printf 'interactive-value\\n'
+		""".write(to: helper, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+		let runner = GitProcessRunner(
+			configuration: GitProcessConfiguration(
+				askPassHelperURL: helper, globalConfigurationURL: url.appending(path: ".git/app.config")),
+			credentialStore: GitCredentialPersistingStub())
+
+		do {
+			let result = try await runner.requestRun(
+				arguments: ["credential", "fill"], at: url,
+				standardInput: "protocol=https\nhost=example.com\n\n",
+				isNetworkOperation: true, allowsUserInteraction: false)
+			#expect(hasSavedCredential)
+			#expect(result.standardOutput.contains("username=saved"))
+		} catch GitRepositoryError.authentication {
+			#expect(!hasSavedCredential)
+		}
+		#expect(!FileManager.default.fileExists(atPath: marker.path))
+	}
+
 	private func makeRunner(
 		at url: URL, executable: URL = URL(fileURLWithPath: "/usr/bin/git"),
 		store: GitCredentialPersistingStub = GitCredentialPersistingStub()

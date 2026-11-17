@@ -351,11 +351,14 @@ struct WorkspaceStaleRequestTests {
 	func testStaleConflictMutationDoesNotFinishNewerLoadingState() async throws {
 		let conflict = makeConflict()
 		let hunk = GitConflictHunk(index: 0, base: nil, current: "ours", incoming: "theirs")
+		let content = GitConflictContent(
+			base: nil, current: "ours", incoming: "theirs", workingTree: "conflict markers",
+			hunks: [hunk])
 		let gate = GitDiffGate(suspendsRequests: true)
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(
 				operationState: makeOperationState(conflicts: [conflict]),
-				mutationGate: gate
+				conflictContentResponses: .init([content]), mutationGate: gate
 			)
 		)
 
@@ -365,6 +368,8 @@ struct WorkspaceStaleRequestTests {
 		try await waitUntilTotalCallCount(1, in: gate)
 
 		workspace.conflictViewModel.reset()
+		workspace.conflictViewModel.didSelectConflict(conflict)
+		try await waitUntil { workspace.conflictViewModel.content != nil }
 		workspace.conflictViewModel.didResolve(hunk, in: conflict, using: .current)
 		try await waitUntilTotalCallCount(2, in: gate)
 		await gate.resumeCall(0)

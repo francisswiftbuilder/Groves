@@ -226,7 +226,9 @@ Repository access is restored between launches using macOS security-scoped bookm
 
 Closing a repository window keeps its saved repository entry. Closing the last window also allows the saved windows to be restored when a new repository window opens in the same app session. Development, staging, and production builds keep separate saved repository lists.
 
-Repository changes refresh automatically while a window is active. Changes received during Git operations remain queued, and newer snapshots take precedence over older reads. Linked worktrees monitor both their private Git directory and shared references. Interrupted file monitoring reconnects, and system rescan signals trigger a full content revalidation. Returning to a window also checks for changes made while monitoring was paused.
+Repository changes refresh automatically while a window is active. Remotes are fetched after activation and every minute while the workspace is idle, keeping remote commits and ahead/behind counts current. Automatic fetch uses saved credentials without opening authentication prompts or showing repeated error alerts, and stops when the window becomes inactive. Changes received during Git operations remain queued, and newer snapshots take precedence over older reads. Linked worktrees monitor both their private Git directory and shared references. Interrupted file monitoring reconnects, and system rescan signals trigger a full content revalidation. Returning to a window also checks for changes made while monitoring was paused.
+
+Partial staging, unstaging, discard, and conflict resolution validate the reviewed content before applying changes. Stale selections are rejected instead of being applied to newer edits. Force push pins its remote lease to a specific commit and checks that the commit was included in the local branch's history; automatic fetch cannot grant permission to overwrite unseen work. Force push confirmations also reject changes to the repository, branch, HEAD, or upstream. These cases are covered by regression tests in the existing CI test schemes.
 
 ## Testing
 

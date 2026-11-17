@@ -63,12 +63,14 @@ public struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 		_ hunk: GitConflictHunk,
 		in conflict: GitConflict,
 		using resolution: GitConflictHunkResolution,
+		expecting expectedContents: String,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
 		try await repository.requestResolveConflictHunk(
 			hunk,
 			in: conflict,
 			using: resolution,
+			expecting: expectedContents,
 			at: repositoryURL
 		)
 		return try await content.loadSnapshot(at: repositoryURL)

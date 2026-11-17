@@ -60,17 +60,20 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	) async throws -> GitImageDiff
 	func requestStage(path: String, at repositoryURL: URL) async throws
-	func requestUnstage(path: String, at repositoryURL: URL) async throws
+	func requestUnstage(change: WorkingTreeChange, at repositoryURL: URL) async throws
 	func requestApplyDiffLine(
 		_ selection: GitDiffLineSelection,
 		action: GitDiffLineAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
+		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws
 	func requestApplyDiffHunk(
 		_ selection: GitDiffHunkSelection,
 		action: GitDiffHunkAction,
 		for change: WorkingTreeChange,
+		expecting expectedDiff: String,
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws
@@ -111,6 +114,7 @@ public protocol GitRepository: Sendable {
 		_ hunk: GitConflictHunk,
 		in conflict: GitConflict,
 		using resolution: GitConflictHunkResolution,
+		expecting expectedContents: String,
 		at repositoryURL: URL
 	) async throws
 	func requestMarkConflictResolved(path: String, at repositoryURL: URL) async throws
@@ -142,7 +146,7 @@ public protocol GitRepository: Sendable {
 	@discardableResult func requestDropStash(_ stash: GitStash, at repositoryURL: URL) async throws
 		-> RepositoryStashOutcome
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws
-	func requestFetchAll(at repositoryURL: URL) async throws
+	func requestFetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws
 	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome
 	func requestResolvePull(
 		_ divergence: RepositoryPullDivergence,
@@ -150,7 +154,8 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	) async throws
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws
-	func requestForcePush(_ target: GitPushTarget, at repositoryURL: URL) async throws
+	func requestForcePush(_ target: GitPushTarget, expecting branch: GitBranch, at repositoryURL: URL)
+		async throws
 	func requestPushTags(remote name: String, at repositoryURL: URL) async throws
 	func requestAddRemote(
 		named name: String,
@@ -171,6 +176,10 @@ public protocol GitRepository: Sendable {
 }
 
 extension GitRepository {
+	public func requestFetchAll(at repositoryURL: URL) async throws {
+		try await requestFetchAll(at: repositoryURL, allowsUserInteraction: true)
+	}
+
 	public func requestWorkingTreeChanges(
 		relatedTo change: WorkingTreeChange,
 		at repositoryURL: URL

@@ -180,9 +180,8 @@ public final class HistoryViewModel {
 		didChangeSelectedCommit()
 	}
 
-	func didSelectCommitFile(_ fileID: CommitDiffFile.ID?) async {
-		await Task.yield()
-		guard !Task.isCancelled, selectedCommitFileID != fileID else { return }
+	func didSelectCommitFile(_ fileID: CommitDiffFile.ID?) {
+		guard selectedCommitFileID != fileID else { return }
 		selectedCommitFileID = fileID
 		didChangeSelectedCommitImageDiff()
 	}
