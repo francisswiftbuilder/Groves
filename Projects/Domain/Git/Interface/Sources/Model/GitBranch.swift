@@ -5,6 +5,10 @@ public struct GitBranch: Identifiable, Hashable, Sendable {
 	public let shortHash: String
 	public let hash: String
 	public let upstream: String?
+	public let pushRemoteName: String?
+	public let upstreamRemoteName: String?
+	public let upstreamRemoteReference: String?
+	public let customUpstreamHash: String?
 	public let aheadCount: Int
 	public let behindCount: Int
 	public let isCurrent: Bool
@@ -18,12 +22,20 @@ public struct GitBranch: Identifiable, Hashable, Sendable {
 		upstream: String?,
 		aheadCount: Int = 0,
 		behindCount: Int = 0,
-		isCurrent: Bool
+		isCurrent: Bool,
+		pushRemoteName: String? = nil,
+		upstreamRemoteName: String? = nil,
+		upstreamRemoteReference: String? = nil,
+		customUpstreamHash: String? = nil
 	) {
 		self.name = name
 		self.shortHash = shortHash
 		self.hash = hash ?? shortHash
 		self.upstream = upstream
+		self.pushRemoteName = pushRemoteName
+		self.upstreamRemoteName = upstreamRemoteName
+		self.upstreamRemoteReference = upstreamRemoteReference
+		self.customUpstreamHash = customUpstreamHash
 		self.aheadCount = aheadCount
 		self.behindCount = behindCount
 		self.isCurrent = isCurrent

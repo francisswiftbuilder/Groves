@@ -28,6 +28,7 @@ public final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
 	public func openRepository(at url: URL) async throws -> SavedRepository {
 		try await withSecurityScopedAccess(to: url) {
 			let rootURL = try await repository.requestRepositoryRoot(at: url)
+			try Task.checkCancellation()
 			return try saveAndSelectRepository(at: rootURL)
 		}
 	}
@@ -40,6 +41,7 @@ public final class DefaultRepositoryTabsUseCase: RepositoryTabsUseCase {
 				from: remoteURL,
 				into: directoryURL
 			)
+			try Task.checkCancellation()
 			return try saveAndSelectRepository(at: repositoryURL)
 		}
 	}

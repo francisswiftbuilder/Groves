@@ -7,6 +7,12 @@ struct ConflictOperationsUseCaseStub: RepositoryOperationsUseCase {
 		fatalError()
 	}
 
+	var resolveOperation:
+		@Sendable (GitConflict, GitConflictResolution, GitConflictContent, URL) async throws ->
+			RepositorySnapshot = {
+				_, _, _, _ in fatalError()
+			}
+
 	func loadConflictContent(
 		for conflict: GitConflict,
 		at repositoryURL: URL
@@ -37,9 +43,10 @@ struct ConflictOperationsUseCaseStub: RepositoryOperationsUseCase {
 	func resolve(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
+		expecting content: GitConflictContent,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		fatalError()
+		try await resolveOperation(conflict, resolution, content, repositoryURL)
 	}
 
 	func resolveHunk(

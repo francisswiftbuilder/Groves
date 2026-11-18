@@ -14,7 +14,10 @@ struct GitReferenceMutationTests {
 		init(url: URL, runner: GitProcessRunner) {
 			self.url = url
 			self.runner = runner
-			repository = LocalGitRepository(runner: runner)
+			repository = LocalGitRepository(runner: runner) { originals in
+				try FileManager.default.moveItem(
+					at: originals, to: url.appending(path: ".git/test-discard-archive"))
+			}
 		}
 
 		deinit {
@@ -48,6 +51,104 @@ struct GitReferenceMutationTests {
 				named: name, message: message, commitHash: first, at: context.url)
 			let target = try await run(["rev-parse", "refs/tags/\(name)^{}"], in: context)
 			#expect(target == first)
+		}
+	}
+
+	@Test(arguments: [false, true])
+	func tagDeletionCannotDeleteAReplacementWithTheSameName(annotated: Bool) async throws {
+		let context = try await makeContext()
+		let original = try await run(["rev-parse", "HEAD"], in: context)
+		let arguments = annotated ? ["tag", "-a", "-m", "old", "release"] : ["tag", "release"]
+		_ = try await run(arguments, in: context)
+		let reviewed = try #require(try await context.repository.requestTags(at: context.url).first)
+		if !annotated {
+			_ = try await run(["commit", "--allow-empty", "-m", "new target"], in: context)
+		}
+		_ = try await run(
+			annotated ? ["tag", "-f", "-a", "-m", "new", "release"] : ["tag", "-f", "release"],
+			in: context)
+		let replacement = try await run(["rev-parse", "refs/tags/release"], in: context)
+
+		await #expect(throws: GitRepositoryError.self) {
+			try await context.repository.requestDeleteTag(reviewed, at: context.url)
+		}
+
+		#expect(reviewed.objectHash != replacement)
+		#expect(try await run(["rev-parse", "refs/tags/release"], in: context) == replacement)
+		if annotated {
+			#expect(try await run(["rev-parse", "refs/tags/release^{}"], in: context) == original)
+		}
+	}
+
+	@Test(arguments: ["delete", "force", "setUpstream"])
+	func reviewedPushUsesTheSameRemoteAfterItsAliasIsRepointed(operation: String) async throws {
+		let context = try await makeContext()
+		let approved = try await makeRemote(in: context, name: "approved=source.git")
+		let replacement = context.url.appending(path: ".git/replacement.git")
+		_ = try await run(["init", "--bare", replacement.path], in: context)
+		let original = try await run(["rev-parse", "HEAD"], in: context)
+		_ = try await run(["push", "-u", "origin", "HEAD:refs/heads/main"], in: context)
+		_ = try await run(["push", replacement.path, "HEAD:refs/heads/main"], in: context)
+		_ = try await run(["commit", "--allow-empty", "-m", "reviewed work"], in: context)
+		let setsUpstream = operation == "setUpstream"
+		if setsUpstream { _ = try await run(["switch", "-c", "untracked"], in: context) }
+		let branch = try await requestCurrentBranch(in: context)
+		let remotes = try await context.repository.requestRemotes(at: context.url)
+		let reviewed = try #require(remotes.first?.branches.first { $0.name == "main" })
+		let marker = context.url.appending(path: ".git/push-repointed")
+		let executable = context.url.appending(path: ".git/concurrent-git")
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" push "*)
+		    /usr/bin/git -C '\(context.url.path)' remote set-url origin '\(replacement.path)' || exit 91
+		    touch '\(marker.path)'
+		    ;;
+		esac
+		exec /usr/bin/git "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let repository = LocalGitRepository(
+			runner: GitProcessRunner(
+				configuration: GitProcessConfiguration(
+					executableURL: executable,
+					globalConfigurationURL: context.url.appending(path: ".git/app.config"))))
+
+		switch operation {
+		case "force":
+			try await repository.requestForcePush(
+				.upstream(), expecting: branch, remotes: remotes, at: context.url)
+		case "setUpstream":
+			do {
+				try await repository.requestForcePush(
+					.setUpstream(remoteName: "origin", branchName: branch.name), expecting: branch,
+					remotes: remotes, at: context.url)
+				Issue.record("Expected the changed remote to prevent upstream configuration")
+			} catch GitRepositoryError.commandFailed(let message) {
+				#expect(message.contains("The push completed"))
+			}
+			#expect(try await requestCurrentBranch(in: context).upstream == nil)
+		default:
+			try await repository.requestDeleteRemoteBranch(reviewed, at: context.url)
+		}
+
+		#expect(FileManager.default.fileExists(atPath: marker.path))
+		let pushedBranch = setsUpstream ? branch.name : "main"
+		let refs = ["for-each-ref", "--format=%(objectname)", "refs/heads/\(pushedBranch)"]
+		let unaffected = try await context.runner.requestRun(arguments: refs, at: replacement)
+		let updated = try await context.runner.requestRun(arguments: refs, at: approved)
+		#expect(unaffected.standardOutput == (setsUpstream ? "" : original + "\n"))
+		#expect(updated.standardOutput == (operation == "delete" ? "" : branch.hash + "\n"))
+
+		await #expect(throws: GitRepositoryError.self) {
+			if operation == "delete" {
+				try await repository.requestDeleteRemoteBranch(reviewed, at: context.url)
+			} else {
+				let target: GitPushTarget =
+					setsUpstream ? .setUpstream(remoteName: "origin", branchName: branch.name) : .upstream()
+				try await repository.requestForcePush(
+					target, expecting: branch, remotes: remotes, at: context.url)
+			}
 		}
 	}
 
@@ -392,11 +493,31 @@ struct GitReferenceMutationTests {
 		_ = try await run(["push", "team/origin", "HEAD:refs/heads/main"], in: context)
 		_ = try await run(["reset", "--hard", "HEAD^"], in: context)
 
-		let outcome = try await context.repository.requestPreparePull(at: context.url)
+		let outcome = try await context.repository.requestPreparePull(
+			expecting: requestCurrentBranch(in: context), at: context.url)
 
 		#expect(outcome == .fastForwarded)
 		let head = try await run(["rev-parse", "HEAD"], in: context)
 		#expect(head == next)
+	}
+
+	@Test
+	func pullRejectsABranchSwitchEvenWithTheSameHeadAndUpstream() async throws {
+		let context = try await makeContext()
+		_ = try await makeRemote(in: context)
+		_ = try await run(["push", "origin", "HEAD:refs/heads/main"], in: context)
+		try await context.repository.requestCreateTrackingBranch(
+			named: "displayed", tracking: "origin/main", at: context.url)
+		let displayed = try await requestCurrentBranch(in: context)
+		try await context.repository.requestCreateTrackingBranch(
+			named: "actual", tracking: "origin/main", at: context.url)
+
+		await #expect(throws: GitRepositoryError.self) {
+			_ = try await context.repository.requestPreparePull(expecting: displayed, at: context.url)
+		}
+		let actual = try await requestCurrentBranch(in: context)
+		#expect(actual.name == "actual")
+		#expect(actual.hash == displayed.hash)
 	}
 
 	@Test(arguments: [RepositoryPullResolution.merge, .rebase])
@@ -445,7 +566,8 @@ struct GitReferenceMutationTests {
 		try Data("local".utf8).write(to: context.url.appending(path: "local.txt"))
 		_ = try await run(["add", "local.txt"], in: context)
 		_ = try await run(["commit", "-m", "local change"], in: context)
-		let outcome = try await context.repository.requestPreparePull(at: context.url)
+		let outcome = try await context.repository.requestPreparePull(
+			expecting: requestCurrentBranch(in: context), at: context.url)
 		guard case .diverged(let divergence) = outcome else {
 			Issue.record("Expected diverged local and remote histories")
 			return
@@ -490,7 +612,8 @@ struct GitReferenceMutationTests {
 
 		if force {
 			try await context.repository.requestForcePush(
-				.upstream(), expecting: try await requestCurrentBranch(in: context), at: context.url)
+				.upstream(), expecting: try await requestCurrentBranch(in: context),
+				remotes: context.repository.requestRemotes(at: context.url), at: context.url)
 		} else {
 			try await context.repository.requestPush(.upstream(), at: context.url)
 		}
@@ -516,7 +639,8 @@ struct GitReferenceMutationTests {
 
 		if force {
 			try await context.repository.requestForcePush(
-				target, expecting: try await requestCurrentBranch(in: context), at: context.url)
+				target, expecting: try await requestCurrentBranch(in: context),
+				remotes: context.repository.requestRemotes(at: context.url), at: context.url)
 		} else {
 			try await context.repository.requestPush(target, at: context.url)
 		}
@@ -575,7 +699,8 @@ struct GitReferenceMutationTests {
 
 		await #expect(throws: GitRepositoryError.self) {
 			try await context.repository.requestForcePush(
-				.upstream(), expecting: try await requestCurrentBranch(in: context), at: context.url)
+				.upstream(), expecting: try await requestCurrentBranch(in: context),
+				remotes: context.repository.requestRemotes(at: context.url), at: context.url)
 		}
 
 		let actual = try await context.runner.requestRun(
@@ -707,6 +832,84 @@ struct GitReferenceMutationTests {
 			\.isStaged)
 		#expect(staged.count == 1)
 		#expect(staged.first?.indexState == .renamed)
+		let archived = context.url.appending(path: ".git/test-discard-archive/new.txt")
+		#expect(try String(contentsOf: archived, encoding: .utf8) == original + "discard this edit\n")
+	}
+
+	@Test
+	func discardOfAnUntrackedFileArchivesItsContents() async throws {
+		let context = try await makeContext()
+		let file = context.url.appending(path: "draft.txt")
+		try Data("recoverable draft".utf8).write(to: file)
+		let changes = try await context.repository.requestWorkingTreeChanges(at: context.url)
+		let discard = try await context.repository.requestDiscardContext(for: changes, at: context.url)
+
+		try await context.repository.requestDiscard(discard, at: context.url)
+
+		#expect(!FileManager.default.fileExists(atPath: file.path))
+		let archived = context.url.appending(path: ".git/test-discard-archive/draft.txt")
+		#expect(try String(contentsOf: archived, encoding: .utf8) == "recoverable draft")
+	}
+
+	@Test
+	func discardRejectsAFileReplacedByADirectoryAndRestoresOtherSelectedFiles() async throws {
+		let context = try await makeContext()
+		let file = context.url.appending(path: "first.txt")
+		let replaced = context.url.appending(path: "second.txt")
+		try Data("first draft".utf8).write(to: file)
+		try Data("second draft".utf8).write(to: replaced)
+		let changes = try await context.repository.requestWorkingTreeChanges(at: context.url)
+		let discard = try await context.repository.requestDiscardContext(for: changes, at: context.url)
+		try FileManager.default.moveItem(at: replaced, to: context.url.appending(path: "original.txt"))
+		try FileManager.default.createDirectory(at: replaced, withIntermediateDirectories: false)
+		let child = replaced.appending(path: "new.txt")
+		try Data("new work".utf8).write(to: child)
+
+		await #expect(throws: GitRepositoryError.self) {
+			try await context.repository.requestDiscard(discard, at: context.url)
+		}
+		#expect(try String(contentsOf: file, encoding: .utf8) == "first draft")
+		#expect(try String(contentsOf: child, encoding: .utf8) == "new work")
+	}
+
+	@Test
+	func discardPreservesAnEditSavedAfterTheOriginalWasCaptured() async throws {
+		let context = try await makeContext()
+		let file = context.url.appending(path: "tracked.txt")
+		try Data("index".utf8).write(to: file)
+		_ = try await run(["add", "tracked.txt"], in: context)
+		try Data("reviewed edit".utf8).write(to: file)
+		let changes = try await context.repository.requestWorkingTreeChanges(at: context.url)
+		let discard = try await context.repository.requestDiscardContext(for: changes, at: context.url)
+		let executable = context.url.appending(path: ".git/test-git")
+		let escapedPath = file.path.replacingOccurrences(of: "'", with: "'\\''")
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" hash-object "*"/groves-discard-"*) printf 'new edit' > '\(escapedPath)' ;;
+		esac
+		exec /usr/bin/git "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let repository = LocalGitRepository(
+			runner: GitProcessRunner(
+				configuration: GitProcessConfiguration(executableURL: executable),
+				credentialStore: GitCredentialPersistingStub()))
+
+		await #expect(throws: GitRepositoryError.self) {
+			try await repository.requestDiscard(discard, at: context.url)
+		}
+		#expect(try String(contentsOf: file, encoding: .utf8) == "new edit")
+		let transactions = try FileManager.default.contentsOfDirectory(
+			at: context.url.appending(path: ".git"), includingPropertiesForKeys: nil)
+		let transaction = try #require(
+			transactions.first { $0.lastPathComponent.hasPrefix("groves-discard-") })
+		let originals = try FileManager.default.contentsOfDirectory(
+			at: transaction, includingPropertiesForKeys: nil)
+		let archive = try #require(originals.first)
+		#expect(
+			try String(contentsOf: archive.appending(path: "tracked.txt"), encoding: .utf8)
+				== "reviewed edit")
 	}
 
 	@Test(arguments: [GitDiffHunkAction.stage, .unstage, .discard])
@@ -765,6 +968,46 @@ struct GitReferenceMutationTests {
 
 		#expect(try String(contentsOf: file, encoding: .utf8) == "unreviewed new work\n")
 		#expect(try await run(["show", ":file.txt"], in: context) == indexBefore)
+	}
+
+	@Test(arguments: ["ours", "theirs", "hunk"])
+	func conflictResolutionPreservesAnEditMadeAfterValidation(selection: String) async throws {
+		let context = try await makeContext()
+		let conflict = try await makeConflict(in: context)
+		let selected = try await context.repository.requestConflictContent(
+			for: conflict, at: context.url)
+		let file = context.url.appending(path: conflict.path)
+		let index = try await run(["ls-files", "--stage", "-z"], in: context)
+		let executable = context.url.appending(path: ".git/concurrent-git")
+		let command =
+			selection == "hunk" ? "rev-parse --absolute-git-dir" : "update-index -z --index-info"
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" \(command) "*) printf 'external save' > '\(file.path)' || exit 91 ;;
+		esac
+		exec /usr/bin/git "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let repository = LocalGitRepository(
+			runner: GitProcessRunner(configuration: GitProcessConfiguration(executableURL: executable)))
+
+		let hunk = try #require(selected.hunks.first)
+		let contents = try #require(selected.workingTree)
+		await #expect(throws: GitRepositoryError.self) {
+			if selection == "hunk" {
+				try await repository.requestResolveConflictHunk(
+					hunk, in: conflict, using: .incoming, expecting: contents, at: context.url)
+			} else {
+				try await repository.requestResolveConflict(
+					conflict, using: selection == "ours" ? .ours : .theirs, expecting: selected,
+					at: context.url)
+			}
+		}
+
+		#expect(try String(contentsOf: file, encoding: .utf8) == "external save")
+		#expect(try await run(["ls-files", "--stage", "-z"], in: context) == index)
+		#expect(try await repository.requestOperationState(at: context.url).conflicts == [conflict])
 	}
 
 	@Test(arguments: ["removedFirst", "modifiedFirst", "identicalHunks", "outsideHunks"])
@@ -851,7 +1094,8 @@ struct GitReferenceMutationTests {
 
 		await #expect(throws: GitRepositoryError.self) {
 			try await context.repository.requestForcePush(
-				.upstream(), expecting: try await requestCurrentBranch(in: context), at: context.url)
+				.upstream(), expecting: try await requestCurrentBranch(in: context),
+				remotes: context.repository.requestRemotes(at: context.url), at: context.url)
 		}
 
 		let actual = try await context.runner.requestRun(
@@ -873,7 +1117,8 @@ struct GitReferenceMutationTests {
 		let head = try await run(["rev-parse", "HEAD"], in: context)
 
 		await #expect(throws: GitRepositoryError.self) {
-			_ = try await context.repository.requestPreparePull(at: context.url)
+			_ = try await context.repository.requestPreparePull(
+				expecting: requestCurrentBranch(in: context), at: context.url)
 		}
 
 		#expect(try await run(["rev-parse", "HEAD"], in: context) == head)
@@ -939,12 +1184,67 @@ struct GitReferenceMutationTests {
 
 		await #expect(throws: GitRepositoryError.self) {
 			try await context.repository.requestForcePush(
-				.upstream(), expecting: expected, at: context.url)
+				.upstream(), expecting: expected,
+				remotes: context.repository.requestRemotes(at: context.url), at: context.url)
 		}
 
 		let actual = try await context.runner.requestRun(
 			arguments: ["rev-parse", "refs/heads/main"], at: remote)
 		#expect(actual.standardOutput.trimmingCharacters(in: .newlines) == expected.hash)
+	}
+
+	@Test
+	func forcePushToAnAlternateRemoteUsesTheLocalBranchName() async throws {
+		let context = try await makeContext()
+		let source = try await makeRemote(in: context)
+		let alternate = context.url.appending(path: ".git/alternate.git")
+		_ = try await run(["init", "--bare", alternate.path], in: context)
+		_ = try await run(["remote", "add", "alternate", alternate.path], in: context)
+		let original = try await run(["rev-parse", "HEAD"], in: context)
+		_ = try await run(["push", "-u", "origin", "HEAD:refs/heads/published"], in: context)
+		_ = try await run(["commit", "--allow-empty", "-m", "reviewed change"], in: context)
+		let branch = try await requestCurrentBranch(in: context)
+		let remotes = try await context.repository.requestRemotes(at: context.url)
+
+		try await context.repository.requestForcePush(
+			.upstream(remoteName: "alternate"), expecting: branch, remotes: remotes, at: context.url)
+
+		let actual = try await context.runner.requestRun(
+			arguments: ["rev-parse", "refs/heads/\(branch.name)"], at: alternate)
+		let unaffected = try await context.runner.requestRun(
+			arguments: ["rev-parse", "refs/heads/published"], at: source)
+		#expect(actual.standardOutput == branch.hash + "\n")
+		#expect(unaffected.standardOutput == original + "\n")
+		#expect(try await requestCurrentBranch(in: context).upstream == branch.upstream)
+	}
+
+	@Test(arguments: [false, true])
+	func forcePushUsesTheReviewedRemoteTipEvenAfterAnotherFetch(customTracking: Bool) async throws {
+		let context = try await makeContext()
+		let remote = try await makeRemote(in: context)
+		if customTracking {
+			_ = try await run(
+				["config", "remote.origin.fetch", "+refs/heads/*:refs/custom/origin/*"], in: context)
+		}
+		_ = try await run(["push", "-u", "origin", "HEAD:refs/heads/main"], in: context)
+		try await context.repository.requestFetch(remote: "origin", at: context.url)
+		_ = try await run(["commit", "--allow-empty", "-m", "middle"], in: context)
+		let middle = try await run(["rev-parse", "HEAD"], in: context)
+		_ = try await run(["commit", "--allow-empty", "-m", "reviewed"], in: context)
+		let branch = try await requestCurrentBranch(in: context)
+		let remotes = try await context.repository.requestRemotes(at: context.url)
+		_ = try await run(["push", remote.path, "\(middle):refs/heads/main"], in: context)
+		try await context.repository.requestFetch(remote: "origin", at: context.url)
+
+		await #expect(throws: GitRepositoryError.self) {
+			try await context.repository.requestForcePush(
+				.upstream(), expecting: branch, remotes: remotes, at: context.url)
+		}
+
+		let actual = try await context.runner.requestRun(
+			arguments: ["rev-parse", "refs/heads/main"], at: remote)
+		#expect(actual.standardOutput == middle + "\n")
+		#expect(try await run(["rev-parse", "HEAD"], in: context) == branch.hash)
 	}
 
 	@Test
@@ -961,7 +1261,9 @@ struct GitReferenceMutationTests {
 		_ = try await run(["commit", "--allow-empty", "-m", "reviewed work"], in: context)
 		let expected = try await requestCurrentBranch(in: context)
 
-		try await context.repository.requestForcePush(.upstream(), expecting: expected, at: context.url)
+		try await context.repository.requestForcePush(
+			.upstream(), expecting: expected, remotes: context.repository.requestRemotes(at: context.url),
+			at: context.url)
 
 		let actual = try await context.runner.requestRun(
 			arguments: ["rev-parse", "refs/heads/main"], at: remote)
@@ -989,8 +1291,9 @@ struct GitReferenceMutationTests {
 		return context
 	}
 
-	private func makeRemote(in context: Context) async throws -> URL {
-		let remote = context.url.appending(path: ".git/test-remote.git")
+	private func makeRemote(in context: Context, name: String = "test-remote.git") async throws -> URL
+	{
+		let remote = context.url.appending(path: ".git").appending(path: name)
 		_ = try await context.runner.requestRun(
 			arguments: ["init", "--bare", remote.path], at: context.url)
 		_ = try await run(["remote", "add", "origin", remote.path], in: context)

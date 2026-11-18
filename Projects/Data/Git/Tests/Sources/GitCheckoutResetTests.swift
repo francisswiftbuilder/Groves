@@ -45,6 +45,112 @@ struct GitCheckoutResetTests {
 		#expect(try String(contentsOf: untracked, encoding: .utf8) == "keep")
 	}
 
+	@Test
+	func hardResetPreservesAFileCreatedAfterItsCollisionCheck() async throws {
+		let context = try await makeContext()
+		let file = context.url.appending(path: "new.txt")
+		try Data("historical\n".utf8).write(to: file)
+		_ = try await run(["add", "--", "new.txt"], in: context)
+		_ = try await run(["commit", "-m", "historical file"], in: context)
+		let target = try await run(["rev-parse", "HEAD"], in: context)
+		_ = try await run(["rm", "--", "new.txt"], in: context)
+		_ = try await run(["commit", "-m", "remove historical file"], in: context)
+		_ = try await run(["update-ref", "ORIG_HEAD", target], in: context)
+		let tracked = context.url.appending(path: "tracked.txt")
+		try Data("pending edit".utf8).write(to: tracked)
+		let expected = try await resetContext(in: context)
+		let indexURL = context.url.appending(path: ".git/index")
+		let index = try Data(contentsOf: indexURL)
+		let executable = context.url.appending(path: ".git/concurrent-git")
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" checkout-index "*) printf 'external save' > '\(file.path)' || exit 91 ;;
+		esac
+		exec /usr/bin/git "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let repository = LocalGitRepository(
+			runner: GitProcessRunner(configuration: GitProcessConfiguration(executableURL: executable)))
+
+		await #expect(throws: GitRepositoryError.self) {
+			try await repository.requestReset(
+				to: target, mode: .hard, expecting: expected, at: context.url)
+		}
+
+		#expect(try String(contentsOf: file, encoding: .utf8) == "external save")
+		#expect(try String(contentsOf: tracked, encoding: .utf8) == "pending edit")
+		#expect(try Data(contentsOf: indexURL) == index)
+		#expect(try await resetContext(in: context) == expected)
+		#expect(try await run(["rev-parse", "ORIG_HEAD"], in: context) == target)
+	}
+
+	@Test(arguments: [false, true])
+	func hardResetRestoresTrackedPathsAcrossFileAndDirectoryTransitions(directoryTarget: Bool)
+		async throws
+	{
+		let context = try await makeContext()
+		let top = "shape"
+		let deep = "\(top)/nested/value.txt"
+		let targetPath = directoryTarget ? deep : top
+		let currentPath = directoryTarget ? top : deep
+		let targetFile = context.url.appending(path: targetPath)
+		let currentFile = context.url.appending(path: currentPath)
+		try FileManager.default.createDirectory(
+			at: targetFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+		try Data("historical".utf8).write(to: targetFile)
+		_ = try await run(["add", "--", targetPath], in: context)
+		_ = try await run(["commit", "-m", "historical shape"], in: context)
+		let target = try await run(["rev-parse", "HEAD"], in: context)
+		_ = try await run(["rm", "--", targetPath], in: context)
+		try FileManager.default.createDirectory(
+			at: currentFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+		try Data("latest".utf8).write(to: currentFile)
+		_ = try await run(["add", "--", currentPath], in: context)
+		_ = try await run(["commit", "-m", "current shape"], in: context)
+		let expected = try await resetContext(in: context)
+
+		try await context.repository.requestReset(
+			to: target, mode: .hard, expecting: expected, at: context.url)
+
+		#expect(try await run(["rev-parse", "HEAD"], in: context) == target)
+		#expect(try await run(["show", ":\(targetPath)"], in: context) == "historical")
+		#expect(try String(contentsOf: targetFile, encoding: .utf8) == "historical")
+		#expect(try await run(["status", "--porcelain"], in: context).isEmpty)
+	}
+
+	@Test
+	func hardResetKeepsSparseCheckoutPathsOutsideTheWorkingTree() async throws {
+		let context = try await makeContext()
+		let included = context.url.appending(path: "selected/included.txt")
+		let excluded = context.url.appending(path: "omitted/excluded.txt")
+		for file in [included, excluded] {
+			try FileManager.default.createDirectory(
+				at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+			try Data("historical".utf8).write(to: file)
+		}
+		_ = try await run(["add", "selected", "omitted"], in: context)
+		_ = try await run(["commit", "-m", "historical paths"], in: context)
+		let target = try await run(["rev-parse", "HEAD"], in: context)
+		try Data("latest".utf8).write(to: included)
+		_ = try await run(["rm", "omitted/excluded.txt"], in: context)
+		_ = try await run(["commit", "-am", "update sparse paths"], in: context)
+		_ = try await run(["sparse-checkout", "set", "selected"], in: context)
+		let expected = try await resetContext(in: context)
+
+		try await context.repository.requestReset(
+			to: target, mode: .hard, expecting: expected, at: context.url)
+
+		#expect(try await run(["rev-parse", "HEAD"], in: context) == target)
+		#expect(try await run(["show", ":omitted/excluded.txt"], in: context) == "historical")
+		#expect(
+			try await run(["ls-files", "-t", "--", "omitted/excluded.txt"], in: context)
+				== "S omitted/excluded.txt")
+		#expect(!FileManager.default.fileExists(atPath: excluded.path))
+		#expect(try String(contentsOf: included, encoding: .utf8) == "historical")
+		#expect(try await run(["status", "--porcelain"], in: context).isEmpty)
+	}
+
 	@Test(arguments: ["same", "parent", "child", "ignored", "newline"])
 	func hardResetRejectsUntrackedPathCollisionsWithoutChangingTheRepository(kind: String)
 		async throws
@@ -205,7 +311,7 @@ struct GitCheckoutResetTests {
 		try """
 		#!/bin/sh
 		case " $* " in
-		  *" reset "*)
+		  *" reset "*|*" read-tree "*)
 		    touch '\(marker.path)'
 		    while [ ! -f '\(release.path)' ]; do /bin/sleep 0.01; done
 		    ;;

@@ -1,13 +1,14 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [develop]
   pull_request:
     branches: [develop]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,7 +37,7 @@ jobs:
         run: |
           make bundled-git
           ./script/test_bundled_git.sh .build/bundled-git/runtime
-          WORKSPACE=$(ls -d *.xcworkspace | head -1)
+          WORKSPACE=Groves.xcworkspace
           for SCHEME in AppTests CoreGitCredential CoreRepositoryDiff DataGit \
             FeatureRepositoryChanges FeatureRepositoryHistory FeatureRepositoryOperations \
             FeatureRepositoryStashes FeatureRepositoryTree; do

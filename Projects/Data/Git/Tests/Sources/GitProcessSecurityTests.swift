@@ -82,6 +82,42 @@ struct GitProcessSecurityTests {
 	}
 
 	@Test
+	func inheritedPipesDoNotDelayCompletedCommandsOrTruncateTheirOutput() async throws {
+		let repositoryURL = try makeTemporaryRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let executable = repositoryURL.appending(path: "test-git")
+		let release = repositoryURL.appending(path: "release-child")
+		let marker = repositoryURL.appending(path: "child-exited")
+		try """
+		#!/bin/sh
+		(
+		  attempts=0
+		  while [ ! -e '\(release.path)' ] && [ "$attempts" -lt 300 ]; do
+		    attempts=$((attempts + 1))
+		    /bin/sleep 0.02
+		  done
+		  touch '\(marker.path)'
+		) </dev/null &
+		printf 'stdout tail\\n'
+		printf 'stderr tail\\n' >&2
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let runner = GitProcessRunner(configuration: GitProcessConfiguration(executableURL: executable))
+
+		let result = try await runner.requestRun(arguments: ["version"], at: repositoryURL)
+
+		#expect(result.standardOutput == "stdout tail\n")
+		#expect(result.standardError == "stderr tail\n")
+		#expect(!FileManager.default.fileExists(atPath: marker.path))
+		try Data().write(to: release)
+		let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+		while !FileManager.default.fileExists(atPath: marker.path), ContinuousClock.now < deadline {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(FileManager.default.fileExists(atPath: marker.path))
+	}
+
+	@Test
 	func testUnusableKnownHostsFileStopsTheNetworkOperation() async throws {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }

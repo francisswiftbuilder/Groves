@@ -1,6 +1,10 @@
 import Foundation
 
 public struct GitHubAuthenticationClient: Sendable {
+	private struct ErrorResponse: Decodable {
+		let message: String
+	}
+
 	private let session: URLSession
 
 	public init(session: URLSession = URLSession(configuration: .ephemeral)) {
@@ -42,29 +46,35 @@ public struct GitHubAuthenticationClient: Sendable {
 		}
 	}
 
-	public func repositoryPreview(for repository: GitHubRepository, token: String) async throws
-		-> GitHubRepositoryPreview
+	public func repositoryFiles(for repository: GitHubRepository, token: String) async throws
+		-> [GitHubRepositoryFile]
 	{
-		let endpoint = URL(string: "https://api.github.com/repos")!
+		let (data, response) = try await request(
+			repositoryEndpoint(for: repository).appending(path: "contents"),
+			token: token, allowsNotFound: true)
+		guard response.statusCode != 404 else { return [] }
+		return try JSONDecoder().decode([GitHubRepositoryFile].self, from: data).sorted {
+			if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+			return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+		}
+	}
+
+	public func repositoryReadme(for repository: GitHubRepository, token: String) async throws
+		-> GitHubRepositoryReadme
+	{
+		let (data, response) = try await request(
+			repositoryEndpoint(for: repository).appending(path: "readme"),
+			token: token, accept: "application/vnd.github.raw+json", allowsNotFound: true)
+		let limit = 128 * 1_024
+		return GitHubRepositoryReadme(
+			markdown: response.statusCode == 404
+				? nil : String(decoding: data.prefix(limit), as: UTF8.self),
+			isTruncated: response.statusCode == 200 && data.count > limit)
+	}
+
+	private func repositoryEndpoint(for repository: GitHubRepository) -> URL {
+		URL(string: "https://api.github.com/repos")!
 			.appending(path: repository.fullName, directoryHint: .isDirectory)
-		async let contents = request(
-			endpoint.appending(path: "contents"), token: token, allowsNotFound: true)
-		async let readme = request(
-			endpoint.appending(path: "readme"), token: token, accept: "application/vnd.github.raw+json",
-			allowsNotFound: true)
-		let ((filesData, filesResponse), (readmeData, readmeResponse)) = try await (contents, readme)
-		let files =
-			filesResponse.statusCode == 404
-			? [] : try JSONDecoder().decode([GitHubRepositoryFile].self, from: filesData)
-		let readmeLimit = 128 * 1_024
-		return GitHubRepositoryPreview(
-			files: files.sorted {
-				if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
-				return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-			},
-			readme: readmeResponse.statusCode == 404
-				? nil : String(decoding: readmeData.prefix(readmeLimit), as: UTF8.self),
-			isReadmeTruncated: readmeResponse.statusCode == 200 && readmeData.count > readmeLimit)
 	}
 
 	private func request(
@@ -92,7 +102,16 @@ public struct GitHubAuthenticationClient: Sendable {
 			return (data, response)
 		case 401:
 			throw GitHubAuthenticationError.invalidToken
-		case 403, 429:
+		case 429:
+			throw GitHubAuthenticationError.rateLimited
+		case 403:
+			let message = try? JSONDecoder().decode(ErrorResponse.self, from: data).message
+			if response.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0"
+				|| response.value(forHTTPHeaderField: "Retry-After") != nil
+				|| message?.localizedCaseInsensitiveContains("rate limit") == true
+			{
+				throw GitHubAuthenticationError.rateLimited
+			}
 			throw GitHubAuthenticationError.forbidden
 		default:
 			throw GitHubAuthenticationError.unavailable

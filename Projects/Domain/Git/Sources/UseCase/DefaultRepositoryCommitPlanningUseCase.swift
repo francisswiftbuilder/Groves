@@ -36,6 +36,10 @@ public struct DefaultRepositoryCommitPlanningUseCase: RepositoryCommitPlanningUs
 	) async throws -> GitCommitPlanInput {
 		guard plan.isValid, plan.tasks.contains(task) else { throw GitCommitPlanError.invalidPlan }
 		try await repository.requestCommitTask(task, expecting: plan.input, at: repositoryURL)
-		return try await repository.requestCommitPlanInput(at: repositoryURL)
+		do {
+			return try await repository.requestCommitPlanInput(at: repositoryURL)
+		} catch {
+			throw GitCommitPlanError.committedButRefreshFailed(error.localizedDescription)
+		}
 	}
 }

@@ -166,7 +166,19 @@ public final class CommitPlanViewModel {
 					guard let self, requestID == id, dependencies.repositoryURL() == url else { return }
 					selectedTaskID = submitted.id
 					selectedUnitID = nil
-					let input = try await dependencies.useCase.commit(submitted, from: current, at: url)
+					let input: GitCommitPlanInput
+					do {
+						input = try await dependencies.useCase.commit(submitted, from: current, at: url)
+					} catch GitCommitPlanError.committedButRefreshFailed(let reason) {
+						guard !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url
+						else { return }
+						completedCount += 1
+						self.plan?.tasks.removeAll { $0.id == submitted.id }
+						selectedTaskID = self.plan?.tasks.first?.id
+						selectedUnitID = nil
+						needsRefresh = true
+						throw GitCommitPlanError.committedButRefreshFailed(reason)
+					}
 					try Task.checkCancellation()
 					guard requestID == id, dependencies.repositoryURL() == url else { return }
 					completedCount += 1
@@ -179,7 +191,12 @@ public final class CommitPlanViewModel {
 						throw GitCommitPlanError.repositoryChanged
 					}
 				}
-				let snapshot = try await dependencies.contentUseCase.loadSnapshot(at: url)
+				let snapshot: RepositorySnapshot
+				do {
+					snapshot = try await dependencies.contentUseCase.loadSnapshot(at: url)
+				} catch {
+					throw GitCommitPlanError.committedButRefreshFailed(error.localizedDescription)
+				}
 				guard let self, !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url
 				else {
 					return
@@ -190,8 +207,9 @@ public final class CommitPlanViewModel {
 				guard let self, !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url
 				else { return }
 				errorMessage = error.localizedDescription
-				if let error = error as? GitCommitPlanError, case .repositoryChanged = error {
-					needsRefresh = true
+				switch error as? GitCommitPlanError {
+				case .repositoryChanged, .committedButRefreshFailed: needsRefresh = true
+				default: break
 				}
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(at: url) {
 					guard !Task.isCancelled, requestID == id, dependencies.repositoryURL() == url else {

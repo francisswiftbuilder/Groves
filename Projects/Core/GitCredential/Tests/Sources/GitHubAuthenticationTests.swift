@@ -65,16 +65,24 @@ struct GitHubAuthenticationTests {
 		} catch GitHubAuthenticationError.forbidden {}
 	}
 
+	@Test(arguments: ["rate-limited-403-token", "rate-limited-429-token"])
+	func rateLimitedRepositoryRequestsPreserveTheErrorCategory(token: String) async throws {
+		await #expect(throws: GitHubAuthenticationError.rateLimited) {
+			_ = try await client().repositories(token: token)
+		}
+	}
+
 	@Test
 	func repositoryPreviewIncludesReadmeAndRootContents() async throws {
 		let client = client()
 		let repositories = try await client.repositories(token: "valid-test-token")
 		let repository = try #require(repositories.first)
-		let preview = try await client.repositoryPreview(for: repository, token: "valid-test-token")
-		#expect(preview.files.map(\.name) == ["Sources", "README.md"])
-		#expect(preview.files.first?.isDirectory == true)
-		#expect(preview.files.last?.webURL?.path == "/octocat/Local/blob/main/README.md")
-		#expect(preview.readme == "# Repository README\n\nExample text.")
+		let files = try await client.repositoryFiles(for: repository, token: "valid-test-token")
+		let readme = try await client.repositoryReadme(for: repository, token: "valid-test-token")
+		#expect(files.map(\.name) == ["Sources", "README.md"])
+		#expect(files.first?.isDirectory == true)
+		#expect(files.last?.webURL?.path == "/octocat/Local/blob/main/README.md")
+		#expect(readme.markdown == "# Repository README\n\nExample text.")
 	}
 
 	@Test
@@ -82,9 +90,28 @@ struct GitHubAuthenticationTests {
 		let client = client()
 		let repositories = try await client.repositories(token: "valid-test-token")
 		let repository = try #require(repositories.last)
-		let preview = try await client.repositoryPreview(for: repository, token: "valid-test-token")
-		#expect(preview.files.map(\.name) == ["Package.swift"])
-		#expect(preview.readme == nil)
+		let files = try await client.repositoryFiles(for: repository, token: "valid-test-token")
+		let readme = try await client.repositoryReadme(for: repository, token: "valid-test-token")
+		#expect(files.map(\.name) == ["Package.swift"])
+		#expect(readme.markdown == nil)
+	}
+
+	@Test
+	func filesAndReadmeRemainIndependentlyAvailableWhenOneRequestFails() async throws {
+		let client = client()
+		let repository = try #require(try await client.repositories(token: "valid-test-token").first)
+
+		await #expect(throws: GitHubAuthenticationError.unavailable) {
+			try await client.repositoryReadme(for: repository, token: "readme-service-error")
+		}
+		let files = try await client.repositoryFiles(for: repository, token: "readme-service-error")
+		#expect(files.map(\.name) == ["Sources", "README.md"])
+
+		await #expect(throws: GitHubAuthenticationError.unavailable) {
+			try await client.repositoryFiles(for: repository, token: "files-service-error")
+		}
+		let readme = try await client.repositoryReadme(for: repository, token: "files-service-error")
+		#expect(readme.markdown == "# Repository README\n\nExample text.")
 	}
 
 	@Test

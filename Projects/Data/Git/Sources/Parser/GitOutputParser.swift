@@ -144,7 +144,9 @@ enum GitOutputParser {
 			}
 	}
 
-	static func parseBranches(_ output: String) -> [GitBranch] {
+	static func parseBranches(_ output: String, currentCustomUpstreamHash: String? = nil)
+		-> [GitBranch]
+	{
 		output.split(whereSeparator: \.isNewline).compactMap { line in
 			let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
 			guard fields.count >= 5 else { return nil }
@@ -156,7 +158,11 @@ enum GitOutputParser {
 				upstream: fields[3].isEmpty ? nil : fields[3],
 				aheadCount: trackingCounts.ahead,
 				behindCount: trackingCounts.behind,
-				isCurrent: fields[2] == "*"
+				isCurrent: fields[2] == "*",
+				pushRemoteName: fields.count > 6 && !fields[6].isEmpty ? fields[6] : nil,
+				upstreamRemoteName: fields.count > 7 && !fields[7].isEmpty ? fields[7] : nil,
+				upstreamRemoteReference: fields.count > 8 && !fields[8].isEmpty ? fields[8] : nil,
+				customUpstreamHash: fields[2] == "*" ? currentCustomUpstreamHash : nil
 			)
 		}
 	}
@@ -241,7 +247,8 @@ enum GitOutputParser {
 				shortHash: fields[1],
 				targetHash: targetHash,
 				date: formatter.date(from: fields[4]),
-				subject: fields[5]
+				subject: fields[5],
+				objectHash: fields[3]
 			)
 		}
 	}

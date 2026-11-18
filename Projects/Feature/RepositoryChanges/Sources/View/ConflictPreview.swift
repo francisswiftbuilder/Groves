@@ -71,9 +71,11 @@ struct ConflictPreview: View {
 					Button(currentFileResolutionTitle, systemImage: "arrow.down.doc") {
 						viewModel.didResolve(conflict, using: .ours)
 					}
+					.disabled(!viewModel.canResolveFile(conflict))
 					Button(incomingFileResolutionTitle, systemImage: "arrow.down.doc.fill") {
 						viewModel.didResolve(conflict, using: .theirs)
 					}
+					.disabled(!viewModel.canResolveFile(conflict))
 					Divider()
 					Button("Open in Editor", systemImage: "square.and.pencil") {
 						viewModel.didOpenInEditor(conflict)

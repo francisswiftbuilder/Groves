@@ -467,7 +467,7 @@ struct RepositoryOperationViewModelTests {
 		var published = 0
 		let model = makeSyncViewModel(
 			referencesUseCase: references,
-			didProduceSnapshot: { _ in published += 1 },
+			didFetchAutomatically: { published += 1 },
 			canAutomaticallyFetch: { isIdle }, automaticFetchInterval: .milliseconds(30))
 		defer {
 			model.onDisappear()
@@ -624,7 +624,7 @@ struct RepositoryOperationViewModelTests {
 		referencesUseCase: OperationsReferencesUseCaseStub,
 		didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void = { _ in },
 		didReceiveError: @escaping @MainActor (String) -> Void = { _ in },
-		didFetchAutomatically: (@MainActor () -> Void)? = nil,
+		didFetchAutomatically: @escaping @MainActor () -> Void = {},
 		canAutomaticallyFetch: @escaping @MainActor () -> Bool = { true },
 		automaticFetchInterval: Duration = .seconds(60)
 	) -> RepositorySyncViewModel {
