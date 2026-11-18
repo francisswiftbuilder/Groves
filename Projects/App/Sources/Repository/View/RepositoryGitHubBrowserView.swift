@@ -55,24 +55,30 @@ struct RepositoryGitHubBrowserView: View {
 
 	var body: some View {
 		let request = request
-		VStack(spacing: 0) {
-			Divider()
-			HSplitView {
-				repositoryList
-					.frame(minWidth: 195, idealWidth: 255, maxWidth: 360, maxHeight: .infinity)
-				RepositoryGitHubDetailView(
-					repository: selectedRepository, account: request.account,
-					accountViewModel: accountViewModel
-				)
-				.frame(minWidth: 270, idealWidth: 540, maxWidth: .infinity, maxHeight: .infinity)
+		GeometryReader { geometry in
+			VStack(spacing: 0) {
+				Divider()
+				HSplitView {
+					repositoryList
+						.frame(
+							minWidth: min(195, geometry.size.width * 0.4), idealWidth: 255,
+							maxWidth: 360, maxHeight: .infinity)
+					RepositoryGitHubDetailView(
+						repository: selectedRepository, account: request.account,
+						accountViewModel: accountViewModel
+					)
+					.frame(
+						minWidth: min(270, geometry.size.width * 0.55),
+						maxWidth: .infinity, maxHeight: .infinity)
+				}
+				Divider()
 			}
-			Divider()
-		}
-		.safeAreaInset(edge: .top, spacing: 0) {
-			header
-		}
-		.safeAreaInset(edge: .bottom, spacing: 0) {
-			footer
+			.safeAreaInset(edge: .top, spacing: 0) {
+				header
+			}
+			.safeAreaInset(edge: .bottom, spacing: 0) {
+				footer
+			}
 		}
 		.task(id: request) {
 			await loadRepositories(for: request)

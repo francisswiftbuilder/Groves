@@ -168,7 +168,7 @@ struct SidebarSettingsLayoutTests {
 		try capture(controller.view, name: "settings-\(scenario)-\(colorScheme)")
 	}
 
-	@Test(arguments: [760.0, 1_280.0], [ColorScheme.light, .dark])
+	@Test(arguments: [680.0, 760.0, 1_280.0], [ColorScheme.light, .dark])
 	func newTabShowsTheRepositoryListAndFitsTheSearchField(
 		width: Double, colorScheme: ColorScheme
 	) async throws {
