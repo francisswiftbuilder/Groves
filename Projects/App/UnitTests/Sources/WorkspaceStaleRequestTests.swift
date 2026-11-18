@@ -192,6 +192,7 @@ struct WorkspaceStaleRequestTests {
 		}
 		workspace.changesViewModel.filterText = "readme"
 		workspace.changesViewModel.didPresentDiscardConfirmation(for: [change])
+		try await waitUntil { workspace.changesViewModel.pendingConfirmation != nil }
 		workspace.changesViewModel.didRequestStage([change])
 		try await waitUntilTotalCallCount(1, in: mutationGate)
 		#expect(workspace.changesViewModel.isLoading)

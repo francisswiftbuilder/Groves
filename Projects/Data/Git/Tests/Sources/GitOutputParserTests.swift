@@ -195,7 +195,8 @@ struct GitOutputParserTests {
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let change = try #require(changes.first)
-		try await repository.requestDiscard(change: change, at: repositoryURL)
+		let discard = try await repository.requestDiscardContext(for: [change], at: repositoryURL)
+		try await repository.requestDiscard(discard, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let remainingChange = try #require(remainingChanges.first)
@@ -216,11 +217,33 @@ struct GitOutputParserTests {
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let change = try #require(changes.first { $0.path == "untracked.txt" })
-		try await repository.requestDiscard(change: change, at: repositoryURL)
+		let discard = try await repository.requestDiscardContext(for: [change], at: repositoryURL)
+		try await repository.requestDiscard(discard, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		#expect(!(FileManager.default.fileExists(atPath: fileURL.path)))
 		#expect(remainingChanges.isEmpty)
+	}
+
+	@Test
+	func testDiscardRejectsEditsSavedAfterConfirmation() async throws {
+		let repositoryURL = try makeRepository()
+		defer { try? FileManager.default.removeItem(at: repositoryURL) }
+		let tracked = repositoryURL.appending(path: "tracked.txt")
+		let untracked = repositoryURL.appending(path: "untracked.txt")
+		try Data("reviewed tracked".utf8).write(to: tracked)
+		try Data("reviewed untracked".utf8).write(to: untracked)
+		let repository = LocalGitRepository()
+		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
+		let context = try await repository.requestDiscardContext(for: changes, at: repositoryURL)
+		let updated = Data("new binary edit\u{0}".utf8)
+		try updated.write(to: untracked)
+
+		await #expect(throws: GitRepositoryError.self) {
+			try await repository.requestDiscard(context, at: repositoryURL)
+		}
+		#expect(try Data(contentsOf: tracked) == Data("reviewed tracked".utf8))
+		#expect(try Data(contentsOf: untracked) == updated)
 	}
 
 	@Test
@@ -452,7 +475,8 @@ struct GitOutputParserTests {
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let change = try #require(changes.first { $0.path == "added.txt" })
-		try await repository.requestDiscard(change: change, at: repositoryURL)
+		let discard = try await repository.requestDiscardContext(for: [change], at: repositoryURL)
+		try await repository.requestDiscard(discard, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let remainingChange = try #require(remainingChanges.first)
@@ -475,7 +499,12 @@ struct GitOutputParserTests {
 		let repository = LocalGitRepository()
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let change = try #require(changes.first { $0.path == "renamed.txt" })
-		try await repository.requestDiscard(change: change, at: repositoryURL)
+		let diff = try await repository.requestDiff(
+			for: change, source: .staged, options: .init(), at: repositoryURL)
+		#expect(diff.contains("rename from tracked.txt"))
+		#expect(diff.contains("rename to renamed.txt"))
+		let discard = try await repository.requestDiscardContext(for: [change], at: repositoryURL)
+		try await repository.requestDiscard(discard, at: repositoryURL)
 
 		let remainingChanges = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		let remainingChange = try #require(remainingChanges.first)
@@ -875,7 +904,7 @@ struct GitOutputParserTests {
 		try requestRunGit(["commit", "--quiet", "-m", "Local ahead"], at: repositoryURL)
 		let aheadOutcome = try await repository.requestPreparePull(at: repositoryURL)
 		#expect(aheadOutcome == .aheadOnly(aheadCount: 1))
-		try await repository.requestPush(.upstream, at: repositoryURL)
+		try await repository.requestPush(.upstream(), at: repositoryURL)
 
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
 		try requestRunGit(["config", "user.name", "Groves Peer"], at: peerURL)
@@ -910,6 +939,17 @@ struct GitOutputParserTests {
 		#expect(divergence.upstream == "origin/\(branchName)")
 		#expect(divergence.aheadCount == 1)
 		#expect(divergence.behindCount == 1)
+
+		try requestRunGit(["switch", "-c", "other"], at: repositoryURL)
+		try requestRunGit(
+			["branch", "--set-upstream-to=origin/\(branchName)"], at: repositoryURL)
+		await #expect(throws: GitRepositoryError.self) {
+			try await repository.requestResolvePull(divergence, using: .merge, at: repositoryURL)
+		}
+		#expect(
+			try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
+				.trimmingCharacters(in: .newlines) == divergence.headHash)
+		try requestRunGit(["switch", branchName], at: repositoryURL)
 
 		try Data("dirty".utf8).write(to: repositoryURL.appending(path: "dirty.txt"))
 		do {
@@ -949,14 +989,14 @@ struct GitOutputParserTests {
 		try Data("remote history".utf8).write(to: repositoryURL.appending(path: "history.txt"))
 		try requestRunGit(["add", "history.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Remote history"], at: repositoryURL)
-		try await repository.requestPush(.upstream, at: repositoryURL)
+		try await repository.requestPush(.upstream(), at: repositoryURL)
 		try requestRunGit(["reset", "--hard", "HEAD^"], at: repositoryURL)
 		try Data("replacement".utf8).write(to: repositoryURL.appending(path: "replacement.txt"))
 		try requestRunGit(["add", "replacement.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Replacement history"], at: repositoryURL)
 
 		try await repository.requestForcePush(
-			.upstream,
+			.upstream(),
 			expecting: try #require(
 				try await repository.requestBranches(at: repositoryURL).first(where: \.isCurrent)),
 			at: repositoryURL)

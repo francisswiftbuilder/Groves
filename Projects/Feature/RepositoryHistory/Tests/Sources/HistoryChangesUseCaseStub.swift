@@ -109,7 +109,13 @@ actor HistoryChangesUseCaseStub: RepositoryChangesUseCase {
 		fatalError()
 	}
 
-	func discard(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+	func prepareDiscard(for changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+		-> GitDiscardContext
+	{
+		GitDiscardContext(changes: changes, fingerprint: [])
+	}
+
+	func discard(_ context: GitDiscardContext, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		fatalError()

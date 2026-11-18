@@ -77,7 +77,9 @@ public protocol GitRepository: Sendable {
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws
-	func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws
+	func requestDiscardContext(for changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+		-> GitDiscardContext
+	func requestDiscard(_ context: GitDiscardContext, at repositoryURL: URL) async throws
 	func requestUnstageFromAmend(change: GitAmendChange, at repositoryURL: URL) async throws
 	func requestCommit(subject: String, body: String, amend: Bool, at repositoryURL: URL) async throws
 	func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws

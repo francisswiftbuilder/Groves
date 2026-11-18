@@ -11,6 +11,7 @@ struct WorkspaceAutomaticRefreshTests {
 		let gate: GitDiffGate
 		var revision = 1
 		var failures = 0
+		private(set) var lastReadReloadedMetadata = true
 
 		init(gate: GitDiffGate = GitDiffGate()) { self.gate = gate }
 
@@ -20,6 +21,17 @@ struct WorkspaceAutomaticRefreshTests {
 		}
 
 		func loadSnapshot(at repositoryURL: URL) async throws -> RepositorySnapshot {
+			try await load(reloadsMetadata: true)
+		}
+
+		func refreshWorkingTree(in snapshot: RepositorySnapshot, at repositoryURL: URL)
+			async throws -> RepositorySnapshot
+		{
+			try await load(reloadsMetadata: false)
+		}
+
+		private func load(reloadsMetadata: Bool) async throws -> RepositorySnapshot {
+			lastReadReloadedMetadata = reloadsMetadata
 			let revision = revision
 			let fails = failures > 0
 			if fails { failures -= 1 }
@@ -120,8 +132,8 @@ struct WorkspaceAutomaticRefreshTests {
 
 	@Test(
 		arguments: [
-			"index", "HEAD", "refs/heads/main", "packed-refs", "FETCH_HEAD", "refs/remotes/origin/main",
-			"refs/tags/v1.0.0",
+			".git/index", ".git/HEAD", ".git/refs/heads/main", ".git/packed-refs", ".git/FETCH_HEAD",
+			".git/refs/remotes/origin/main", ".git/refs/tags/v1.0.0", "Source.swift",
 		])
 	func gitMetadataRevalidatesDiffOnlyWhenItsBaseCanChange(path: String) async throws {
 		let content = ContentStub()
@@ -135,10 +147,14 @@ struct WorkspaceAutomaticRefreshTests {
 		}
 		model.onAppear(isSceneActive: true)
 		try await waitUntil { revalidations.count == 1 }
-		continuation.yield(["/repo/.git/\(path)"])
+		continuation.yield(["/repo/\(path)"])
 		try await waitUntil { revalidations.count == 2 }
 		#expect(
-			revalidations.last == ["index", "HEAD", "refs/heads/main", "packed-refs"].contains(path))
+			revalidations.last
+				== [".git/index", ".git/HEAD", ".git/refs/heads/main", ".git/packed-refs", "Source.swift"]
+				.contains(path))
+		#expect(
+			await content.lastReadReloadedMetadata == ![".git/index", "Source.swift"].contains(path))
 	}
 
 	@Test
@@ -200,8 +216,10 @@ struct WorkspaceAutomaticRefreshTests {
 		try await waitUntil { reference == nil }
 	}
 
-	@Test
-	func firstActivationRevalidatesContentThatWasLoadedInTheBackground() async throws {
+	@Test(arguments: [false, true])
+	func firstActivationRevalidatesContentThatWasLoadedInTheBackground(
+		loadsBeforeAppearance: Bool
+	) async throws {
 		let content = ContentStub()
 		let (events, continuation) = AsyncStream<[String]>.makeStream()
 		var paths: [String] = []
@@ -210,8 +228,9 @@ struct WorkspaceAutomaticRefreshTests {
 			model.onDisappear()
 			continuation.finish()
 		}
+		if !loadsBeforeAppearance { model.onAppear(isSceneActive: false) }
 		model.didProduceSnapshot(try await content.loadSnapshot(at: URL(fileURLWithPath: "/repo")))
-		model.onAppear(isSceneActive: false)
+		if loadsBeforeAppearance { model.onAppear(isSceneActive: false) }
 		await content.update(revision: 2)
 		model.didChangeSceneActivation(true)
 		try await waitUntil { paths == ["Revision2.swift"] }

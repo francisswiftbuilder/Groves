@@ -244,7 +244,8 @@ struct GitProcessSecurityTests {
 		try await repository.requestUnstage(change: try #require(staged.first), at: url)
 		let change = WorkingTreeChange(
 			path: path, previousPath: nil, indexState: .unchanged, workingTreeState: .modified)
-		try await repository.requestDiscard(change: change, at: url)
+		let discard = try await repository.requestDiscardContext(for: [change], at: url)
+		try await repository.requestDiscard(discard, at: url)
 		#expect(try String(contentsOf: selected, encoding: .utf8) == "base\n")
 		#expect(try String(contentsOf: unrelated, encoding: .utf8) == "changed\n")
 	}

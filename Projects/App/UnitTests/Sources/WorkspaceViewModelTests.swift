@@ -1,5 +1,7 @@
+import AppKit
 import DomainGitInterface
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import CoreRepositoryDiff
@@ -73,6 +75,47 @@ struct WorkspaceViewModelTests {
 			of: GitDiffGateLabel.workingTreeChanges,
 			in: contentGate
 		)
+	}
+
+	@Test
+	func nativeTabRefreshesAfterAnExternalSaveWithoutAnActiveSwiftUIScene() async throws {
+		let directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+			.appending(path: "GrovesHostedRefresh-\(UUID())", directoryHint: .isDirectory)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let contentGate = GitDiffGate()
+		let workspace = makeRepositoryWorkspace(repository: GitRepositoryStub(contentGate: contentGate))
+		workspace.viewModel.didChooseRepository(directory)
+		try await waitUntil { !workspace.viewModel.isLoading }
+		let controller = NSHostingController(
+			rootView: Text("Repository")
+				.modifier(
+					RepositoryMonitoringModifier(
+						viewModel: workspace.viewModel, syncViewModel: workspace.syncViewModel)
+				)
+				.environment(\.scenePhase, .background)
+				.environment(\.appearsActive, true))
+		let window = NSWindow(
+			contentRect: NSRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled],
+			backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentViewController = controller
+		controller.viewWillAppear()
+		controller.viewDidAppear()
+		window.makeKeyAndOrderFront(nil)
+		defer {
+			controller.viewWillDisappear()
+			controller.viewDidDisappear()
+			window.close()
+			workspace.viewModel.onDisappear()
+			workspace.onDisappear()
+		}
+		controller.view.layoutSubtreeIfNeeded()
+		try await Task.sleep(for: .milliseconds(200))
+
+		try Data("external edit".utf8).write(to: directory.appending(path: "External.txt"))
+		try await waitUntilCallCount(
+			2, of: GitDiffGateLabel.workingTreeChanges, in: contentGate, timeout: .seconds(5))
 	}
 
 	@Test
@@ -673,12 +716,13 @@ struct WorkspaceViewModelTests {
 			for: [swiftChange, markdownChange]
 		)
 
-		guard case .discard(let pendingChanges) = workspace.changesViewModel.pendingConfirmation
+		try await waitUntil { workspace.changesViewModel.pendingConfirmation != nil }
+		guard case .discard(let context, _) = workspace.changesViewModel.pendingConfirmation
 		else {
 			Issue.record("Expected a discard confirmation")
 			return
 		}
-		#expect(pendingChanges == [swiftChange, markdownChange])
+		#expect(context.changes == [swiftChange, markdownChange])
 		#expect(workspace.changesViewModel.pendingConfirmation?.title == "Discard Changes to 2 Files?")
 
 		workspace.changesViewModel.didDismissPendingConfirmation()

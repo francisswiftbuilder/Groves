@@ -1,6 +1,7 @@
 import Foundation
 
 public struct GitCommitPlanInput: Equatable, Sendable {
+	public let branchReference: String?
 	public let headHash: String?
 	public let indexFingerprint: String
 	public let units: [GitCommitUnit]
@@ -8,8 +9,9 @@ public struct GitCommitPlanInput: Equatable, Sendable {
 
 	public init(
 		headHash: String?, indexFingerprint: String, units: [GitCommitUnit],
-		recentCommitMessages: [String] = []
+		recentCommitMessages: [String] = [], branchReference: String? = nil
 	) {
+		self.branchReference = branchReference
 		self.headHash = headHash
 		self.indexFingerprint = indexFingerprint
 		self.units = units
