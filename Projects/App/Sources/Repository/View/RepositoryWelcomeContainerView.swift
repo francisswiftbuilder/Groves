@@ -30,15 +30,22 @@ struct RepositoryWelcomeContainerView: View {
 			.listStyle(.sidebar)
 			.navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
 		} detail: {
-			switch source {
-			case .local:
-				localRepositories
-			case .remote:
-				RepositoryGitHubBrowserView(
-					accountViewModel: accountViewModel, isWorking: isWorking,
-					onOpenRepository: onOpenRepository, onClone: onCloneRepository,
-					onCancel: onCancel)
-			}
+			repositoryContent
+				.navigationSplitViewColumnWidth(min: 360, ideal: 600)
+		}
+		.navigationSplitViewStyle(.balanced)
+	}
+
+	@ViewBuilder
+	private var repositoryContent: some View {
+		switch source {
+		case .local:
+			localRepositories
+		case .remote:
+			RepositoryGitHubBrowserView(
+				accountViewModel: accountViewModel, isWorking: isWorking,
+				onOpenRepository: onOpenRepository, onClone: onCloneRepository,
+				onCancel: onCancel)
 		}
 	}
 
