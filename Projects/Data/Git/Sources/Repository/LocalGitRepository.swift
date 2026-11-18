@@ -239,11 +239,16 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			arguments: ["for-each-ref", "--sort=-committerdate", "--format=\(format)", "refs/heads"],
 			at: repositoryURL
 		)
-		let current = result.standardOutput.split(whereSeparator: \.isNewline)
-			.lazy.map { $0.split(separator: "\t", omittingEmptySubsequences: false) }
-			.first { $0.count == 10 && $0[2] == "*" }
+		var trackingReference: Substring?
+		for record in result.standardOutput.split(whereSeparator: \.isNewline) {
+			let fields = record.split(separator: "\t", omittingEmptySubsequences: false)
+			if fields.count == 10, fields[2] == "*" {
+				trackingReference = fields[9]
+				break
+			}
+		}
 		var customUpstreamHash: String?
-		if let trackingReference = current?.last, trackingReference.hasPrefix("refs/"),
+		if let trackingReference, trackingReference.hasPrefix("refs/"),
 			!trackingReference.hasPrefix("refs/remotes/")
 		{
 			let tracking = try await runner.requestRun(
