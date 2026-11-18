@@ -15,6 +15,7 @@ public protocol RepositoryOperationsUseCase: Sendable {
 	func resolve(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
+		expecting content: GitConflictContent,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot
 	func loadConflictContent(

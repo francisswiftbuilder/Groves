@@ -169,17 +169,34 @@ final class GitAccountViewModel {
 		isLoadingRepositories = false
 	}
 
-	func loadRepositoryPreview(
+	func loadRepositoryFiles(
 		for repository: GitHubRepository, account: GitCredentialDescriptor
-	) async throws -> GitHubRepositoryPreview {
+	) async throws -> [GitHubRepositoryFile] {
+		try await loadRepositorySection(for: account) { token in
+			try await client.repositoryFiles(for: repository, token: token)
+		}
+	}
+
+	func loadRepositoryReadme(
+		for repository: GitHubRepository, account: GitCredentialDescriptor
+	) async throws -> GitHubRepositoryReadme {
+		try await loadRepositorySection(for: account) { token in
+			try await client.repositoryReadme(for: repository, token: token)
+		}
+	}
+
+	private func loadRepositorySection<Value>(
+		for account: GitCredentialDescriptor, load: (String) async throws -> Value
+	) async throws -> Value {
 		guard self.account == account else { throw CancellationError() }
+		let revision = repositoryAccessRevision
 		guard let token = try store.secret(for: account) else {
 			throw GitHubAccountSelectionError.accountUnavailable
 		}
-		let preview = try await client.repositoryPreview(for: repository, token: token)
+		let value = try await load(token)
 		try Task.checkCancellation()
-		guard self.account == account else { throw CancellationError() }
-		return preview
+		guard revision == repositoryAccessRevision else { throw CancellationError() }
+		return value
 	}
 
 	func beginAddingAccount() {

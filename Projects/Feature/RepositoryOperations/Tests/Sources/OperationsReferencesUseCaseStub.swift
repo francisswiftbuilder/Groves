@@ -125,7 +125,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		try await createTagOperation(name, message, commitHash, repositoryURL)
 	}
 
-	func deleteTag(named name: String, at repositoryURL: URL) async throws
+	func deleteTag(_ tag: GitTag, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		fatalError()
@@ -135,14 +135,19 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		fatalError()
 	}
 
-	func fetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws
-		-> RepositorySnapshot
-	{
-		fetchAllInteractionHandler(allowsUserInteraction)
+	func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot {
+		fetchAllInteractionHandler(true)
 		return try await fetchAllOperation(repositoryURL)
 	}
 
-	func preparePull(at repositoryURL: URL) async throws -> RepositoryPullPreparation {
+	func fetchAutomatically(at repositoryURL: URL) async throws {
+		fetchAllInteractionHandler(false)
+		_ = try await fetchAllOperation(repositoryURL)
+	}
+
+	func preparePull(expecting branch: GitBranch, at repositoryURL: URL) async throws
+		-> RepositoryPullPreparation
+	{
 		try await preparePullOperation(repositoryURL)
 	}
 

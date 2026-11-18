@@ -28,6 +28,45 @@ struct ConflictViewModelTests {
 		#expect(!viewModel.isLoadingContent)
 	}
 
+	@Test(arguments: [GitConflictResolution.ours, .theirs])
+	func wholeFileResolutionRequiresAndForwardsTheReviewedContents(resolution: GitConflictResolution)
+		async throws
+	{
+		let conflict = makeConflict()
+		let displayed = GitConflictContent(
+			base: "base", current: "current", incoming: "incoming", workingTree: "reviewed", hunks: [])
+		let repository = URL(fileURLWithPath: "/tmp/GrovesConflict")
+		let snapshot = RepositorySnapshot(
+			changes: [], amendChanges: [], commits: [], branches: [], remotes: [],
+			operationState: .normal, tags: [], stashes: [], fileTree: [])
+		var results: [RepositorySnapshot] = []
+		let viewModel = makeViewModel(
+			operationsUseCase: ConflictOperationsUseCaseStub(
+				conflictContentOperation: { _, _ in displayed },
+				resolveOperation: { selected, action, expected, url in
+					#expect(selected == conflict)
+					#expect(action == resolution)
+					#expect(expected == displayed)
+					#expect(url == repository)
+					return snapshot
+				}),
+			repositoryURL: repository, didProduceSnapshot: { results.append($0) })
+
+		viewModel.didSelectConflict(conflict)
+		#expect(viewModel.isLoadingContent)
+		#expect(!viewModel.canResolveFile(conflict))
+		viewModel.didResolve(conflict, using: resolution)
+		#expect(!viewModel.isLoading)
+		try await waitUntil { viewModel.content == displayed && !viewModel.isLoadingContent }
+
+		#expect(viewModel.canResolveFile(conflict))
+		viewModel.didResolve(conflict, using: resolution)
+		try await waitUntil { !viewModel.isLoading }
+
+		#expect(results.count == 1)
+		#expect(results.first?.operationState == .normal)
+	}
+
 	@Test
 	func testOpenInEditorUsesInjectedBundleIdentifier() throws {
 		let repositoryURL = try makeRepositoryDirectory()
@@ -114,7 +153,8 @@ struct ConflictViewModelTests {
 		repositoryURL: URL = URL(fileURLWithPath: "/tmp/Groves"),
 		openExternalEditor: (@MainActor (URL, String?) throws -> Void)? = nil,
 		externalEditorBundleIdentifier: @escaping @MainActor () -> String? = { nil },
-		didReceiveError: @escaping @MainActor (String) -> Void = { _ in }
+		didReceiveError: @escaping @MainActor (String) -> Void = { _ in },
+		didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void = { _ in }
 	) -> ConflictViewModel {
 		ConflictViewModel(
 			dependencies: ConflictViewModel.Dependencies(
@@ -125,7 +165,7 @@ struct ConflictViewModelTests {
 				externalEditorBundleIdentifier: externalEditorBundleIdentifier
 			),
 			actions: ConflictViewModel.Actions(
-				didProduceSnapshot: { _ in },
+				didProduceSnapshot: didProduceSnapshot,
 				didReceiveError: didReceiveError
 			)
 		)

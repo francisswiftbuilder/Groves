@@ -145,11 +145,11 @@ actor GitProcessRunner {
 		let standardInputPipe = standardInput.map { _ in Pipe() }
 		process.standardInput = standardInputPipe ?? FileHandle.nullDevice
 
-		let standardOutputCollector = GitProcessOutputCollector(
+		let standardOutputCollector = try GitProcessOutputCollector(
 			pipe: standardOutputPipe,
 			label: "stdout"
 		)
-		let standardErrorCollector = GitProcessOutputCollector(
+		let standardErrorCollector = try GitProcessOutputCollector(
 			pipe: standardErrorPipe,
 			label: "stderr"
 		)
@@ -283,6 +283,12 @@ actor GitProcessRunner {
 			result = result.filter { key, _ in
 				!key.hasPrefix("GIT_") && !key.hasPrefix("GROVES_") && !key.hasPrefix("SSH_")
 					&& !key.hasPrefix("DYLD_")
+			}
+			for (key, value) in environment
+			where key == "GIT_CONFIG_COUNT"
+				|| key.hasPrefix("GIT_CONFIG_KEY_") || key.hasPrefix("GIT_CONFIG_VALUE_")
+			{
+				result[key] = value
 			}
 			result["GIT_CONFIG_GLOBAL"] = configurationURL.path
 			result["GIT_CONFIG_NOSYSTEM"] = "1"
@@ -444,10 +450,11 @@ actor GitProcessRunner {
 					guard didStart, let standardInput, let standardInputPipe else { return }
 					Self.write(standardInput, to: standardInputPipe)
 				}
-				let standardOutput = await standardOutputCollector.data()
-				let standardError = await standardErrorCollector.data()
+				async let standardOutput = standardOutputCollector.finish()
+				async let standardError = standardErrorCollector.finish()
+				let output = await (status, standardOutput, standardError)
 				try Task.checkCancellation()
-				return (status, standardOutput, standardError)
+				return output
 			} catch {
 				lifecycle.cancel()
 				await lifecycle.waitForCancellation()

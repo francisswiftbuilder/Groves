@@ -37,6 +37,7 @@ struct GitAccountViewModelTests {
 
 	final class AuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
 		private static let cacheTestRepositoryRequests = Mutex(0)
+		private static let rateLimitTestRequests = Mutex(0)
 
 		static var repositoryRequestCount: Int {
 			cacheTestRepositoryRequests.withLock { $0 }
@@ -49,7 +50,13 @@ struct GitAccountViewModelTests {
 			let authorization = request.value(forHTTPHeaderField: "Authorization")
 			if authorization == "Bearer slow-test-token" { return }
 			let login = authorization == "Bearer different-test-token" ? "different" : "octocat"
-			let status = authorization == "Bearer invalid-test-token" ? 401 : 200
+			var status = authorization == "Bearer invalid-test-token" ? 401 : 200
+			if request.url?.path == "/user/repos", authorization == "Bearer cache-rate-limit-token" {
+				status = Self.rateLimitTestRequests.withLock {
+					$0 += 1
+					return $0 == 1 ? 200 : 429
+				}
+			}
 			let response = HTTPURLResponse(
 				url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
 			let body: String
@@ -267,6 +274,23 @@ struct GitAccountViewModelTests {
 
 		#expect(try await viewModel.loadRepositories(for: account, forceRefresh: true) == firstList)
 		#expect(AuthenticationURLProtocol.repositoryRequestCount == previousRequests + 2)
+	}
+
+	@Test
+	func repositoryDiscoveryKeepsCachedResultsWhenARefreshIsRateLimited() async throws {
+		let context = try makeContext()
+		let account = GitCredentialDescriptor(kind: .https, host: "github.com", account: "octocat")
+		try context.store.save(secret: "cache-rate-limit-token", for: account)
+		let viewModel = context.viewModel
+		viewModel.switchAccount(to: account)
+		let repositories = try await viewModel.loadRepositories(for: account)
+
+		await #expect(throws: GitHubAuthenticationError.rateLimited) {
+			_ = try await viewModel.loadRepositories(for: account, forceRefresh: true)
+		}
+		#expect(viewModel.accessibleRepositories == repositories)
+		#expect(
+			viewModel.repositoryLoadError == GitHubAuthenticationError.rateLimited.localizedDescription)
 	}
 
 	@Test

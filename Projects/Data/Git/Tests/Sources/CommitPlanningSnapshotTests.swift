@@ -7,17 +7,25 @@ struct CommitPlanningSnapshotTests {
 	private actor Repository: GitCommitPlanningRepository {
 		var input: GitCommitPlanInput
 		private(set) var reads = 0
+		private(set) var commits = 0
+		private let acceptsCommit: Bool
 
-		init(input: GitCommitPlanInput) { self.input = input }
+		init(input: GitCommitPlanInput, acceptsCommit: Bool = false) {
+			self.input = input
+			self.acceptsCommit = acceptsCommit
+		}
 		func replace(_ input: GitCommitPlanInput) { self.input = input }
 		func requestCommitPlanInput(at repositoryURL: URL) async throws -> GitCommitPlanInput {
 			reads += 1
+			if commits > 0 { throw GitRepositoryError.invalidOutput }
 			return input
 		}
 		func requestCommitTask(
 			_ task: GitCommitTask, expecting input: GitCommitPlanInput, at repositoryURL: URL
 		) async throws {
-			throw GitRepositoryError.invalidOutput
+			guard acceptsCommit else { throw GitRepositoryError.invalidOutput }
+			#expect(input == self.input)
+			commits += 1
 		}
 	}
 
@@ -57,6 +65,32 @@ struct CommitPlanningSnapshotTests {
 			try await useCase.loadPlan(at: URL(fileURLWithPath: "/tmp/Repository"))
 		}
 		#expect(await repository.reads == 2)
+	}
+
+	@Test(arguments: [false, true])
+	func refreshErrorIsReportedAsPostCommitOnlyWhenGitAcceptedTheCommit(acceptsCommit: Bool)
+		async throws
+	{
+		let input = makeInput()
+		let repository = Repository(input: input, acceptsCommit: acceptsCommit)
+		let useCase = DefaultRepositoryCommitPlanningUseCase(
+			repository: repository, generator: Generator { makePlan($0) })
+		let plan = makePlan(input)
+		let task = try #require(plan.tasks.first)
+		let url = URL(fileURLWithPath: "/tmp/Repository")
+
+		do {
+			_ = try await useCase.commit(task, from: plan, at: url)
+			Issue.record("Expected Git or refresh to fail")
+		} catch GitCommitPlanError.committedButRefreshFailed(let reason) {
+			#expect(acceptsCommit)
+			#expect(reason == GitRepositoryError.invalidOutput.localizedDescription)
+		} catch GitRepositoryError.invalidOutput {
+			#expect(!acceptsCommit)
+		}
+
+		#expect(await repository.commits == (acceptsCommit ? 1 : 0))
+		#expect(await repository.reads == (acceptsCommit ? 1 : 0))
 	}
 
 	private func makeInput() -> GitCommitPlanInput {

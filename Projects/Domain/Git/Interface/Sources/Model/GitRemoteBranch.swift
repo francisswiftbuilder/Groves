@@ -6,6 +6,7 @@ public struct GitRemoteBranch: Identifiable, Hashable, Sendable {
 	public let remoteName: String
 	public let shortHash: String
 	public let hash: String
+	public let pushURLs: [String]
 
 	public var id: String { fullName }
 
@@ -14,12 +15,14 @@ public struct GitRemoteBranch: Identifiable, Hashable, Sendable {
 		fullName: String,
 		remoteName: String,
 		shortHash: String,
-		hash: String
+		hash: String,
+		pushURLs: [String] = []
 	) {
 		self.name = name
 		self.fullName = fullName
 		self.remoteName = remoteName
 		self.shortHash = shortHash
 		self.hash = hash
+		self.pushURLs = pushURLs
 	}
 }

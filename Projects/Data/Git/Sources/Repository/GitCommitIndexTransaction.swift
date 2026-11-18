@@ -3,10 +3,12 @@ import Foundation
 
 final class GitCommitIndexTransaction {
 	let temporaryIndexURL: URL
+	private let indexURL: URL
 	private let lockURL: URL
 	private var ownsLock = false
 
 	init(indexURL: URL) throws {
+		self.indexURL = indexURL
 		lockURL = indexURL.appendingPathExtension("lock")
 		temporaryIndexURL = indexURL.deletingLastPathComponent()
 			.appending(path: "groves-commit-\(UUID().uuidString).index")
@@ -16,6 +18,12 @@ final class GitCommitIndexTransaction {
 		}
 		ownsLock = true
 		close(descriptor)
+	}
+
+	func installIndex() throws {
+		guard rename(temporaryIndexURL.path, indexURL.path) == 0 else {
+			throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+		}
 	}
 
 	deinit {

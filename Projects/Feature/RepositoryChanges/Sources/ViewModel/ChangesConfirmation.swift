@@ -14,7 +14,7 @@ public enum ChangesConfirmation {
 	}
 
 	public var message: String {
-		"Uncommitted changes in the selected files will be permanently discarded."
+		"Existing versions of the selected files will be moved to the Trash. Staged changes will be kept."
 	}
 
 	public var actionTitle: String {

@@ -13,12 +13,12 @@ public final class RepositorySyncViewModel {
 	public struct Actions {
 		public let didProduceSnapshot: @MainActor (RepositorySnapshot) -> Void
 		public let didReceiveError: @MainActor (String) -> Void
-		public let didFetchAutomatically: (@MainActor () -> Void)?
+		public let didFetchAutomatically: @MainActor () -> Void
 
 		public init(
 			didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void,
 			didReceiveError: @escaping @MainActor (String) -> Void,
-			didFetchAutomatically: (@MainActor () -> Void)? = nil
+			didFetchAutomatically: @escaping @MainActor () -> Void = {}
 		) {
 			self.didProduceSnapshot = didProduceSnapshot
 			self.didReceiveError = didReceiveError
@@ -126,7 +126,7 @@ public final class RepositorySyncViewModel {
 	@ObservationIgnored private var activityPresentationTask: Task<Void, Never>?
 	@ObservationIgnored private var automaticFetchTask: Task<Void, Never>?
 	private var isAutomaticFetch = false
-	private var forcePushContext: (repositoryURL: URL, branch: GitBranch)?
+	private var forcePushContext: (repositoryURL: URL, branch: GitBranch, remotes: [GitRemote])?
 	private var activeNetworkRequestID: Int?
 	private var networkRequestSequence = 0
 
@@ -253,24 +253,26 @@ public final class RepositorySyncViewModel {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
 		let referencesUseCase = dependencies.referencesUseCase
 		requestNetworkMutation(activity: .fetchAll, isAutomatic: true) {
-			try await referencesUseCase.fetchAll(at: repositoryURL, allowsUserInteraction: false)
+			try await referencesUseCase.fetchAutomatically(at: repositoryURL)
+			return nil
 		}
 	}
 
 	public func didRequestPull() {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
+			let currentBranch,
 			canPull
 		else { return }
 		networkTask?.cancel()
-		let requestID = beginNetworkRequest(activity: .pull(currentBranch?.name))
+		let requestID = beginNetworkRequest(activity: .pull(currentBranch.name))
 		let referencesUseCase = dependencies.referencesUseCase
 		networkTask = Task { [weak self] in
 			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
 				try Task.checkCancellation()
 				let preparation = try await referencesUseCase.preparePull(
-					at: repositoryURL
+					expecting: currentBranch, at: repositoryURL
 				)
 				try Task.checkCancellation()
 				guard let self, self.activeNetworkRequestID == requestID,
@@ -365,7 +367,7 @@ public final class RepositorySyncViewModel {
 		guard !isLoading, pushAction != .unavailable, let currentBranch,
 			let repositoryURL = dependencies.repositoryURL()
 		else { return }
-		forcePushContext = (repositoryURL, currentBranch)
+		forcePushContext = (repositoryURL, currentBranch, remotes)
 		pendingConfirmation = .forcePush(remoteName: remoteName)
 	}
 
@@ -403,17 +405,18 @@ public final class RepositorySyncViewModel {
 					"The repository or branch has changed. Review the branch before force pushing.")
 				return
 			}
-			requestForcePush(remoteName: remoteName, expecting: context.branch)
+			requestForcePush(remoteName: remoteName, expecting: context.branch, remotes: context.remotes)
 		}
 	}
 
-	private func requestForcePush(remoteName: String?, expecting branch: GitBranch) {
+	private func requestForcePush(
+		remoteName: String?, expecting branch: GitBranch, remotes: [GitRemote]
+	) {
 		guard
 			let repositoryURL = dependencies.repositoryURL(),
 			pushAction != .unavailable
 		else { return }
 		let referencesUseCase = dependencies.referencesUseCase
-		let remotes = remotes
 		let operationState = operationState
 		requestNetworkMutation(activity: .forcePush(branch.name)) {
 			try await referencesUseCase.forcePush(
@@ -429,7 +432,7 @@ public final class RepositorySyncViewModel {
 	private func requestNetworkMutation(
 		activity: Activity,
 		isAutomatic: Bool = false,
-		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot
+		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot?
 	) {
 		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		networkTask?.cancel()
@@ -444,9 +447,9 @@ public final class RepositorySyncViewModel {
 				guard let self, self.activeNetworkRequestID == requestID,
 					self.dependencies.repositoryURL() == expectedRepositoryURL
 				else { return }
-				if isAutomatic, let didFetchAutomatically = actions.didFetchAutomatically {
-					didFetchAutomatically()
-				} else {
+				if isAutomatic {
+					actions.didFetchAutomatically()
+				} else if let snapshot {
 					actions.didProduceSnapshot(snapshot)
 				}
 			} catch is CancellationError {
@@ -460,12 +463,9 @@ public final class RepositorySyncViewModel {
 				if isAutomatic {
 					Self.logger.warning(
 						"Automatic fetch failed: \(error.localizedDescription, privacy: .private)")
+					actions.didFetchAutomatically()
 				} else {
 					actions.didReceiveError(error.localizedDescription)
-				}
-				if isAutomatic, let didFetchAutomatically = actions.didFetchAutomatically {
-					didFetchAutomatically()
-				} else {
 					await restoreSnapshot(at: expectedRepositoryURL, requestID: requestID)
 				}
 			}

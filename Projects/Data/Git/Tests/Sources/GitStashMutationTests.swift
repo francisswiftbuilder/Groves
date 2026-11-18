@@ -47,6 +47,74 @@ struct GitStashMutationTests {
 		}
 	}
 
+	@Test(arguments: [false, true])
+	func externalStashWriterCannotShiftAnEntryAfterVerification(pop: Bool) async throws {
+		let context = try await makeContext()
+		let older = try await push("older", in: context)
+		let selected = try await push("selected", in: context)
+		let marker = context.url.appending(path: ".git/external-writer-rejected")
+		let executable = context.url.appending(path: ".git/concurrent-git")
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" update-ref refs/groves/stash-recovery/"*)
+		    if /usr/bin/git -C '\(context.url.path)' -c core.filesRefLockTimeout=0 stash store -m external '\(older.hash)' 2>'\(marker.path).stderr'; then
+		      exit 91
+		    fi
+		    /usr/bin/grep -q 'refs/stash.lock' '\(marker.path).stderr' || exit 92
+		    touch '\(marker.path)'
+		    ;;
+		esac
+		exec /usr/bin/git "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let repository = LocalGitRepository(
+			runner: GitProcessRunner(
+				configuration: GitProcessConfiguration(
+					executableURL: executable,
+					globalConfigurationURL: context.url.appending(path: ".git/review.config"))))
+
+		let outcome =
+			if pop { try await repository.requestPopStash(selected, at: context.url) } else {
+				try await repository.requestDropStash(selected, at: context.url)
+			}
+
+		#expect(outcome == .completed)
+		#expect(FileManager.default.fileExists(atPath: marker.path))
+		#expect(try await repository.requestStashes(at: context.url).map(\.hash) == [older.hash])
+		#expect(
+			try await run(["rev-parse", "refs/groves/stash-recovery/\(selected.hash)"], in: context)
+				== selected.hash)
+		let file = context.url.appending(path: "tracked.txt")
+		#expect(try String(contentsOf: file, encoding: .utf8) == (pop ? "selected\n" : "base\n"))
+		_ = try await run(["stash", "store", "-m", "external", selected.hash], in: context)
+		#expect(
+			try await repository.requestStashes(at: context.url).map(\.hash) == [
+				selected.hash, older.hash,
+			])
+	}
+
+	@Test(arguments: [false, true])
+	func reftableStashRemainsUnchangedWhenSafeDeletionIsUnavailable(pop: Bool) async throws {
+		let context = try await makeContext(referenceFormat: "reftable")
+		let selected = try await push("selected", in: context)
+
+		await #expect(throws: GitRepositoryError.self) {
+			if pop {
+				try await context.repository.requestPopStash(selected, at: context.url)
+			} else {
+				try await context.repository.requestDropStash(selected, at: context.url)
+			}
+		}
+
+		#expect(try await context.repository.requestStashes(at: context.url) == [selected])
+		let file = context.url.appending(path: "tracked.txt")
+		#expect(try String(contentsOf: file, encoding: .utf8) == "base\n")
+		#expect(try await run(["status", "--porcelain"], in: context).isEmpty)
+		try await context.repository.requestApplyStash(selected, at: context.url)
+		#expect(try String(contentsOf: file, encoding: .utf8) == "selected\n")
+	}
+
 	@Test
 	func droppingAStashCannotInterleaveWithAnActivePop() async throws {
 		let context = try await makeContext()
@@ -253,7 +321,7 @@ struct GitStashMutationTests {
 		try """
 		#!/bin/sh
 		case " $* " in
-		  *" stash drop "*)
+		  *" update-ref refs/groves/stash-recovery/"*)
 		    touch '\(marker.path)'
 		    exec /bin/sleep 30
 		    ;;
@@ -280,7 +348,7 @@ struct GitStashMutationTests {
 		try await context.repository.requestStage(path: "tracked.txt", at: context.url)
 	}
 
-	private func makeContext() async throws -> Context {
+	private func makeContext(referenceFormat: String = "files") async throws -> Context {
 		let url = FileManager.default.temporaryDirectory.appending(
 			path: "GrovesStashMutation-\(UUID().uuidString)")
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -289,7 +357,8 @@ struct GitStashMutationTests {
 			configuration: GitProcessConfiguration(globalConfigurationURL: identity),
 			credentialStore: GitCredentialPersistingStub())
 		let context = Context(url: url, runner: runner)
-		_ = try await runner.requestRun(arguments: ["init", "--quiet"], at: url)
+		_ = try await runner.requestRun(
+			arguments: ["init", "--quiet", "--ref-format=\(referenceFormat)"], at: url)
 		try GitIdentityConfiguration(name: "Review", email: "review@example.com").save(to: identity)
 		try Data("base\n".utf8).write(to: url.appending(path: "tracked.txt"))
 		_ = try await runner.requestRun(arguments: ["add", "tracked.txt"], at: url)

@@ -4,6 +4,7 @@ public struct GitRemote: Identifiable, Hashable, Sendable {
 	public let name: String
 	public let fetchURLs: [String]
 	public let pushURLs: [String]
+	public let effectivePushURLs: [String]
 	public let branches: [GitRemoteBranch]
 
 	public var id: String { name }
@@ -26,11 +27,13 @@ public struct GitRemote: Identifiable, Hashable, Sendable {
 	}
 
 	public init(
-		name: String, fetchURLs: [String], pushURLs: [String], branches: [GitRemoteBranch] = []
+		name: String, fetchURLs: [String], pushURLs: [String], branches: [GitRemoteBranch] = [],
+		effectivePushURLs: [String]? = nil
 	) {
 		self.name = name
 		self.fetchURLs = fetchURLs
 		self.pushURLs = pushURLs
+		self.effectivePushURLs = effectivePushURLs ?? (pushURLs.isEmpty ? fetchURLs : pushURLs)
 		self.branches = branches
 	}
 }

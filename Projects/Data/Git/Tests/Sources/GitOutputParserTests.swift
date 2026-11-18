@@ -891,18 +891,23 @@ struct GitOutputParserTests {
 		try requestRunGit(["remote", "add", "origin", remoteURL.path], at: repositoryURL)
 		let branchName = try currentBranch(at: repositoryURL)
 		let repository = LocalGitRepository()
+		func preparePull() async throws -> RepositoryPullOutcome {
+			let branch = try #require(
+				try await repository.requestBranches(at: repositoryURL).first(where: \.isCurrent))
+			return try await repository.requestPreparePull(expecting: branch, at: repositoryURL)
+		}
 		try await repository.requestPush(
 			.setUpstream(remoteName: "origin", branchName: branchName),
 			at: repositoryURL
 		)
 
-		let upToDateOutcome = try await repository.requestPreparePull(at: repositoryURL)
+		let upToDateOutcome = try await preparePull()
 		#expect(upToDateOutcome == .upToDate)
 
 		try Data("local-ahead".utf8).write(to: repositoryURL.appending(path: "local-ahead.txt"))
 		try requestRunGit(["add", "local-ahead.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Local ahead"], at: repositoryURL)
-		let aheadOutcome = try await repository.requestPreparePull(at: repositoryURL)
+		let aheadOutcome = try await preparePull()
 		#expect(aheadOutcome == .aheadOnly(aheadCount: 1))
 		try await repository.requestPush(.upstream(), at: repositoryURL)
 
@@ -913,7 +918,7 @@ struct GitOutputParserTests {
 		try requestRunGit(["add", "remote-behind.txt"], at: peerURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Remote behind"], at: peerURL)
 		try requestRunGit(["push", "--quiet"], at: peerURL)
-		let fastForwardOutcome = try await repository.requestPreparePull(at: repositoryURL)
+		let fastForwardOutcome = try await preparePull()
 		#expect(fastForwardOutcome == .fastForwarded)
 
 		try Data("local-diverged".utf8).write(
@@ -929,9 +934,7 @@ struct GitOutputParserTests {
 		try requestRunGit(["push", "--quiet"], at: peerURL)
 
 		guard
-			case .diverged(let divergence) = try await repository.requestPreparePull(
-				at: repositoryURL
-			)
+			case .diverged(let divergence) = try await preparePull()
 		else {
 			Issue.record("Expected pull divergence")
 			return
@@ -999,7 +1002,7 @@ struct GitOutputParserTests {
 			.upstream(),
 			expecting: try #require(
 				try await repository.requestBranches(at: repositoryURL).first(where: \.isCurrent)),
-			at: repositoryURL)
+			remotes: repository.requestRemotes(at: repositoryURL), at: repositoryURL)
 
 		let localHash = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
 			.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1151,7 +1154,8 @@ struct GitOutputParserTests {
 		try requestRunGit(["tag", "release/1.0.0"], at: repositoryURL)
 		let repository = LocalGitRepository()
 
-		try await repository.requestDeleteTag(named: "release/1.0.0", at: repositoryURL)
+		try await repository.requestDeleteTag(
+			#require(try await repository.requestTags(at: repositoryURL).first), at: repositoryURL)
 
 		let tags = try await repository.requestTags(at: repositoryURL)
 		#expect(!(tags.contains(where: { $0.name == "release/1.0.0" })))
@@ -1203,7 +1207,10 @@ struct GitOutputParserTests {
 		#expect(restoredState.operation?.kind == .merge)
 
 		let repository = LocalGitRepository()
-		try await repository.requestResolveConflict(conflict, using: .theirs, at: repositoryURL)
+		try await repository.requestResolveConflict(
+			conflict, using: .theirs,
+			expecting: repository.requestConflictContent(for: conflict, at: repositoryURL),
+			at: repositoryURL)
 		let resolvedState = try await repository.requestOperationState(at: repositoryURL)
 		#expect(resolvedState.conflicts.isEmpty)
 		#expect(resolvedState.operation?.kind == .merge)
@@ -1256,7 +1263,10 @@ struct GitOutputParserTests {
 		try await repository.requestRebase(onto: baseBranch, at: repositoryURL)
 		let conflictedState = try await repository.requestOperationState(at: repositoryURL)
 		let conflict = try #require(conflictedState.conflicts.first)
-		try await repository.requestResolveConflict(conflict, using: .theirs, at: repositoryURL)
+		try await repository.requestResolveConflict(
+			conflict, using: .theirs,
+			expecting: repository.requestConflictContent(for: conflict, at: repositoryURL),
+			at: repositoryURL)
 		try await repository.requestPerformOperationAction(.continue, for: .rebase, at: repositoryURL)
 
 		let state = try await repository.requestOperationState(at: repositoryURL)

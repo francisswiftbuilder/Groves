@@ -242,7 +242,7 @@ struct RepositoryUseCaseTests {
 		)
 
 		let snapshot = try await useCase.deleteTag(
-			named: "release/1.0.0",
+			GitTag(name: "release/1.0.0", shortHash: "123", targetHash: "123", date: nil, subject: ""),
 			at: repositoryURL
 		)
 		let events = await recorder.recordedEvents()

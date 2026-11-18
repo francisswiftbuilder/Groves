@@ -3,6 +3,7 @@ import Foundation
 public enum GitCommitPlanError: LocalizedError {
 	case noStagedChanges
 	case repositoryChanged
+	case committedButRefreshFailed(String)
 	case invalidPlan
 	case generationFailed
 	case modelUnavailable(String)
@@ -14,6 +15,8 @@ public enum GitCommitPlanError: LocalizedError {
 			"Stage the changes you want to organize, then try again."
 		case .repositoryChanged:
 			"The branch or staged changes have changed. Organize the current changes again before committing."
+		case .committedButRefreshFailed(let reason):
+			"The commit was created, but the remaining changes couldn’t be reloaded. \(reason)"
 		case .invalidPlan:
 			"The suggested commits couldn’t be verified. Try organizing your changes again."
 		case .generationFailed:

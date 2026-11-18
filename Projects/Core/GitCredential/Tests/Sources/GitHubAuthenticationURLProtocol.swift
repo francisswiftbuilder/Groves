@@ -7,10 +7,17 @@ final class GitHubAuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
 	override func startLoading() {
 		let authorization = request.value(forHTTPHeaderField: "Authorization")
 		var status =
-			authorization == "Bearer valid-test-token"
+			["Bearer valid-test-token", "Bearer readme-service-error", "Bearer files-service-error"]
+				.contains(authorization ?? "")
 			? 200 : authorization == "Bearer forbidden-test-token" ? 403 : 401
 		var body = #"{"login":"octocat","id":42,"name":"Test User","email":null}"#
 		var headers: [String: String] = [:]
+		if authorization == "Bearer rate-limited-403-token" {
+			status = 403
+			headers["Retry-After"] = "60"
+		} else if authorization == "Bearer rate-limited-429-token" {
+			status = 429
+		}
 		if let url = request.url, url.path == "/user/repos" {
 			let queries = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
 			if url.host != "api.github.com"
@@ -39,6 +46,7 @@ final class GitHubAuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
 		} else if status == 200 {
 			switch request.url?.path {
 			case "/repos/octocat/Local/contents":
+				if authorization == "Bearer files-service-error" { status = 503 }
 				body = """
 					[
 						{"name":"README.md","path":"README.md","type":"file","html_url":"https://github.com/octocat/Local/blob/main/README.md"},
@@ -46,6 +54,7 @@ final class GitHubAuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
 					]
 					"""
 			case "/repos/octocat/Local/readme":
+				if authorization == "Bearer readme-service-error" { status = 503 }
 				if request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.raw+json" {
 					body = "# Repository README\n\nExample text."
 				} else {

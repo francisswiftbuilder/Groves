@@ -22,7 +22,8 @@ struct OperationsUseCaseStub: RepositoryOperationsUseCase {
 		-> RepositorySnapshot
 	{ fatalError() }
 	func resolve(
-		_ conflict: GitConflict, using resolution: GitConflictResolution, at repositoryURL: URL
+		_ conflict: GitConflict, using resolution: GitConflictResolution,
+		expecting content: GitConflictContent, at repositoryURL: URL
 	) async throws -> RepositorySnapshot { fatalError() }
 	func loadConflictContent(for conflict: GitConflict, at repositoryURL: URL) async throws
 		-> GitConflictContent
