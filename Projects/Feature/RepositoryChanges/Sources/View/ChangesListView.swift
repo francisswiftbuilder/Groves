@@ -224,9 +224,11 @@ struct ChangesListView: View {
 		Button(conflictViewModel.oursResolutionLabel, systemImage: "arrow.down.doc") {
 			conflictViewModel.didResolve(conflict, using: .ours)
 		}
+		.disabled(!conflictViewModel.canResolveFile(conflict))
 		Button(conflictViewModel.theirsResolutionLabel, systemImage: "arrow.down.doc.fill") {
 			conflictViewModel.didResolve(conflict, using: .theirs)
 		}
+		.disabled(!conflictViewModel.canResolveFile(conflict))
 		Divider()
 		Button("Mark Resolved", systemImage: "checkmark.circle") {
 			conflictViewModel.didMarkResolved(conflict)

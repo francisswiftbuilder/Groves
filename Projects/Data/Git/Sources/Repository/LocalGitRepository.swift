@@ -4,13 +4,20 @@ import Foundation
 public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	private static let maximumPreviewByteCount = 10 * 1_024 * 1_024
 	private let runner: GitProcessRunner
+	private let archiveDiscardedFiles: @Sendable (URL) throws -> Void
 
 	public init(configuration: GitProcessConfiguration = GitProcessConfiguration()) {
-		runner = GitProcessRunner(configuration: configuration)
+		self.init(runner: GitProcessRunner(configuration: configuration))
 	}
 
-	init(runner: GitProcessRunner) {
+	init(
+		runner: GitProcessRunner,
+		archiveDiscardedFiles: @escaping @Sendable (URL) throws -> Void = {
+			try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
+		}
+	) {
 		self.runner = runner
+		self.archiveDiscardedFiles = archiveDiscardedFiles
 	}
 
 	private func diffOptionArguments(_ options: GitDiffOptions) -> [String] {
@@ -225,12 +232,28 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 
 	public func requestBranches(at repositoryURL: URL) async throws -> [GitBranch] {
 		let format =
-			"%(refname:lstrip=2)\t%(objectname:short)\t%(HEAD)\t%(upstream:lstrip=2)\t%(upstream:track,nobracket)\t%(objectname)"
+			"%(refname:lstrip=2)\t%(objectname:short)\t%(HEAD)\t%(upstream:lstrip=2)\t"
+			+ "%(upstream:track,nobracket)\t%(objectname)\t%(push:remotename)\t"
+			+ "%(upstream:remotename)\t%(upstream:remoteref)\t%(upstream)"
 		let result = try await runner.requestRun(
 			arguments: ["for-each-ref", "--sort=-committerdate", "--format=\(format)", "refs/heads"],
 			at: repositoryURL
 		)
-		return GitOutputParser.parseBranches(result.standardOutput)
+		let current = result.standardOutput.split(whereSeparator: \.isNewline)
+			.lazy.map { $0.split(separator: "\t", omittingEmptySubsequences: false) }
+			.first { $0.count == 10 && $0[2] == "*" }
+		var customUpstreamHash: String?
+		if let trackingReference = current?.last, trackingReference.hasPrefix("refs/"),
+			!trackingReference.hasPrefix("refs/remotes/")
+		{
+			let tracking = try await runner.requestRun(
+				arguments: ["rev-parse", "--verify", "--quiet", "\(trackingReference)^{commit}"],
+				at: repositoryURL, acceptedTerminationStatuses: [0, 1])
+			let hash = tracking.standardOutput.trimmingCharacters(in: .newlines)
+			if !hash.isEmpty { customUpstreamHash = hash }
+		}
+		return GitOutputParser.parseBranches(
+			result.standardOutput, currentCustomUpstreamHash: customUpstreamHash)
 	}
 
 	public func requestOperationState(at repositoryURL: URL) async throws
@@ -308,14 +331,26 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		let branches = GitOutputParser.parseRemoteBranches(
 			branchResult.standardOutput, remoteNames: remotes.map(\.name))
 
-		return remotes.map { remote in
-			GitRemote(
-				name: remote.name,
-				fetchURLs: remote.fetchURLs,
-				pushURLs: remote.pushURLs,
-				branches: branches.filter { $0.remoteName == remote.name }
-			)
+		var result: [GitRemote] = []
+		for remote in remotes {
+			let urls = try await requestRemoteURLs(
+				named: remote.name, usesPushURL: true, at: repositoryURL)
+			let safeURLs =
+				urls.contains(where: GitRemoteURLValidator.containsEmbeddedCredential) ? [] : urls
+			let remoteBranches = branches.filter { $0.remoteName == remote.name }.map { branch in
+				GitRemoteBranch(
+					name: branch.name, fullName: branch.fullName, remoteName: branch.remoteName,
+					shortHash: branch.shortHash, hash: branch.hash, pushURLs: safeURLs)
+			}
+			result.append(
+				GitRemote(
+					name: remote.name,
+					fetchURLs: remote.fetchURLs,
+					pushURLs: remote.pushURLs,
+					branches: remoteBranches,
+					effectivePushURLs: safeURLs))
 		}
+		return result
 	}
 
 	public func requestTags(at repositoryURL: URL) async throws -> [GitTag] {
@@ -647,18 +682,32 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				"The selected files have changed. Review their changes before discarding.")
 		}
 		let paths = discardPaths(for: changes)
+		let root = try await requestRepositoryRoot(at: repositoryURL).resolvingSymlinksInPath()
+		let metadata = try await discardMetadata(for: paths, at: root)
+		let files = try await discardFileFingerprint(for: paths, in: root, at: root)
+		return GitDiscardContext(changes: changes, fingerprint: metadata + files)
+	}
+
+	private func discardMetadata(for paths: [String], at repositoryURL: URL) async throws -> [String]
+	{
+		let branch = try await requestCommitPlanBranchReference(at: repositoryURL)
+		let head = try await requestCommitPlanHead(at: repositoryURL)
 		let index = try await runner.requestRun(
 			arguments: ["--literal-pathspecs", "ls-files", "--stage", "-z", "--"] + paths,
 			at: repositoryURL
 		).standardOutput
-		let branch = try await requestCommitPlanBranchReference(at: repositoryURL)
-		let head = try await requestCommitPlanHead(at: repositoryURL)
-		var fingerprint = [repositoryURL.path, branch ?? "", head ?? "", index]
+		return [repositoryURL.path, branch ?? "", head ?? "", index]
+	}
+
+	private func discardFileFingerprint(for paths: [String], in directory: URL, at repositoryURL: URL)
+		async throws -> [String]
+	{
+		var fingerprint: [String] = []
 		var regularPaths: [String] = []
 		let manager = FileManager.default
 		for path in paths {
 			try Task.checkCancellation()
-			let fileURL = repositoryURL.appending(path: path)
+			let fileURL = directory.appending(path: path)
 			let attributes: [FileAttributeKey: Any]
 			do {
 				attributes = try manager.attributesOfItem(atPath: fileURL.path)
@@ -670,7 +719,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			}
 			switch attributes[.type] as? FileAttributeType {
 			case .typeRegular:
-				regularPaths.append(path)
+				regularPaths.append(fileURL.path)
 				fingerprint.append("file \(attributes[.posixPermissions] as? Int ?? 0)")
 			case .typeSymbolicLink:
 				let target = try manager.destinationOfSymbolicLink(atPath: fileURL.path)
@@ -686,40 +735,134 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			).standardOutput
 			fingerprint.append(hashes)
 		}
-		return GitDiscardContext(changes: changes, fingerprint: fingerprint)
+		return fingerprint
 	}
 
 	public func requestDiscard(_ context: GitDiscardContext, at repositoryURL: URL) async throws {
 		try await requestMutation(at: repositoryURL) {
-			guard try await requestDiscardContext(for: context.changes, at: repositoryURL) == context
-			else {
-				throw GitRepositoryError.commandFailed(
-					"The selected files have changed. Review their changes before discarding.")
-			}
 			let affectedPaths = discardPaths(for: context.changes)
-
-			let trackedPathsResult = try await runner.requestRun(
-				arguments: ["--literal-pathspecs", "ls-files", "-z", "--"] + affectedPaths,
-				at: repositoryURL
+			guard !affectedPaths.isEmpty else { return }
+			let root = try await requestRepositoryRoot(at: repositoryURL).resolvingSymlinksInPath()
+			let metadata = try await discardMetadata(for: affectedPaths, at: root)
+			let changed = GitRepositoryError.commandFailed(
+				"The selected files have changed. Review their changes before discarding.")
+			guard context.fingerprint.starts(with: metadata) else { throw changed }
+			let gitDirectoryPath = try await runner.requestRun(
+				arguments: ["rev-parse", "--absolute-git-dir"], at: root
+			).standardOutput.trimmingCharacters(in: .newlines)
+			let transaction = try GitDiscardTransaction(
+				repositoryURL: root, gitDirectory: URL(fileURLWithPath: gitDirectoryPath, isDirectory: true)
 			)
-			let trackedPaths = trackedPathsResult.standardOutput
-				.split(separator: "\0")
-				.map(String.init)
-			let untrackedPaths = affectedPaths.filter { !trackedPaths.contains($0) }
-
+			let selectedPaths = Set(affectedPaths)
+			let trackedPaths = try await runner.requestRun(
+				arguments: ["--literal-pathspecs", "ls-files", "-z", "--"] + affectedPaths, at: root
+			).standardOutput.split(separator: "\0").map(String.init).filter(selectedPaths.contains)
 			if !trackedPaths.isEmpty {
 				_ = try await runner.requestRun(
-					arguments: ["--literal-pathspecs", "restore", "--worktree", "--"] + trackedPaths,
-					at: repositoryURL
+					arguments: [
+						"checkout-index", "--prefix=\(transaction.replacementsURL.path)/", "-z", "--stdin",
+					],
+					at: root, standardInput: trackedPaths.joined(separator: "\0") + "\0"
 				)
 			}
+			do {
+				for path in affectedPaths {
+					try Task.checkCancellation()
+					try transaction.capture(path: path)
+				}
+				let files = try await discardFileFingerprint(
+					for: affectedPaths, in: transaction.originalsURL, at: root)
+				guard metadata + files == context.fingerprint,
+					try await discardMetadata(for: affectedPaths, at: root) == metadata
+				else { throw changed }
+				try Task.checkCancellation()
+				for path in trackedPaths {
+					try transaction.installReplacement(for: path)
+				}
+			} catch {
+				guard transaction.rollback() else {
+					throw GitRepositoryError.commandFailed(
+						"Discard was interrupted. The remaining original files are in \(transaction.originalsURL.path).\n\n\(error.localizedDescription)"
+					)
+				}
+				throw error
+			}
+			do {
+				try transaction.archiveOriginals(using: archiveDiscardedFiles)
+			} catch {
+				throw GitRepositoryError.commandFailed(
+					"Changes were discarded. The original files are in \(transaction.originalsURL.path).\n\n\(error.localizedDescription)"
+				)
+			}
+		}
+	}
 
-			if !untrackedPaths.isEmpty {
-				_ = try await runner.requestRun(
-					arguments: ["--literal-pathspecs", "clean", "-f", "--"] + untrackedPaths,
-					at: repositoryURL
-				)
+	private func requestIndexURL(at repositoryURL: URL) async throws -> URL {
+		let path = try await runner.requestRun(
+			arguments: ["rev-parse", "--path-format=absolute", "--git-path", "index"], at: repositoryURL
+		).standardOutput.trimmingCharacters(in: .newlines)
+		return URL(fileURLWithPath: path)
+	}
+
+	private func makeDiscardTransaction(at root: URL) async throws -> GitDiscardTransaction {
+		let path = try await runner.requestRun(
+			arguments: ["rev-parse", "--absolute-git-dir"], at: root
+		).standardOutput.trimmingCharacters(in: .newlines)
+		return try GitDiscardTransaction(
+			repositoryURL: root, gitDirectory: URL(fileURLWithPath: path, isDirectory: true))
+	}
+
+	private func discardRollbackError(_ transaction: GitDiscardTransaction, cause: any Error)
+		-> any Error
+	{
+		if transaction.rollback() { return cause }
+		return GitRepositoryError.commandFailed(
+			"The operation was interrupted. The original files are in \(transaction.originalsURL.path).\n\n\(cause.localizedDescription)"
+		)
+	}
+
+	private func archiveOriginals(in transaction: GitDiscardTransaction) throws {
+		do {
+			try transaction.archiveOriginals(using: archiveDiscardedFiles)
+		} catch {
+			throw GitRepositoryError.commandFailed(
+				"The operation finished. The original files are in \(transaction.originalsURL.path).\n\n\(error.localizedDescription)"
+			)
+		}
+	}
+
+	private func changedConflict() -> GitRepositoryError {
+		.commandFailed("The conflict has changed. Review the current file before resolving it.")
+	}
+
+	private func conflictWorkingTreeData(path: String, in directory: URL) throws -> Data? {
+		let root = directory.resolvingSymlinksInPath().standardizedFileURL
+		let url = root.appending(path: path).standardizedFileURL
+		let parent = url.deletingLastPathComponent().resolvingSymlinksInPath()
+		guard url.path.hasPrefix(root.path + "/"),
+			parent.path == root.path || parent.path.hasPrefix(root.path + "/")
+		else { throw GitRepositoryError.invalidFilePath }
+		do {
+			let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+			switch attributes[.type] as? FileAttributeType {
+			case .typeRegular:
+				guard (attributes[.size] as? Int ?? 0) <= Self.maximumPreviewByteCount else {
+					throw GitRepositoryError.fileTooLarge
+				}
+				let data = try Data(contentsOf: url)
+				guard data.count <= Self.maximumPreviewByteCount else {
+					throw GitRepositoryError.fileTooLarge
+				}
+				return data
+			case .typeSymbolicLink:
+				return try Data(FileManager.default.destinationOfSymbolicLink(atPath: url.path).utf8)
+			default:
+				throw GitRepositoryError.invalidFilePath
 			}
+		} catch let error as CocoaError
+			where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile
+		{
+			return nil
 		}
 	}
 
@@ -1064,23 +1207,59 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	public func requestResolveConflict(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
+		expecting content: GitConflictContent,
 		at repositoryURL: URL
 	) async throws {
 		try await requestMutation(at: repositoryURL) {
-			let hasSelectedStage = resolution == .ours ? conflict.hasOurs : conflict.hasTheirs
-			if hasSelectedStage {
-				let option = resolution == .ours ? "--ours" : "--theirs"
-				_ = try await runner.requestRun(
-					arguments: ["--literal-pathspecs", "checkout", option, "--", conflict.path],
-					at: repositoryURL
-				)
-			} else {
-				_ = try await runner.requestRun(
-					arguments: ["--literal-pathspecs", "rm", "-f", "--", conflict.path],
-					at: repositoryURL
-				)
+			let root = try await requestRepositoryRoot(at: repositoryURL).resolvingSymlinksInPath()
+			let indexURL = try await requestIndexURL(at: root)
+			let index = try GitCommitIndexTransaction(indexURL: indexURL)
+			guard try await requestConflictContent(for: conflict, at: root) == content else {
+				throw changedConflict()
 			}
-			try await requestStageResolvedPath(conflict.path, at: repositoryURL)
+			let path = conflict.path
+			let stages: [[String]] = try await runner.requestRun(
+				arguments: ["--literal-pathspecs", "ls-files", "--unmerged", "-z", "--", path], at: root
+			).standardOutput.split(separator: "\0").compactMap { entry in
+				guard let fields = entry.split(separator: "\t", maxSplits: 1).first?.split(separator: " "),
+					fields.count == 3
+				else { return nil }
+				return fields.map(String.init)
+			}
+			guard let hash = stages.first?[1] else { throw changedConflict() }
+			let stage = resolution == .ours ? "2" : "3"
+			let selected = stages.first { $0.count == 3 && $0[2] == stage }
+			let hasStage = resolution == .ours ? conflict.hasOurs : conflict.hasTheirs
+			guard (selected != nil) == hasStage else { throw changedConflict() }
+			let transaction = try await makeDiscardTransaction(at: root)
+			if hasStage {
+				_ = try await runner.requestRun(
+					arguments: [
+						"checkout-index", "--stage=\(stage)",
+						"--prefix=\(transaction.replacementsURL.path)/", "-z", "--stdin",
+					], at: root, standardInput: path + "\0")
+			}
+			try FileManager.default.copyItem(at: indexURL, to: index.temporaryIndexURL)
+			var update = "0 \(String(repeating: "0", count: hash.count))\t\(path)\0"
+			if let selected {
+				update += "\(selected[0]) \(selected[1])\t\(path)\0"
+			}
+			_ = try await runner.requestRun(
+				arguments: ["update-index", "-z", "--index-info"], at: root, standardInput: update,
+				environment: ["GIT_INDEX_FILE": index.temporaryIndexURL.path])
+			do {
+				try transaction.capture(path: path)
+				guard
+					try conflictWorkingTreeData(path: path, in: transaction.originalsURL)
+						== content.workingTreeData
+				else { throw changedConflict() }
+				try Task.checkCancellation()
+				if hasStage { try transaction.installReplacement(for: path) }
+				try index.installIndex()
+			} catch {
+				throw discardRollbackError(transaction, cause: error)
+			}
+			try archiveOriginals(in: transaction)
 		}
 	}
 
@@ -1106,12 +1285,10 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			path: conflict.path,
 			at: repositoryURL
 		)
-		async let requestedWorkingTreeData = requestWorkingTreeData(
-			path: conflict.path,
-			at: repositoryURL
-		)
+		let requestedWorkingTreeData = try conflictWorkingTreeData(
+			path: conflict.path, in: repositoryURL)
 		let stageContents = try await (baseData, currentData, incomingData)
-		let workingTreeData = try await requestedWorkingTreeData
+		let workingTreeData = requestedWorkingTreeData
 		let base = stageContents.0.flatMap { String(data: $0, encoding: .utf8) }
 		let current = stageContents.1.flatMap { String(data: $0, encoding: .utf8) }
 		let incoming = stageContents.2.flatMap { String(data: $0, encoding: .utf8) }
@@ -1153,12 +1330,33 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				using: resolution,
 				in: contents
 			)
-			let rootURL = repositoryURL.standardizedFileURL.resolvingSymlinksInPath()
-			let fileURL = repositoryURL.appending(path: conflict.path).standardizedFileURL
-			guard fileURL.path.hasPrefix(rootURL.path + "/") else {
-				throw GitRepositoryError.invalidFilePath
+			let root = try await requestRepositoryRoot(at: repositoryURL).resolvingSymlinksInPath()
+			let transaction = try await makeDiscardTransaction(at: root)
+			let path = conflict.path
+			do {
+				try transaction.capture(path: path)
+				guard try conflictWorkingTreeData(path: path, in: transaction.originalsURL) == data else {
+					throw changedConflict()
+				}
+				let original = transaction.originalsURL.appending(path: path)
+				let attributes = try FileManager.default.attributesOfItem(atPath: original.path)
+				guard attributes[.type] as? FileAttributeType == .typeRegular else {
+					throw GitRepositoryError.invalidFilePath
+				}
+				let replacement = transaction.replacementsURL.appending(path: path)
+				try FileManager.default.createDirectory(
+					at: replacement.deletingLastPathComponent(), withIntermediateDirectories: true)
+				try Data(resolvedContents.utf8).write(to: replacement)
+				if let permissions = attributes[.posixPermissions] {
+					try FileManager.default.setAttributes(
+						[.posixPermissions: permissions], ofItemAtPath: replacement.path)
+				}
+				try Task.checkCancellation()
+				try transaction.installReplacement(for: path)
+			} catch {
+				throw discardRollbackError(transaction, cause: error)
 			}
-			try Data(resolvedContents.utf8).write(to: fileURL, options: .atomic)
+			try archiveOriginals(in: transaction)
 		}
 	}
 
@@ -1254,12 +1452,160 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			).standardOutput.trimmingCharacters(in: .newlines)
 			if mode == .hard {
 				try await requestProtectUntrackedFiles(from: target, at: repositoryURL)
+				try await requestHardReset(to: target, expecting: context, at: repositoryURL)
+				return
 			}
 			try await requestValidateResetContext(context, at: repositoryURL)
 			_ = try await runner.requestRun(
 				arguments: ["reset", "--\(mode.rawValue)", target, "--"],
 				at: repositoryURL
 			)
+		}
+	}
+
+	private func requestHardReset(
+		to target: String, expecting context: GitResetContext, at repositoryURL: URL
+	) async throws {
+		let root = try await requestRepositoryRoot(at: repositoryURL).resolvingSymlinksInPath()
+		let index = try await GitCommitIndexTransaction(indexURL: requestIndexURL(at: root))
+		let environment = ["GIT_INDEX_FILE": index.temporaryIndexURL.path]
+		let before = try await resetIndexEntries(at: root)
+		_ = try await runner.requestRun(
+			arguments: ["read-tree", target], at: root, environment: environment)
+		let after = try await resetIndexEntries(at: root, environment: environment)
+		let excluded = try await requestSparseResetPaths(
+			Set(after.keys), at: root, environment: environment)
+		let dirty = try await runner.requestRun(
+			arguments: ["diff-files", "--name-only", "-z", "--ignore-submodules=all"], at: root
+		)
+		.standardOutput.split(separator: "\0").map(String.init)
+		let changedPaths = Set(before.keys).union(after.keys).filter { before[$0] != after[$0] }
+		let paths = Set(changedPaths).union(dirty)
+		let captures = paths.filter { path in
+			before[path].map { !$0.hasPrefix("S ") && !$0.dropFirst(2).hasPrefix("160000 ") } == true
+		}.sorted()
+		let replacements = paths.filter { path in
+			!excluded.contains(path) && after[path].map { !$0.dropFirst(2).hasPrefix("160000 ") } == true
+		}.sorted()
+		let transaction = try await makeDiscardTransaction(at: root)
+		if !replacements.isEmpty {
+			_ = try await runner.requestRun(
+				arguments: [
+					"checkout-index", "--prefix=\(transaction.replacementsURL.path)/", "-z", "--stdin",
+				],
+				at: root, standardInput: replacements.joined(separator: "\0") + "\0",
+				environment: environment)
+		}
+		let reference = "refs/heads/\(context.branchName)"
+		do {
+			try await requestValidateResetContext(context, at: root)
+			for path in captures {
+				try Task.checkCancellation()
+				try transaction.capture(path: path)
+				_ = try discardFileFingerprintType(path: path, in: transaction.originalsURL)
+			}
+			let replacingPaths = Set(replacements)
+			var replacedDirectories: Set<String> = []
+			for path in captures {
+				var ancestors: [String] = []
+				var parent = path[...]
+				while let slash = parent.lastIndex(of: "/") {
+					parent = parent[..<slash]
+					ancestors.append(String(parent))
+					if replacingPaths.contains(String(parent)) {
+						replacedDirectories.formUnion(ancestors)
+						break
+					}
+				}
+			}
+			for path in replacedDirectories.sorted(by: { $0.utf8.count > $1.utf8.count }) {
+				try transaction.removeEmptyDirectory(at: path)
+			}
+			for path in replacements {
+				try transaction.validateReplacementDestination(for: path)
+			}
+			for path in replacements {
+				try Task.checkCancellation()
+				try transaction.installReplacement(for: path)
+			}
+			try await requestValidateResetContext(context, at: root)
+			try Task.checkCancellation()
+			let update =
+				"update \(reference) \(target) \(context.headHash)\nupdate ORIG_HEAD \(context.headHash)\n"
+			_ = try await Task {
+				try await runner.requestRun(
+					arguments: ["update-ref", "-m", "reset: moving to \(target)", "--stdin"],
+					at: root, standardInput: update)
+			}.value
+			do {
+				try index.installIndex()
+			} catch {
+				_ = try? await Task {
+					try await runner.requestRun(
+						arguments: ["update-ref", reference, context.headHash, target], at: root)
+				}.value
+				throw error
+			}
+		} catch {
+			throw discardRollbackError(transaction, cause: error)
+		}
+		try archiveOriginals(in: transaction)
+	}
+
+	private func resetIndexEntries(at root: URL, environment: [String: String] = [:]) async throws
+		-> [String: String]
+	{
+		let result = try await runner.requestRun(
+			arguments: ["ls-files", "-t", "--stage", "-z"], at: root, environment: environment)
+		var entries: [String: String] = [:]
+		for record in result.standardOutputData.split(separator: 0) {
+			guard let entry = String(data: record, encoding: .utf8), let tab = entry.firstIndex(of: "\t")
+			else { throw GitRepositoryError.invalidOutput }
+			let path = String(entry[entry.index(after: tab)...])
+			guard entries.updateValue(String(entry[..<tab]), forKey: path) == nil else {
+				throw GitRepositoryError.invalidOutput
+			}
+		}
+		return entries
+	}
+
+	private func requestSparseResetPaths(
+		_ paths: Set<String>, at root: URL, environment: [String: String]
+	) async throws -> Set<String> {
+		guard !paths.isEmpty else { return [] }
+		let sparse = try await runner.requestRun(
+			arguments: ["config", "--bool", "--get", "core.sparseCheckout"], at: root,
+			acceptedTerminationStatuses: [0, 1])
+		guard sparse.standardOutput == "true\n" else { return [] }
+		let included = try await runner.requestRun(
+			arguments: ["sparse-checkout", "check-rules", "-z"], at: root,
+			standardInput: paths.sorted().joined(separator: "\0") + "\0"
+		).standardOutput.split(separator: "\0").map(String.init)
+		let excluded = paths.subtracting(included)
+		if !excluded.isEmpty {
+			_ = try await runner.requestRun(
+				arguments: ["update-index", "--skip-worktree", "-z", "--stdin"], at: root,
+				standardInput: excluded.sorted().joined(separator: "\0") + "\0",
+				environment: environment)
+		}
+		return excluded
+	}
+
+	private func discardFileFingerprintType(path: String, in directory: URL) throws
+		-> FileAttributeType?
+	{
+		do {
+			let file = directory.appending(path: path)
+			let type =
+				try FileManager.default.attributesOfItem(atPath: file.path)[.type] as? FileAttributeType
+			guard type == .typeRegular || type == .typeSymbolicLink else {
+				throw GitRepositoryError.commandFailed("A selected path is no longer an individual file.")
+			}
+			return type
+		} catch let error as CocoaError
+			where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile
+		{
+			return nil
 		}
 	}
 
@@ -1277,9 +1623,11 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
 	}
 
-	public func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {
-		try await requestValidateReference(name, prefix: "refs/tags/", at: repositoryURL)
-		_ = try await runner.requestRun(arguments: ["tag", "-d", "--", name], at: repositoryURL)
+	public func requestDeleteTag(_ tag: GitTag, at repositoryURL: URL) async throws {
+		try await requestValidateReference(tag.name, prefix: "refs/tags/", at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: ["update-ref", "--no-deref", "-d", "refs/tags/\(tag.name)", tag.objectHash],
+			at: repositoryURL)
 	}
 
 	@discardableResult public func requestCreateStash(
@@ -1329,6 +1677,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	{
 		return try await requestMutation(at: repositoryURL) {
 			try await requestEnsureIdle(at: repositoryURL)
+			let directory = try await requestStashDirectory(at: repositoryURL)
 			let current = try await requestCurrentStash(stash, at: repositoryURL)
 			let outcome = try await requestStashMutation(
 				arguments: ["stash", "apply", "--index", "--", current.hash],
@@ -1336,13 +1685,12 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			)
 			guard outcome == .completed else { return outcome }
 			do {
-				let applied = try await requestCurrentStash(current, at: repositoryURL)
-				return try await requestStashMutation(
-					arguments: ["stash", "drop", "--", applied.reference], at: repositoryURL)
+				return try await requestDropStashEntry(current, in: directory, at: repositoryURL)
 			} catch is CancellationError {
 				throw CancellationError()
 			} catch {
-				return .failed(error.localizedDescription)
+				return .failed(
+					"The stash was applied, but its removal could not finish. \(error.localizedDescription)")
 			}
 		}
 	}
@@ -1351,10 +1699,35 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		async throws -> RepositoryStashOutcome
 	{
 		return try await requestMutation(at: repositoryURL) {
-			let current = try await requestCurrentStash(stash, at: repositoryURL)
-			return try await requestStashMutation(
-				arguments: ["stash", "drop", "--", current.reference], at: repositoryURL)
+			let directory = try await requestStashDirectory(at: repositoryURL)
+			return try await requestDropStashEntry(stash, in: directory, at: repositoryURL)
 		}
+	}
+
+	private func requestStashDirectory(at repositoryURL: URL) async throws -> URL {
+		let format = try await runner.requestRun(
+			arguments: ["rev-parse", "--show-ref-format"], at: repositoryURL)
+		guard format.standardOutput.trimmingCharacters(in: .newlines) == "files" else {
+			throw GitRepositoryError.commandFailed(
+				"Safe stash deletion requires Git's files reference format. The stash was kept.")
+		}
+		let directory = try await runner.requestRun(
+			arguments: ["rev-parse", "--path-format=absolute", "--git-common-dir"], at: repositoryURL
+		).standardOutput.trimmingCharacters(in: .newlines)
+		return URL(fileURLWithPath: directory)
+	}
+
+	private func requestDropStashEntry(_ stash: GitStash, in directory: URL, at repositoryURL: URL)
+		async throws -> RepositoryStashOutcome
+	{
+		let editor = try GitStashReflogTransaction(gitDirectory: directory)
+		let current = try await requestCurrentStash(stash, at: repositoryURL)
+		_ = try await runner.requestRun(
+			arguments: ["update-ref", "refs/groves/stash-recovery/\(stash.hash)", stash.hash],
+			at: repositoryURL)
+		try Task.checkCancellation()
+		try editor.drop(current)
+		return .completed
 	}
 
 	public func requestFetch(remote name: String, at repositoryURL: URL) async throws {
@@ -1397,11 +1770,20 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		)
 	}
 
-	public func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome {
+	public func requestPreparePull(expecting branch: GitBranch, at repositoryURL: URL) async throws
+		-> RepositoryPullOutcome
+	{
 		return try await requestMutation(at: repositoryURL) {
 			try await requestEnsureIdle(at: repositoryURL)
 			guard
 				let currentBranch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
+				currentBranch.name == branch.name, currentBranch.hash == branch.hash,
+				currentBranch.upstream == branch.upstream
+			else {
+				throw GitRepositoryError.commandFailed(
+					"The current branch, HEAD or upstream has changed. Review the branch before pulling.")
+			}
+			guard
 				let upstream = currentBranch.upstream,
 				let remoteName = try await requestConfigurationValue(
 					"branch.\(currentBranch.name).remote", at: repositoryURL),
@@ -1512,35 +1894,80 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	}
 
 	public func requestForcePush(
-		_ target: GitPushTarget, expecting branch: GitBranch, at repositoryURL: URL
+		_ target: GitPushTarget, expecting branch: GitBranch, remotes: [GitRemote],
+		at repositoryURL: URL
 	) async throws {
 		try await requestMutation(at: repositoryURL) {
 			try await requestEnsureIdle(at: repositoryURL)
 			guard
 				let current = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
 				current.name == branch.name, current.hash == branch.hash,
-				current.upstream == branch.upstream
+				current.upstream == branch.upstream,
+				current.upstreamRemoteName == branch.upstreamRemoteName,
+				current.upstreamRemoteReference == branch.upstreamRemoteReference
 			else {
 				throw GitRepositoryError.commandFailed(
 					"The current branch, HEAD or upstream has changed. Review the branch before force pushing."
 				)
 			}
 			let command = try await requestPushCommand(for: target, at: repositoryURL)
-			let expectedHash = try await requestPushTrackingHash(
-				source: command.sourceReference, destination: command.destinationReference,
-				remoteName: command.remoteName, at: repositoryURL)
+			guard command.sourceReference == "refs/heads/\(branch.name)" else {
+				throw GitRepositoryError.commandFailed("The current branch changed. Review it again.")
+			}
+			if case .upstream = target {
+				let reviewedDestination =
+					command.remoteName == branch.upstreamRemoteName
+					? branch.upstreamRemoteReference : "refs/heads/\(branch.name)"
+				guard command.destinationReference == reviewedDestination else {
+					throw GitRepositoryError.commandFailed(
+						"The upstream changed. Review the destination again.")
+				}
+			}
+			if case .upstream(_, nil) = target, branch.pushRemoteName != command.remoteName {
+				throw GitRepositoryError.commandFailed(
+					"The push remote changed. Review the destination again.")
+			}
+			guard let remote = remotes.first(where: { $0.name == command.remoteName }) else {
+				throw GitRepositoryError.commandFailed(
+					"The push remote changed. Review the destination again.")
+			}
+			let destination = String(command.destinationReference.dropFirst("refs/heads/".count))
+			let reviewedHash = remote.branches.first { $0.name == destination }?.hash
+			let isConfiguredUpstream =
+				branch.upstreamRemoteName == command.remoteName
+				&& branch.upstreamRemoteReference == command.destinationReference
+			let expectedHash = (isConfiguredUpstream ? branch.customUpstreamHash : nil) ?? reviewedHash
 			if let expectedHash {
 				try await requestValidateForcePushHistory(
 					expecting: expectedHash, from: command.sourceReference, at: repositoryURL)
 			}
-			var arguments = command.arguments
-			arguments.insert(
-				"--force-with-lease=\(command.destinationReference):\(expectedHash ?? "")", at: 1)
-			let requiresSSHTrustScope = try await requestRemoteUsesSSH(
-				named: command.remoteName, usesPushURL: true, at: repositoryURL)
-			_ = try await runner.requestRun(
-				arguments: arguments, at: repositoryURL, isNetworkOperation: true,
-				requiresSSHTrustScope: requiresSSHTrustScope)
+			try await requestPinnedPush(
+				remote: command.remoteName, urls: remote.effectivePushURLs,
+				lease: "\(command.destinationReference):\(expectedHash ?? "")",
+				refspec: "\(branch.hash):\(command.destinationReference)", at: repositoryURL)
+			if case .setUpstream = target {
+				do {
+					try await requestModifyConfiguration(at: repositoryURL) { configuration in
+						guard
+							try await self.requestRemoteURLs(
+								named: command.remoteName, usesPushURL: true, at: repositoryURL)
+								== remote.effectivePushURLs
+						else {
+							throw GitRepositoryError.commandFailed("The remote changed while pushing.")
+						}
+						try await self.requestSetConfigurationValue(
+							command.remoteName, for: "branch.\(branch.name).remote", in: configuration,
+							at: repositoryURL)
+						try await self.requestSetConfigurationValue(
+							command.destinationReference, for: "branch.\(branch.name).merge",
+							in: configuration, at: repositoryURL)
+					}
+				} catch {
+					throw GitRepositoryError.commandFailed(
+						"The push completed, but the upstream could not be saved. \(error.localizedDescription)"
+					)
+				}
+			}
 		}
 	}
 
@@ -1645,23 +2072,45 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		_ branch: GitRemoteBranch,
 		at repositoryURL: URL
 	) async throws {
-		try await requestValidateReference(branch.name, prefix: "refs/heads/", at: repositoryURL)
-		try await requestEnsureIdle(at: repositoryURL)
-		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
-			named: branch.remoteName,
-			usesPushURL: true,
-			at: repositoryURL
-		)
-		let reference = "refs/heads/\(branch.name)"
+		try await requestMutation(at: repositoryURL) {
+			try await requestValidateReference(branch.name, prefix: "refs/heads/", at: repositoryURL)
+			try await requestEnsureIdle(at: repositoryURL)
+			let reference = "refs/heads/\(branch.name)"
+			try await requestPinnedPush(
+				remote: branch.remoteName, urls: branch.pushURLs, lease: "\(reference):\(branch.hash)",
+				refspec: ":\(reference)", at: repositoryURL)
+		}
+	}
+
+	private func requestPinnedPush(
+		remote: String, urls: [String], lease: String, refspec: String, at repositoryURL: URL
+	) async throws {
+		let current = try await requestRemoteURLs(named: remote, usesPushURL: true, at: repositoryURL)
+		guard !urls.isEmpty, urls == current,
+			!urls.contains(where: GitRemoteURLValidator.containsEmbeddedCredential)
+		else {
+			throw GitRepositoryError.commandFailed("The push destination changed. Review it again.")
+		}
+		let alias = "groves-push-\(UUID().uuidString)"
+		let mappings = try await runner.requestRun(
+			arguments: ["config", "-z", "--get-all", "remote.\(remote).fetch"], at: repositoryURL,
+			acceptedTerminationStatuses: [0, 1]
+		).standardOutput.split(separator: "\0")
+		var settings = mappings.map { ("remote.\(alias).fetch", String($0)) }
+		for (index, url) in urls.enumerated() {
+			let address = "\(alias)-\(index)"
+			settings.append(("remote.\(alias).url", address))
+			settings.append(("url.\(url).insteadOf", address))
+		}
+		var environment = ["GIT_CONFIG_COUNT": String(settings.count)]
+		for (index, setting) in settings.enumerated() {
+			environment["GIT_CONFIG_KEY_\(index)"] = setting.0
+			environment["GIT_CONFIG_VALUE_\(index)"] = setting.1
+		}
 		_ = try await runner.requestRun(
-			arguments: [
-				"push", "--force-with-lease=\(reference):\(branch.hash)", "--delete", "--",
-				branch.remoteName, reference,
-			],
-			at: repositoryURL,
-			isNetworkOperation: true,
-			requiresSSHTrustScope: requiresSSHTrustScope
-		)
+			arguments: ["push", "--force-with-lease=\(lease)", "--", alias, refspec],
+			at: repositoryURL, environment: environment, isNetworkOperation: true,
+			requiresSSHTrustScope: urls.contains(where: GitRemoteURLValidator.isSSHRemote))
 	}
 
 	private func requestPushRemoteName(branchName: String, at repositoryURL: URL) async throws
@@ -1695,6 +2144,17 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		usesPushURL: Bool,
 		at repositoryURL: URL
 	) async throws -> Bool {
+		let remoteURLs = try await requestRemoteURLs(
+			named: name, usesPushURL: usesPushURL, at: repositoryURL)
+		guard !remoteURLs.contains(where: GitRemoteURLValidator.containsEmbeddedCredential) else {
+			throw GitRepositoryError.invalidRemoteURL
+		}
+		return remoteURLs.contains(where: GitRemoteURLValidator.isSSHRemote)
+	}
+
+	private func requestRemoteURLs(named name: String, usesPushURL: Bool, at repositoryURL: URL)
+		async throws -> [String]
+	{
 		var arguments = ["remote", "get-url"]
 		if usesPushURL {
 			arguments.append("--push")
@@ -1705,11 +2165,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			at: repositoryURL,
 			acceptedTerminationStatuses: [0, 2]
 		)
-		let remoteURLs = result.standardOutput.split(whereSeparator: \.isNewline).map(String.init)
-		guard !remoteURLs.contains(where: GitRemoteURLValidator.containsEmbeddedCredential) else {
-			throw GitRepositoryError.invalidRemoteURL
-		}
-		return remoteURLs.contains(where: GitRemoteURLValidator.isSSHRemote)
+		return result.standardOutput.split(whereSeparator: \.isNewline).map(String.init)
 	}
 
 	private func requestPushCommand(for target: GitPushTarget, at repositoryURL: URL) async throws
@@ -1756,28 +2212,6 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				remoteName, reference, reference
 			)
 		}
-	}
-
-	private func requestPushTrackingHash(
-		source: String, destination: String, remoteName: String, at repositoryURL: URL
-	) async throws -> String? {
-		let metadata = try await runner.requestRun(
-			arguments: [
-				"for-each-ref", "--format=%(upstream)%09%(upstream:remotename)%09%(upstream:remoteref)",
-				source,
-			], at: repositoryURL
-		).standardOutput.trimmingCharacters(in: .newlines)
-		let fields = metadata.split(separator: "\t", omittingEmptySubsequences: false)
-		if fields.count == 3, fields[1] == remoteName, fields[2] == destination, !fields[0].isEmpty {
-			let result = try await runner.requestRun(
-				arguments: ["rev-parse", "--verify", "--quiet", "\(fields[0])^{commit}"], at: repositoryURL,
-				acceptedTerminationStatuses: [0, 1])
-			let hash = result.standardOutput.trimmingCharacters(in: .newlines)
-			return hash.isEmpty ? nil : hash
-		}
-		let branchName = String(destination.dropFirst("refs/heads/".count))
-		return try await requestRemotes(at: repositoryURL).first { $0.name == remoteName }?
-			.branches.first { $0.name == branchName }?.hash
 	}
 
 	private func requestValidateForcePushHistory(

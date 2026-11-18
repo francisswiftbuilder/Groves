@@ -401,7 +401,7 @@ public final class RepositoryReferencesViewModel {
 		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
 			try await referencesUseCase.deleteTag(
-				named: tag.name,
+				tag,
 				at: repositoryURL
 			)
 		}

@@ -31,6 +31,7 @@ struct GitRepositoryStub: GitRepository {
 	let stagedDiff: String
 	let unstagedDiff: String
 	let clonedRepositoryURL: URL?
+	let cloneGate: GitDiffGate?
 	let stashes: [GitStash]
 	let stashDiffs: [String: String]
 	let diffResponses: ResponseSequence<String>?
@@ -50,6 +51,7 @@ struct GitRepositoryStub: GitRepository {
 		stagedDiff: String = "",
 		unstagedDiff: String = "",
 		clonedRepositoryURL: URL? = nil,
+		cloneGate: GitDiffGate? = nil,
 		stashes: [GitStash] = [],
 		stashDiffs: [String: String] = [:],
 		diffResponses: ResponseSequence<String>? = nil,
@@ -68,6 +70,7 @@ struct GitRepositoryStub: GitRepository {
 		self.stagedDiff = stagedDiff
 		self.unstagedDiff = unstagedDiff
 		self.clonedRepositoryURL = clonedRepositoryURL
+		self.cloneGate = cloneGate
 		self.stashes = stashes
 		self.stashDiffs = stashDiffs
 		self.diffResponses = diffResponses
@@ -83,6 +86,7 @@ struct GitRepositoryStub: GitRepository {
 	}
 	func requestCloneRepository(from remoteURL: String, into directoryURL: URL) async throws -> URL {
 		await recorder?.record(.clone(remoteURL: remoteURL, directoryURL: directoryURL))
+		await cloneGate?.enter(remoteURL)
 		return clonedRepositoryURL
 			?? directoryURL.appending(path: "Repository", directoryHint: .isDirectory)
 	}
@@ -237,6 +241,7 @@ struct GitRepositoryStub: GitRepository {
 	func requestResolveConflict(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
+		expecting content: GitConflictContent,
 		at repositoryURL: URL
 	) async throws {}
 	func requestConflictContent(
@@ -283,8 +288,8 @@ struct GitRepositoryStub: GitRepository {
 	) async throws {
 		await recorder?.record(.createTag(name: name, message: message, commitHash: commitHash))
 	}
-	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws {
-		await recorder?.record(.deleteTag(name: name))
+	func requestDeleteTag(_ tag: GitTag, at repositoryURL: URL) async throws {
+		await recorder?.record(.deleteTag(name: tag.name))
 	}
 	func requestCreateStash(
 		message: String, includeUntracked: Bool, at repositoryURL: URL
@@ -304,7 +309,9 @@ struct GitRepositoryStub: GitRepository {
 
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws {}
 	func requestFetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws {}
-	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome {
+	func requestPreparePull(expecting branch: GitBranch, at repositoryURL: URL) async throws
+		-> RepositoryPullOutcome
+	{
 		.upToDate
 	}
 	func requestResolvePull(
@@ -315,7 +322,10 @@ struct GitRepositoryStub: GitRepository {
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
 		await recorder?.record(.push(target))
 	}
-	func requestForcePush(_ target: GitPushTarget, expecting branch: GitBranch, at repositoryURL: URL)
+	func requestForcePush(
+		_ target: GitPushTarget, expecting branch: GitBranch, remotes: [GitRemote],
+		at repositoryURL: URL
+	)
 		async throws
 	{
 		await recorder?.record(.forcePush(target))

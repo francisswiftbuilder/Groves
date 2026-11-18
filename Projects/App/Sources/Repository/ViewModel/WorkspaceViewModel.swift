@@ -214,7 +214,7 @@ final class WorkspaceViewModel {
 	func didFetchRemoteState() {
 		guard let repositoryURL else { return }
 		scheduleAutomaticRefresh(
-			at: repositoryURL, delay: .zero, revalidatesSelectedContent: false)
+			at: repositoryURL, delay: .milliseconds(450), revalidatesSelectedContent: false)
 	}
 
 	private func resumeContentLoadIfNeeded() {

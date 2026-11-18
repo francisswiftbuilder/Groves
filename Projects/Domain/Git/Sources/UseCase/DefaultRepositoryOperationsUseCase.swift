@@ -46,9 +46,11 @@ public struct DefaultRepositoryOperationsUseCase: RepositoryOperationsUseCase {
 	public func resolve(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
+		expecting expectedContent: GitConflictContent,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot {
-		try await repository.requestResolveConflict(conflict, using: resolution, at: repositoryURL)
+		try await repository.requestResolveConflict(
+			conflict, using: resolution, expecting: expectedContent, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 

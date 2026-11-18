@@ -116,10 +116,10 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	public func deleteTag(named name: String, at repositoryURL: URL) async throws
+	public func deleteTag(_ tag: GitTag, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		try await repository.requestDeleteTag(named: name, at: repositoryURL)
+		try await repository.requestDeleteTag(tag, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
@@ -128,16 +128,19 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	public func fetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws
-		-> RepositorySnapshot
-	{
-		try await repository.requestFetchAll(
-			at: repositoryURL, allowsUserInteraction: allowsUserInteraction)
+	public func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot {
+		try await repository.requestFetchAll(at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	public func preparePull(at repositoryURL: URL) async throws -> RepositoryPullPreparation {
-		let outcome = try await repository.requestPreparePull(at: repositoryURL)
+	public func fetchAutomatically(at repositoryURL: URL) async throws {
+		try await repository.requestFetchAll(at: repositoryURL, allowsUserInteraction: false)
+	}
+
+	public func preparePull(expecting branch: GitBranch, at repositoryURL: URL) async throws
+		-> RepositoryPullPreparation
+	{
+		let outcome = try await repository.requestPreparePull(expecting: branch, at: repositoryURL)
 		let snapshot = try await content.loadSnapshot(at: repositoryURL)
 		return RepositoryPullPreparation(outcome: outcome, snapshot: snapshot)
 	}
@@ -186,7 +189,8 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 			selectedRemoteName: selectedRemoteName
 		)
 		guard let currentBranch else { throw GitRepositoryError.invalidOutput }
-		try await repository.requestForcePush(target, expecting: currentBranch, at: repositoryURL)
+		try await repository.requestForcePush(
+			target, expecting: currentBranch, remotes: remotes, at: repositoryURL)
 		return try await loadSnapshotAfterPush(at: repositoryURL)
 	}
 

@@ -31,12 +31,13 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		commitHash: String,
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot
-	func deleteTag(named name: String, at repositoryURL: URL) async throws
+	func deleteTag(_ tag: GitTag, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	func fetch(remote name: String, at repositoryURL: URL) async throws -> RepositorySnapshot
-	func fetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws
-		-> RepositorySnapshot
-	func preparePull(at repositoryURL: URL) async throws -> RepositoryPullPreparation
+	func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot
+	func fetchAutomatically(at repositoryURL: URL) async throws
+	func preparePull(expecting branch: GitBranch, at repositoryURL: URL) async throws
+		-> RepositoryPullPreparation
 	func resolvePull(
 		_ divergence: RepositoryPullDivergence,
 		using resolution: RepositoryPullResolution,
@@ -76,10 +77,4 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		-> RepositorySnapshot
 	func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
-}
-
-extension RepositoryReferencesUseCase {
-	public func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot {
-		try await fetchAll(at: repositoryURL, allowsUserInteraction: true)
-	}
 }

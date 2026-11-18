@@ -21,6 +21,7 @@ final class RepositoryTabsViewModel {
 
 	private let dependencies: Dependencies
 	@ObservationIgnored private var addRepositoryTask: Task<Void, Never>?
+	private var addRepositoryRequestID: UUID?
 	private var didRestoreRepositoryWindows = false
 
 	init(dependencies: Dependencies) {
@@ -57,10 +58,9 @@ final class RepositoryTabsViewModel {
 		actions: Actions
 	) {
 		guard !urls.isEmpty else { return }
-		addRepositoryTask?.cancel()
+		let requestID = beginAddingRepository()
 		addRepositoryTask = Task {
-			isAddingRepository = true
-			defer { isAddingRepository = false }
+			defer { finishAddingRepository(requestID) }
 
 			var failures: [String] = []
 			for url in urls {
@@ -76,21 +76,21 @@ final class RepositoryTabsViewModel {
 				}
 			}
 
-			if !failures.isEmpty {
+			if !Task.isCancelled, addRepositoryRequestID == requestID, !failures.isEmpty {
 				alertMessage = failures.joined(separator: "\n")
 			}
 		}
 	}
 
+	@discardableResult
 	func didRequestCloneRepository(
 		from remoteURL: String,
 		into directoryURL: URL,
 		actions: Actions
-	) {
-		addRepositoryTask?.cancel()
-		addRepositoryTask = Task {
-			isAddingRepository = true
-			defer { isAddingRepository = false }
+	) -> Task<Void, Never> {
+		let requestID = beginAddingRepository()
+		let task = Task {
+			defer { finishAddingRepository(requestID) }
 
 			do {
 				let repository = try await dependencies.useCase.cloneRepository(
@@ -102,13 +102,31 @@ final class RepositoryTabsViewModel {
 			} catch is CancellationError {
 				return
 			} catch {
+				guard !Task.isCancelled, addRepositoryRequestID == requestID else { return }
 				alertMessage = error.localizedDescription
 			}
 		}
+		addRepositoryTask = task
+		return task
 	}
 
 	func didRequestCancelAddingRepository() {
 		addRepositoryTask?.cancel()
+	}
+
+	private func beginAddingRepository() -> UUID {
+		addRepositoryTask?.cancel()
+		let id = UUID()
+		addRepositoryRequestID = id
+		isAddingRepository = true
+		return id
+	}
+
+	private func finishAddingRepository(_ id: UUID) {
+		guard addRepositoryRequestID == id else { return }
+		addRepositoryRequestID = nil
+		addRepositoryTask = nil
+		isAddingRepository = false
 	}
 
 	func requestWindowRestoration(

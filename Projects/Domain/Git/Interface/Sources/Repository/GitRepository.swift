@@ -106,6 +106,7 @@ public protocol GitRepository: Sendable {
 	func requestResolveConflict(
 		_ conflict: GitConflict,
 		using resolution: GitConflictResolution,
+		expecting content: GitConflictContent,
 		at repositoryURL: URL
 	) async throws
 	func requestConflictContent(
@@ -135,7 +136,7 @@ public protocol GitRepository: Sendable {
 		commitHash: String,
 		at repositoryURL: URL
 	) async throws
-	func requestDeleteTag(named name: String, at repositoryURL: URL) async throws
+	func requestDeleteTag(_ tag: GitTag, at repositoryURL: URL) async throws
 	@discardableResult func requestCreateStash(
 		message: String,
 		includeUntracked: Bool,
@@ -149,14 +150,18 @@ public protocol GitRepository: Sendable {
 		-> RepositoryStashOutcome
 	func requestFetch(remote name: String, at repositoryURL: URL) async throws
 	func requestFetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws
-	func requestPreparePull(at repositoryURL: URL) async throws -> RepositoryPullOutcome
+	func requestPreparePull(expecting branch: GitBranch, at repositoryURL: URL) async throws
+		-> RepositoryPullOutcome
 	func requestResolvePull(
 		_ divergence: RepositoryPullDivergence,
 		using resolution: RepositoryPullResolution,
 		at repositoryURL: URL
 	) async throws
 	func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws
-	func requestForcePush(_ target: GitPushTarget, expecting branch: GitBranch, at repositoryURL: URL)
+	func requestForcePush(
+		_ target: GitPushTarget, expecting branch: GitBranch, remotes: [GitRemote],
+		at repositoryURL: URL
+	)
 		async throws
 	func requestPushTags(remote name: String, at repositoryURL: URL) async throws
 	func requestAddRemote(

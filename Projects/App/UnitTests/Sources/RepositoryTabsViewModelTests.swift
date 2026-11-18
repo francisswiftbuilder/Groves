@@ -120,6 +120,47 @@ struct RepositoryTabsViewModelTests {
 	}
 
 	@Test
+	func aSupersededCloneCannotClearLoadingOrPersistItsRepository() async throws {
+		let gate = GitDiffGate(suspendsRequests: true)
+		let store = SavedRepositoryStoreSpy(repositories: [])
+		let viewModel = makeRepositoryTabsViewModel(
+			repository: GitRepositoryStub(cloneGate: gate), savedRepositoryStore: store)
+		let oldURL = URL(fileURLWithPath: "/tmp/Old", isDirectory: true)
+		let currentURL = URL(fileURLWithPath: "/tmp/Current", isDirectory: true)
+		var opened: [UUID] = []
+		let old = viewModel.didRequestCloneRepository(
+			from: "https://github.com/owner/Old.git", into: oldURL,
+			actions: .init { opened.append($0) })
+		try await waitUntil { await gate.totalCallCount() == 1 }
+		let current = viewModel.didRequestCloneRepository(
+			from: "https://github.com/owner/Current.git", into: currentURL,
+			actions: .init { opened.append($0) })
+		try await waitUntil { await gate.totalCallCount() == 2 }
+
+		await gate.resumeCall(0)
+		await old.value
+
+		#expect(viewModel.isAddingRepository)
+		#expect(viewModel.alertMessage == nil)
+		#expect(viewModel.tabs.isEmpty)
+		#expect(opened.isEmpty)
+		#expect(try store.requestRepositories().isEmpty)
+
+		await gate.resumeCall(1)
+		await current.value
+
+		let tab = try #require(viewModel.tabs.first)
+		#expect(!viewModel.isAddingRepository)
+		#expect(viewModel.alertMessage == nil)
+		#expect(viewModel.tabs.count == 1)
+		#expect(
+			tab.repository.url == currentURL.appending(path: "Repository", directoryHint: .isDirectory))
+		#expect(opened == [tab.id])
+		#expect(try store.requestRepositories().map(\.id) == [tab.id])
+		#expect(store.selectedRepositoryID == tab.id)
+	}
+
+	@Test
 	func testSidebarSelectionActivationOwnsWorkspaceNavigation() {
 		let repository = makeSavedRepository(name: "Current", position: 0, isSelected: true)
 		let store = SavedRepositoryStoreSpy(repositories: [repository])
@@ -335,14 +376,14 @@ struct RepositoryTabsViewModelTests {
 
 	private func waitUntil(
 		timeout: Duration = .seconds(2),
-		condition: @escaping @MainActor () -> Bool
+		condition: @escaping @MainActor () async -> Bool
 	) async throws {
 		let clock = ContinuousClock()
 		let deadline = clock.now.advanced(by: timeout)
-		while condition() == false {
+		while await condition() == false {
 			guard clock.now < deadline else {
 				Issue.record("Timed out waiting for condition")
-				return
+				throw CancellationError()
 			}
 			try await Task.sleep(for: .milliseconds(10))
 		}

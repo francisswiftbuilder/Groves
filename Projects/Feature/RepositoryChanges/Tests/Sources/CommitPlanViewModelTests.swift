@@ -202,6 +202,76 @@ struct CommitPlanViewModelTests {
 		#expect(viewModel.errorMessage == nil)
 	}
 
+	@Test(arguments: [false, true])
+	func aCreatedCommitCannotBeRetriedAfterRefreshingFails(batch: Bool) async throws {
+		let gate = Gate<GitCommitPlanInput>()
+		let plan = makePlan()
+		let viewModel = makeViewModel(
+			useCase: UseCase(
+				load: { plan },
+				submit: { submitted, _ in
+					#expect(submitted.id == plan.tasks.first?.id)
+					return try await gate.wait()
+				}))
+		viewModel.didPresent()
+		defer { viewModel.onDisappear() }
+		try await waitUntil { !viewModel.isGenerating }
+		if batch { viewModel.didRequestCommitAll() } else { viewModel.didRequestCommit() }
+		try await waitUntil { await gate.count == 1 }
+
+		let failure = GitCommitPlanError.committedButRefreshFailed("Index refresh unavailable")
+		await gate.fail(0, with: failure)
+		try await waitUntil { !viewModel.isCommitting }
+
+		#expect(viewModel.completedCount == 1)
+		#expect(viewModel.tasks == Array(plan.tasks.dropFirst()))
+		#expect(viewModel.selectedTaskID == plan.tasks.last?.id)
+		#expect(viewModel.needsRefresh)
+		#expect(viewModel.isPresented)
+		#expect(viewModel.errorMessage == failure.localizedDescription)
+		#expect(!viewModel.canCommitAll)
+		#expect(!viewModel.canCommit)
+		viewModel.didRequestCommit()
+		viewModel.didRequestCommitAll()
+		#expect(!viewModel.isCommitting)
+		#expect(await gate.count == 1)
+	}
+
+	@Test
+	func finalWorkspaceRefreshFailurePreservesTheCompletedBatch() async throws {
+		let plan = makePlan()
+		let commits = Gate<GitCommitPlanInput>()
+		let initial = snapshot()
+		let viewModel = CommitPlanViewModel(
+			dependencies: .init(
+				useCase: UseCase(load: { plan }, submit: { _, _ in try await commits.wait() }),
+				contentUseCase: ChangesContentUseCaseStub(snapshotOperation: { _ in
+					throw GitRepositoryError.commandFailed("Workspace unavailable")
+				}),
+				repositoryURL: { URL(fileURLWithPath: "/repo") }),
+			didProduceSnapshot: { _ in Issue.record("Unexpected workspace snapshot") })
+		viewModel.apply(initial)
+		viewModel.didPresent()
+		defer { viewModel.onDisappear() }
+		try await waitUntil { !viewModel.isGenerating }
+		viewModel.didRequestCommitAll()
+		try await waitUntil { await commits.count == 1 }
+		await commits.resume(0, with: remainingInput(in: plan, after: 1))
+		try await waitUntil { await commits.count == 2 }
+		await commits.resume(1, with: remainingInput(in: plan, after: 2))
+		try await waitUntil { !viewModel.isCommitting }
+
+		#expect(viewModel.completedCount == 2)
+		#expect(viewModel.tasks.isEmpty)
+		#expect(viewModel.needsRefresh)
+		#expect(
+			viewModel.errorMessage
+				== GitCommitPlanError.committedButRefreshFailed("Workspace unavailable")
+				.localizedDescription)
+		#expect(!viewModel.canCommitAll)
+		#expect(await commits.count == 2)
+	}
+
 	@Test
 	func changedRepositoryStopsTheBatchBeforeTheNextCommit() async throws {
 		let gate = Gate<GitCommitPlanInput>()

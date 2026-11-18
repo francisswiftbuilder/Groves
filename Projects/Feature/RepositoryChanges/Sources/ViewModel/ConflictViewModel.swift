@@ -161,8 +161,8 @@ public final class ConflictViewModel {
 		contentRequestSequence += 1
 		let requestID = contentRequestSequence
 		activeContentRequestID = requestID
+		isLoadingContent = true
 		contentTask = Task {
-			isLoadingContent = true
 			defer {
 				if activeContentRequestID == requestID {
 					activeContentRequestID = nil
@@ -191,12 +191,18 @@ public final class ConflictViewModel {
 		}
 	}
 
+	func canResolveFile(_ conflict: GitConflict) -> Bool {
+		selectedConflict == conflict && content != nil && !isLoadingContent && !isLoading
+	}
+
 	func didResolve(_ conflict: GitConflict, using resolution: GitConflictResolution) {
-		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		guard canResolveFile(conflict), let repositoryURL = dependencies.repositoryURL(), let content
+		else { return }
 		requestMutation {
 			try await self.dependencies.operationsUseCase.resolve(
 				conflict,
 				using: resolution,
+				expecting: content,
 				at: repositoryURL
 			)
 		}

@@ -79,6 +79,27 @@ struct WorkspaceAutomaticRefreshTests {
 	}
 
 	@Test
+	func automaticFetchAndItsFileEventShareOneMetadataRefresh() async throws {
+		let gate = GitDiffGate()
+		let content = ContentStub(gate: gate)
+		let (events, continuation) = AsyncStream<[String]>.makeStream()
+		let model = makeModel(content: content, events: events) { _ in }
+		defer {
+			model.onDisappear()
+			continuation.finish()
+		}
+		model.onAppear(isSceneActive: true)
+		try await waitUntil { await gate.totalCallCount() == 1 }
+
+		model.didFetchRemoteState()
+		try await Task.sleep(for: .milliseconds(100))
+		continuation.yield(["/repo/.git/refs/remotes/origin/main"])
+		try await waitUntil { await gate.totalCallCount() == 2 }
+		try await Task.sleep(for: .milliseconds(550))
+		#expect(await gate.totalCallCount() == 2)
+	}
+
+	@Test
 	func eventDuringTheInitialLoadIsReplayedAfterLoadingFinishes() async throws {
 		let gate = GitDiffGate(suspendsRequests: true)
 		let content = ContentStub(gate: gate)

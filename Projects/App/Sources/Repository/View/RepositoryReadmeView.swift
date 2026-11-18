@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct RepositoryReadmeView: View {
-	private struct Block {
+	struct Block: Identifiable, Sendable {
+		let id: Int
 		let intent: PresentationIntent?
 		var text: AttributedString
 
@@ -28,25 +29,29 @@ struct RepositoryReadmeView: View {
 		}
 	}
 
-	private let blocks: [Block]
+	let blocks: [Block]
 
-	init(content: AttributedString) {
+	@concurrent
+	nonisolated static func prepare(markdown: String, baseURL: URL) async throws -> [Block] {
+		try Task.checkCancellation()
+		let content =
+			(try? AttributedString(markdown: markdown, baseURL: baseURL)) ?? AttributedString(markdown)
 		var blocks: [Block] = []
 		for run in content.runs {
+			try Task.checkCancellation()
 			let text = AttributedString(content[run.range])
 			if let previous = blocks.indices.last, blocks[previous].intent == run.presentationIntent {
 				blocks[previous].text.append(text)
 			} else {
-				blocks.append(Block(intent: run.presentationIntent, text: text))
+				blocks.append(Block(id: blocks.count, intent: run.presentationIntent, text: text))
 			}
 		}
-		self.blocks = blocks
+		return blocks
 	}
 
 	var body: some View {
 		LazyVStack(alignment: .leading, spacing: 9) {
-			ForEach(blocks.indices, id: \.self) { index in
-				let block = blocks[index]
+			ForEach(blocks) { block in
 				HStack(alignment: .firstTextBaseline, spacing: 8) {
 					if let marker = block.marker {
 						Text(marker).foregroundStyle(.secondary)
