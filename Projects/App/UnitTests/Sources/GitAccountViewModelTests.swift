@@ -34,7 +34,7 @@ struct GitAccountViewModelTests {
 		}
 	}
 
-	private final class AuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
+	final class AuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
 		override class func canInit(with request: URLRequest) -> Bool { true }
 		override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -45,10 +45,26 @@ struct GitAccountViewModelTests {
 			let status = authorization == "Bearer invalid-test-token" ? 401 : 200
 			let response = HTTPURLResponse(
 				url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
-			let data = Data(
-				"{\"login\":\"\(login)\",\"id\":42,\"name\":\"Test User\",\"email\":null}".utf8)
+			let body: String
+			switch request.url?.path {
+			case "/user/repos":
+				body =
+					#"[{"id":42,"full_name":"\#(login)/ios-project","description":"iOS application","default_branch":"main","private":true,"archived":false}]"#
+			case "/repos/\(login)/ios-project/contents":
+				body = """
+					[
+						{"name":"Sources","path":"Sources","type":"dir","html_url":"https://github.com/\(login)/ios-project/tree/main/Sources"},
+						{"name":"README.md","path":"README.md","type":"file","html_url":"https://github.com/\(login)/ios-project/blob/main/README.md"}
+					]
+					"""
+			case "/repos/\(login)/ios-project/readme":
+				body =
+					"# iOS Project\n\nA native app with **SwiftUI** views.\n\n## Getting Started\nOpen Package.swift in Xcode."
+			default:
+				body = #"{"login":"\#(login)","id":42,"name":"Test User","email":null}"#
+			}
 			client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-			client?.urlProtocol(self, didLoad: data)
+			client?.urlProtocol(self, didLoad: Data(body.utf8))
 			client?.urlProtocolDidFinishLoading(self)
 		}
 
@@ -200,6 +216,26 @@ struct GitAccountViewModelTests {
 		reloaded.load()
 		#expect(reloaded.account == original)
 		#expect(Set(reloaded.accounts) == [original, added])
+	}
+
+	@Test
+	func repositoryDiscoveryUsesOnlyTheActiveAccountsStoredToken() async throws {
+		let context = try makeContext()
+		let first = GitCredentialDescriptor(kind: .https, host: "github.com", account: "octocat")
+		let second = GitCredentialDescriptor(kind: .https, host: "github.com", account: "different")
+		try context.store.save(secret: "valid-test-token", for: first)
+		try context.store.save(secret: "different-test-token", for: second)
+		let viewModel = context.viewModel
+		viewModel.switchAccount(to: first)
+		let firstList = try await viewModel.loadRepositories(for: first)
+		#expect(firstList.map(\.fullName) == ["octocat/ios-project"])
+
+		viewModel.switchAccount(to: second)
+		await #expect(throws: CancellationError.self) {
+			_ = try await viewModel.loadRepositories(for: first)
+		}
+		let secondList = try await viewModel.loadRepositories(for: second)
+		#expect(secondList.map(\.fullName) == ["different/ios-project"])
 	}
 
 	@Test

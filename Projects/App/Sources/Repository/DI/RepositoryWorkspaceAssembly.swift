@@ -256,7 +256,7 @@ final class RepositoryWorkspaceAssembly {
 						&& !conflictViewModel.isLoading
 						&& !operationViewModel.isLoading
 						&& !referencesViewModel.isLoading
-						&& !syncViewModel.isLoading
+						&& !syncViewModel.isBlockingLocalRefresh
 						&& !remotesViewModel.isLoading
 						&& !stashesViewModel.isLoading
 				}

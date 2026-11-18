@@ -43,6 +43,46 @@ struct GitHubAuthenticationTests {
 	}
 
 	@Test
+	func repositoriesIncludeAllPagesOnceAndKeepPrivateMetadata() async throws {
+		let repositories = try await client().repositories(token: "valid-test-token")
+		#expect(repositories.map(\.fullName) == ["octocat/Local", "team/Project.v2"])
+		let team = try #require(repositories.last)
+		#expect(team.isPrivate && team.isArchived)
+		#expect(team.description == "Team repo")
+		#expect(team.cloneURL.absoluteString == "https://github.com/team/Project.v2.git")
+	}
+
+	@Test
+	func forbiddenTokenCannotListRepositories() async throws {
+		do {
+			_ = try await client().repositories(token: "forbidden-test-token")
+			Issue.record("Expected a permission error")
+		} catch GitHubAuthenticationError.forbidden {}
+	}
+
+	@Test
+	func repositoryPreviewIncludesReadmeAndRootContents() async throws {
+		let client = client()
+		let repositories = try await client.repositories(token: "valid-test-token")
+		let repository = try #require(repositories.first)
+		let preview = try await client.repositoryPreview(for: repository, token: "valid-test-token")
+		#expect(preview.files.map(\.name) == ["Sources", "README.md"])
+		#expect(preview.files.first?.isDirectory == true)
+		#expect(preview.files.last?.webURL?.path == "/octocat/Local/blob/main/README.md")
+		#expect(preview.readme == "# Repository README\n\nExample text.")
+	}
+
+	@Test
+	func repositoryPreviewStillShowsFilesWhenReadmeIsMissing() async throws {
+		let client = client()
+		let repositories = try await client.repositories(token: "valid-test-token")
+		let repository = try #require(repositories.last)
+		let preview = try await client.repositoryPreview(for: repository, token: "valid-test-token")
+		#expect(preview.files.map(\.name) == ["Package.swift"])
+		#expect(preview.readme == nil)
+	}
+
+	@Test
 	func rejectsWhitespaceInToken() async throws {
 		for token in ["token\nheader", "token\u{0}header", "token\u{7f}header"] {
 			await #expect(throws: GitHubAuthenticationError.self) {

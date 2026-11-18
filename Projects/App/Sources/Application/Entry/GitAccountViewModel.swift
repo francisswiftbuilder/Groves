@@ -13,6 +13,7 @@ final class GitAccountViewModel {
 	var token = ""
 	var identity = GitIdentityConfiguration()
 	private(set) var account: GitCredentialDescriptor?
+	private(set) var repositoryAccessRevision = 0
 	private(set) var accounts: [GitCredentialDescriptor] = []
 	private(set) var tokenEntry: TokenEntry?
 	private(set) var pendingSignOut: GitCredentialDescriptor?
@@ -76,6 +77,30 @@ final class GitAccountViewModel {
 			statusMessage = nil
 			errorMessage = error.localizedDescription
 		}
+	}
+
+	func loadRepositories(for account: GitCredentialDescriptor) async throws -> [GitHubRepository] {
+		guard self.account == account else { throw CancellationError() }
+		guard let token = try store.secret(for: account) else {
+			throw GitHubAccountSelectionError.accountUnavailable
+		}
+		let repositories = try await client.repositories(token: token)
+		try Task.checkCancellation()
+		guard self.account == account else { throw CancellationError() }
+		return repositories
+	}
+
+	func loadRepositoryPreview(
+		for repository: GitHubRepository, account: GitCredentialDescriptor
+	) async throws -> GitHubRepositoryPreview {
+		guard self.account == account else { throw CancellationError() }
+		guard let token = try store.secret(for: account) else {
+			throw GitHubAccountSelectionError.accountUnavailable
+		}
+		let preview = try await client.repositoryPreview(for: repository, token: token)
+		try Task.checkCancellation()
+		guard self.account == account else { throw CancellationError() }
+		return preview
 	}
 
 	func beginAddingAccount() {
@@ -153,6 +178,7 @@ final class GitAccountViewModel {
 					return
 				}
 				try store.save(secret: submittedToken, for: descriptor)
+				repositoryAccessRevision += 1
 				self.accounts = (accounts.filter { $0 != descriptor } + [descriptor]).sorted {
 					$0.account.localizedStandardCompare($1.account) == .orderedAscending
 				}

@@ -18,6 +18,7 @@ final class AppDIContainer {
 		let accountViewModel = GitAccountViewModel()
 		let isRunningTests =
 			ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+		if !isRunningTests { accountViewModel.load() }
 		self.noticeCenter = noticeCenter
 		self.accountViewModel = accountViewModel
 		let repository = LocalGitRepository(
