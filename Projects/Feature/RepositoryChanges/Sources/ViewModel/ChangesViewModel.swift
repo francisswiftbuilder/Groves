@@ -415,16 +415,25 @@ public final class ChangesViewModel {
 	}
 
 	func didPresentDiscardConfirmation(for changes: [WorkingTreeChange]) {
-		guard !changes.isEmpty else { return }
-		pendingConfirmation = .discard(changes)
-	}
-
-	func didConfirmDiscard(_ requestedChanges: [WorkingTreeChange]) {
-		let requestedIDs = Set(requestedChanges.map(\.id))
-		let discardableChanges = changes.filter { requestedIDs.contains($0.id) }
-		guard let repositoryURL = repositoryURL(), !discardableChanges.isEmpty else { return }
-		requestMutation {
-			try await self.changesUseCase.discard(discardableChanges, at: repositoryURL)
+		guard !isLoading, !changes.isEmpty, let url = repositoryURL() else { return }
+		let requestID = beginMutation()
+		let useCase = changesUseCase
+		mutationTask = Task { [weak self] in
+			defer { self?.finishMutation(id: requestID) }
+			do {
+				let context = try await useCase.prepareDiscard(for: changes, at: url)
+				guard let self, !Task.isCancelled, activeMutationRequestID == requestID,
+					repositoryURL() == url
+				else { return }
+				pendingConfirmation = .discard(context, repositoryURL: url)
+			} catch is CancellationError {
+				return
+			} catch {
+				guard let self, !Task.isCancelled, activeMutationRequestID == requestID,
+					repositoryURL() == url
+				else { return }
+				didReceiveError(error.localizedDescription)
+			}
 		}
 	}
 
@@ -440,12 +449,16 @@ public final class ChangesViewModel {
 
 	public func onDisappear() {
 		cancelTasks()
+		pendingConfirmation = nil
 	}
 
 	func didConfirmPendingConfirmation() {
-		guard let confirmation = pendingConfirmation else { return }
+		guard case .discard(let context, let url) = pendingConfirmation else { return }
 		pendingConfirmation = nil
-		didConfirmDiscard(confirmation.changes)
+		guard repositoryURL() == url else { return }
+		requestMutation {
+			try await self.changesUseCase.discard(context, at: url)
+		}
 	}
 
 	private func requestMutation(

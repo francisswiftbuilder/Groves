@@ -53,10 +53,9 @@ final class WorkspaceViewModel {
 	@ObservationIgnored private var conflictFocusTask: Task<Void, Never>?
 	private var contentLoadID: UUID?
 	private var snapshotRevision = 0
-	private var hasLoadedContent = false
+	private var latestSnapshot: RepositorySnapshot?
 	private var refreshesWhenMonitoringResumes = false
-	private var automaticRefreshRevalidatesSelectedContent = false
-	private var needsAutomaticRefresh = false
+	private var pendingAutomaticRefresh: (reloadsMetadata: Bool, revalidatesSelectedContent: Bool)?
 	private var automaticRefreshRequestID: UUID?
 	private var isVisible = false
 	private var isSceneActive = false
@@ -90,6 +89,10 @@ final class WorkspaceViewModel {
 
 	var canAutomaticallyRefresh: Bool {
 		hasLoadedContent && !isLoading && dependencies.canAutomaticallyRefresh()
+	}
+
+	private var hasLoadedContent: Bool {
+		latestSnapshot != nil
 	}
 
 	func didSelectSection(_ section: WorkspaceSection) {
@@ -139,7 +142,7 @@ final class WorkspaceViewModel {
 		refreshTask?.cancel()
 		let changesRepository = repositoryURL != url
 		if changesRepository {
-			hasLoadedContent = false
+			latestSnapshot = nil
 		}
 		let loadID = beginContentLoad(showsLoadingState: !hasLoadedContent)
 		refreshTask = Task {
@@ -221,7 +224,7 @@ final class WorkspaceViewModel {
 
 	private func updateRepositoryMonitoring() {
 		guard isVisible, isSceneActive else {
-			if hasLoadedContent {
+			if isVisible || hasLoadedContent {
 				refreshesWhenMonitoringResumes = true
 			}
 			stopRepositoryMonitoring()
@@ -236,8 +239,7 @@ final class WorkspaceViewModel {
 		}
 		stopRepositoryMonitoring()
 		monitoredRepositoryURL = repositoryURL
-		monitoredGitDirectoryPaths = RepositoryFileSystemMonitor.gitDirectories(at: repositoryURL).map(
-			\.path)
+		updateMonitoredGitDirectories(at: repositoryURL)
 		let fileSystemEvents = dependencies.fileSystemEvents
 		repositoryMonitorTask = Task { [weak self] in
 			var reconnects = false
@@ -246,19 +248,17 @@ final class WorkspaceViewModel {
 				while !Task.isCancelled {
 					let events = fileSystemEvents(repositoryURL)
 					if reconnects {
-						self?.monitoredGitDirectoryPaths = RepositoryFileSystemMonitor.gitDirectories(
-							at: repositoryURL
-						).map(\.path)
+						self?.updateMonitoredGitDirectories(at: repositoryURL)
 						self?.scheduleAutomaticRefresh(
 							at: repositoryURL, delay: .zero, revalidatesSelectedContent: true)
 					}
 					for await paths in events {
-						guard !Task.isCancelled else { return }
+						guard let self, !Task.isCancelled else { return }
 						reconnectDelay = .seconds(1)
-						self?.scheduleAutomaticRefresh(
+						scheduleAutomaticRefresh(
 							at: repositoryURL, delay: .milliseconds(450),
-							revalidatesSelectedContent: self?.containsWorkingTreeEvent(
-								paths, repositoryURL: repositoryURL) == true)
+							revalidatesSelectedContent: containsWorkingTreeEvent(paths),
+							reloadsMetadata: needsMetadataRefresh(paths, at: repositoryURL))
 					}
 					try Task.checkCancellation()
 					if !reconnects {
@@ -272,23 +272,31 @@ final class WorkspaceViewModel {
 		}
 		if refreshesWhenMonitoringResumes {
 			refreshesWhenMonitoringResumes = false
-			scheduleAutomaticRefresh(
-				at: repositoryURL,
-				delay: .zero,
-				revalidatesSelectedContent: true
-			)
+			if hasLoadedContent || isLoading {
+				scheduleAutomaticRefresh(
+					at: repositoryURL,
+					delay: .zero,
+					revalidatesSelectedContent: true
+				)
+			}
 		}
+	}
+
+	private func updateMonitoredGitDirectories(at repositoryURL: URL) {
+		monitoredGitDirectoryPaths =
+			RepositoryFileSystemMonitor.gitDirectories(at: repositoryURL).map(\.path)
+			+ [repositoryURL.appending(path: ".git").standardizedFileURL.path]
 	}
 
 	private func scheduleAutomaticRefresh(
 		at repositoryURL: URL,
 		delay: Duration,
-		revalidatesSelectedContent: Bool
+		revalidatesSelectedContent: Bool,
+		reloadsMetadata: Bool = true
 	) {
 		guard monitoredRepositoryURL == repositoryURL, isVisible, isSceneActive else { return }
-		needsAutomaticRefresh = true
-		automaticRefreshRevalidatesSelectedContent =
-			automaticRefreshRevalidatesSelectedContent || revalidatesSelectedContent
+		queueAutomaticRefresh(
+			reloadsMetadata: reloadsMetadata, revalidatesSelectedContent: revalidatesSelectedContent)
 		guard automaticRefreshTask == nil else { return }
 		let requestID = UUID()
 		automaticRefreshRequestID = requestID
@@ -308,28 +316,33 @@ final class WorkspaceViewModel {
 						nextDelay = .milliseconds(100)
 						continue
 					}
-					guard needsAutomaticRefresh else { return }
-					let revalidatesSelectedContent = automaticRefreshRevalidatesSelectedContent
-					needsAutomaticRefresh = false
-					automaticRefreshRevalidatesSelectedContent = false
+					guard let request = pendingAutomaticRefresh else { return }
+					pendingAutomaticRefresh = nil
 					do {
 						let revision = snapshotRevision
-						let snapshot = try await contentUseCase.loadSnapshot(at: repositoryURL)
+						let snapshot: RepositorySnapshot
+						if !request.reloadsMetadata, let latestSnapshot {
+							snapshot = try await contentUseCase.refreshWorkingTree(
+								in: latestSnapshot, at: repositoryURL)
+						} else {
+							snapshot = try await contentUseCase.loadSnapshot(at: repositoryURL)
+						}
 						try Task.checkCancellation()
 						if revision == snapshotRevision, !isLoading, dependencies.canAutomaticallyRefresh() {
 							try apply(
-								snapshot, at: repositoryURL, revalidatesSelectedContent: revalidatesSelectedContent)
+								snapshot, at: repositoryURL,
+								revalidatesSelectedContent: request.revalidatesSelectedContent)
 						} else {
-							needsAutomaticRefresh = true
-							automaticRefreshRevalidatesSelectedContent =
-								automaticRefreshRevalidatesSelectedContent || revalidatesSelectedContent
+							queueAutomaticRefresh(
+								reloadsMetadata: request.reloadsMetadata,
+								revalidatesSelectedContent: request.revalidatesSelectedContent)
 						}
 						failureCount = 0
 					} catch {
 						try Task.checkCancellation()
-						needsAutomaticRefresh = true
-						automaticRefreshRevalidatesSelectedContent =
-							automaticRefreshRevalidatesSelectedContent || revalidatesSelectedContent
+						queueAutomaticRefresh(
+							reloadsMetadata: request.reloadsMetadata,
+							revalidatesSelectedContent: request.revalidatesSelectedContent)
 						failureCount += 1
 						guard failureCount < 3 else {
 							Self.logger.error(
@@ -338,11 +351,18 @@ final class WorkspaceViewModel {
 							return
 						}
 					}
-					guard needsAutomaticRefresh else { return }
+					guard pendingAutomaticRefresh != nil else { return }
 					nextDelay = .milliseconds(450)
 				}
 			} catch {}
 		}
+	}
+
+	private func queueAutomaticRefresh(reloadsMetadata: Bool, revalidatesSelectedContent: Bool) {
+		pendingAutomaticRefresh = (
+			reloadsMetadata || pendingAutomaticRefresh?.reloadsMetadata == true,
+			revalidatesSelectedContent || pendingAutomaticRefresh?.revalidatesSelectedContent == true
+		)
 	}
 
 	private func finishAutomaticRefresh(id: UUID) {
@@ -351,26 +371,33 @@ final class WorkspaceViewModel {
 		automaticRefreshTask = nil
 	}
 
-	private func containsWorkingTreeEvent(
-		_ paths: [String],
-		repositoryURL: URL
-	) -> Bool {
-		let gitDirectoryPaths =
-			monitoredGitDirectoryPaths
-			+ [repositoryURL.appending(path: ".git").standardizedFileURL.path]
-
+	private func containsWorkingTreeEvent(_ paths: [String]) -> Bool {
 		return paths.contains { path in
 			let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
-			if gitDirectoryPaths.contains(where: { gitDirectoryPath in
+			if monitoredGitDirectoryPaths.contains(where: { gitDirectoryPath in
 				["index", "HEAD", "packed-refs", "refs", "refs/heads"].contains(where: {
 					standardizedPath == gitDirectoryPath + "/" + $0
 				}) || standardizedPath.hasPrefix(gitDirectoryPath + "/refs/heads/")
 			}) {
 				return true
 			}
-			return !gitDirectoryPaths.contains {
+			return !monitoredGitDirectoryPaths.contains {
 				standardizedPath == $0 || standardizedPath.hasPrefix($0 + "/")
 			}
+		}
+	}
+
+	private func needsMetadataRefresh(_ paths: [String], at repositoryURL: URL) -> Bool {
+		let root = repositoryURL.resolvingSymlinksInPath().path
+		return paths.contains { path in
+			let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+			if monitoredGitDirectoryPaths.contains(where: { standardizedPath == $0 + "/index" }) {
+				return false
+			}
+			return !standardizedPath.hasPrefix(root + "/")
+				|| monitoredGitDirectoryPaths.contains {
+					standardizedPath == $0 || standardizedPath.hasPrefix($0 + "/")
+				}
 		}
 	}
 
@@ -382,8 +409,7 @@ final class WorkspaceViewModel {
 		automaticRefreshTask?.cancel()
 		automaticRefreshTask = nil
 		automaticRefreshRequestID = nil
-		needsAutomaticRefresh = false
-		automaticRefreshRevalidatesSelectedContent = false
+		pendingAutomaticRefresh = nil
 	}
 
 	func didChangeDiffOptions() {
@@ -439,8 +465,8 @@ final class WorkspaceViewModel {
 		try Task.checkCancellation()
 		guard self.repositoryURL == repositoryURL else { throw CancellationError() }
 		snapshotRevision += 1
+		latestSnapshot = snapshot
 		actions.distributeSnapshot(snapshot, repositoryURL, revalidatesSelectedContent)
-		hasLoadedContent = true
 	}
 
 	private func beginContentLoad(showsLoadingState: Bool) -> UUID {

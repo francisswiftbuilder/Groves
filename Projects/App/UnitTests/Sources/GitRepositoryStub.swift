@@ -191,7 +191,13 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws {}
 	func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws {}
-	func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws {}
+	func requestDiscardContext(for changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+		-> GitDiscardContext
+	{
+		GitDiscardContext(changes: changes, fingerprint: [])
+	}
+
+	func requestDiscard(_ context: GitDiscardContext, at repositoryURL: URL) async throws {}
 	func requestUnstageFromAmend(change: GitAmendChange, at repositoryURL: URL) async throws {}
 	func requestCommit(
 		subject: String,

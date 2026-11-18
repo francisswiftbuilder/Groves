@@ -54,7 +54,9 @@ public protocol RepositoryChangesUseCase: Sendable {
 		options: GitDiffOptions,
 		at repositoryURL: URL
 	) async throws -> [WorkingTreeChange]
-	func discard(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+	func prepareDiscard(for changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+		-> GitDiscardContext
+	func discard(_ context: GitDiscardContext, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	func commit(subject: String, body: String, amend: Bool, at repositoryURL: URL) async throws
 		-> RepositorySnapshot

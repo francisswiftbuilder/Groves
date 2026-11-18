@@ -146,8 +146,8 @@ struct RepositoryTabsViewModelTests {
 			section: .history
 		)
 
-		viewModel.cloneRemoteURL = "  https://github.com/owner/Groves.git  "
-		viewModel.didPresentCloneDestinationImporter()
+		viewModel.didPresentCloneDestinationImporter(
+			remoteURL: "  https://github.com/owner/Groves.git  ")
 
 		#expect(viewModel.isFolderImporterPresented)
 		if case .clone(let remoteURL) = viewModel.consumeFolderImportRequest() {
@@ -185,12 +185,40 @@ struct RepositoryTabsViewModelTests {
 	@Test
 	func testCloneDestinationImporterOnlyAllowsOneSelection() {
 		let viewModel = RepositoryWindowViewModel()
-		viewModel.cloneRemoteURL = "https://github.com/owner/Groves.git"
-
-		viewModel.didPresentCloneDestinationImporter()
+		viewModel.didPresentCloneDestinationImporter(remoteURL: "https://github.com/owner/Groves.git")
 
 		#expect(viewModel.isFolderImporterPresented)
 		#expect(viewModel.folderImportRequest?.allowsMultipleSelection == false)
+	}
+
+	@Test(arguments: [
+		("https://gitlab.com/example/project.git", "https://gitlab.com/example/project.git"),
+		("https://codeberg.org/example/project", "https://codeberg.org/example/project"),
+		("git@github.com:example/project.git", "https://github.com/example/project.git"),
+		("ssh://git@github.com/example/project.git", "ssh://git@github.com/example/project.git"),
+	])
+	func cloneSearchAcceptsSupportedRemoteURLs(input: String, expected: String) throws {
+		let viewModel = RepositoryWindowViewModel()
+		viewModel.didPresentCloneDestinationImporter(remoteURL: input)
+
+		let request = try #require(viewModel.consumeFolderImportRequest())
+		guard case .clone(let remoteURL) = request else {
+			Issue.record("Expected a clone folder import request")
+			return
+		}
+		#expect(remoteURL == expected)
+		#expect(!request.allowsMultipleSelection)
+	}
+
+	@Test(arguments: [
+		"example/project", "https://gitlab.com", "https://", "https://user:secret@gitlab.com/a/b",
+		"https://gitlab.com/a/b?token=secret", "file:///tmp/repo", "http://gitlab.com/a/b",
+	])
+	func cloneSearchDoesNotTreatSearchTermsOrUnsupportedInputsAsCloneURLs(input: String) {
+		let viewModel = RepositoryWindowViewModel()
+		viewModel.didPresentCloneDestinationImporter(remoteURL: input)
+		#expect(viewModel.folderImportRequest == nil)
+		#expect(!viewModel.isFolderImporterPresented)
 	}
 
 	@Test

@@ -142,9 +142,7 @@ public final class RepositoryTreeViewModel {
 				else {
 					return
 				}
-				if !preservesCurrentPreview || filePreview == .loading {
-					filePreview = .failure(error.localizedDescription)
-				}
+				filePreview = .failure(error.localizedDescription)
 			}
 		}
 	}

@@ -152,12 +152,16 @@ public struct DefaultRepositoryChangesUseCase: RepositoryChangesUseCase {
 		)
 	}
 
-	public func discard(_ changes: [WorkingTreeChange], at repositoryURL: URL) async throws
+	public func prepareDiscard(
+		for changes: [WorkingTreeChange], at repositoryURL: URL
+	) async throws -> GitDiscardContext {
+		try await repository.requestDiscardContext(for: changes, at: repositoryURL)
+	}
+
+	public func discard(_ context: GitDiscardContext, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		for change in changes {
-			try await repository.requestDiscard(change: change, at: repositoryURL)
-		}
+		try await repository.requestDiscard(context, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 

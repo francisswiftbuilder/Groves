@@ -27,7 +27,7 @@ struct RemoteActionBar: View {
 			Button("Pull", systemImage: "arrow.down") {
 				syncViewModel.didRequestPull()
 			}
-			.disabled(preferredRemoteName == nil || syncViewModel.isLoading)
+			.disabled(preferredRemoteName == nil || !syncViewModel.canPull)
 
 			RepositoryPushMenu(
 				viewModel: syncViewModel,

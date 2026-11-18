@@ -110,7 +110,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		}
 		let result = try await runner.requestRun(
 			arguments: arguments,
-			at: repositoryURL
+			at: repositoryURL,
+			environment: ["GIT_OPTIONAL_LOCKS": "0"]
 		)
 		return GitOutputParser.parseWorkingTreeChanges(result.standardOutput).map { change in
 			guard
@@ -237,7 +238,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	{
 		async let statusResult = runner.requestRun(
 			arguments: ["status", "--porcelain=v2", "--branch", "-z"],
-			at: repositoryURL
+			at: repositoryURL,
+			environment: ["GIT_OPTIONAL_LOCKS": "0"]
 		)
 		async let markerResult = runner.requestRun(
 			arguments: [
@@ -421,10 +423,11 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		}
 
 		if source == .staged {
+			let paths = [change.path, change.previousPath].compactMap { $0 }
 			return try await runner.requestRun(
-				arguments: ["--literal-pathspecs", "diff", "--cached", "--no-color"]
+				arguments: ["--literal-pathspecs", "diff", "--cached", "--no-color", "--find-renames"]
 					+ diffOptionArguments(options)
-					+ ["--", change.path],
+					+ ["--"] + paths,
 				at: repositoryURL
 			).standardOutput
 		}
@@ -635,11 +638,65 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		}
 	}
 
-	public func requestDiscard(change: WorkingTreeChange, at repositoryURL: URL) async throws {
+	public func requestDiscardContext(for changes: [WorkingTreeChange], at repositoryURL: URL)
+		async throws -> GitDiscardContext
+	{
+		let currentChanges = Set(try await requestWorkingTreeChanges(at: repositoryURL))
+		guard !changes.isEmpty, changes.allSatisfy(currentChanges.contains) else {
+			throw GitRepositoryError.commandFailed(
+				"The selected files have changed. Review their changes before discarding.")
+		}
+		let paths = discardPaths(for: changes)
+		let index = try await runner.requestRun(
+			arguments: ["--literal-pathspecs", "ls-files", "--stage", "-z", "--"] + paths,
+			at: repositoryURL
+		).standardOutput
+		let branch = try await requestCommitPlanBranchReference(at: repositoryURL)
+		let head = try await requestCommitPlanHead(at: repositoryURL)
+		var fingerprint = [repositoryURL.path, branch ?? "", head ?? "", index]
+		var regularPaths: [String] = []
+		let manager = FileManager.default
+		for path in paths {
+			try Task.checkCancellation()
+			let fileURL = repositoryURL.appending(path: path)
+			let attributes: [FileAttributeKey: Any]
+			do {
+				attributes = try manager.attributesOfItem(atPath: fileURL.path)
+			} catch let error as CocoaError
+				where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile
+			{
+				fingerprint.append("missing")
+				continue
+			}
+			switch attributes[.type] as? FileAttributeType {
+			case .typeRegular:
+				regularPaths.append(path)
+				fingerprint.append("file \(attributes[.posixPermissions] as? Int ?? 0)")
+			case .typeSymbolicLink:
+				let target = try manager.destinationOfSymbolicLink(atPath: fileURL.path)
+				fingerprint.append("link \(target)")
+			default:
+				throw GitRepositoryError.commandFailed("Only individual files can be discarded.")
+			}
+		}
+		for start in stride(from: 0, to: regularPaths.count, by: 100) {
+			let batch = regularPaths[start..<min(start + 100, regularPaths.count)]
+			let hashes = try await runner.requestRun(
+				arguments: ["hash-object", "--no-filters", "--"] + batch, at: repositoryURL
+			).standardOutput
+			fingerprint.append(hashes)
+		}
+		return GitDiscardContext(changes: changes, fingerprint: fingerprint)
+	}
+
+	public func requestDiscard(_ context: GitDiscardContext, at repositoryURL: URL) async throws {
 		try await requestMutation(at: repositoryURL) {
-			let affectedPaths =
-				change.workingTreeState == .renamed
-				? [change.path, change.previousPath].compactMap { $0 } : [change.path]
+			guard try await requestDiscardContext(for: context.changes, at: repositoryURL) == context
+			else {
+				throw GitRepositoryError.commandFailed(
+					"The selected files have changed. Review their changes before discarding.")
+			}
+			let affectedPaths = discardPaths(for: context.changes)
 
 			let trackedPathsResult = try await runner.requestRun(
 				arguments: ["--literal-pathspecs", "ls-files", "-z", "--"] + affectedPaths,
@@ -664,6 +721,16 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				)
 			}
 		}
+	}
+
+	private func discardPaths(for changes: [WorkingTreeChange]) -> [String] {
+		Set(
+			changes.flatMap { change in
+				change.workingTreeState == .renamed
+					? [change.path, change.previousPath].compactMap { $0 }
+					: [change.path]
+			}
+		).sorted()
 	}
 
 	public func requestUnstageFromAmend(
@@ -705,8 +772,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 
 	public func requestCommitPlanInput(at repositoryURL: URL) async throws -> GitCommitPlanInput {
 		try await requestEnsureIdle(at: repositoryURL)
-		let state = try await requestOperationState(at: repositoryURL)
-		guard !state.isDetached else { throw GitCommitPlanError.repositoryChanged }
+		guard let branchReference = try await requestCommitPlanBranchReference(at: repositoryURL)
+		else { throw GitCommitPlanError.repositoryChanged }
 		let head = try await requestCommitPlanHead(at: repositoryURL)
 		let entries = try await runner.requestRun(
 			arguments: ["ls-files", "--stage", "-z"], at: repositoryURL
@@ -744,11 +811,12 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		let currentEntries = try await runner.requestRun(
 			arguments: ["ls-files", "--stage", "-z"], at: repositoryURL
 		).standardOutput
-		guard entries == currentEntries, head == (try await requestCommitPlanHead(at: repositoryURL))
+		guard entries == currentEntries, head == (try await requestCommitPlanHead(at: repositoryURL)),
+			branchReference == (try await requestCommitPlanBranchReference(at: repositoryURL))
 		else { throw GitCommitPlanError.repositoryChanged }
 		return GitCommitPlanInput(
 			headHash: head, indexFingerprint: GitCommitUnitParser.fingerprint(entries), units: units,
-			recentCommitMessages: recentMessages)
+			recentCommitMessages: recentMessages, branchReference: branchReference)
 	}
 
 	public func requestCommitTask(
@@ -787,7 +855,9 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 				at: repositoryURL, standardInput: patch, environment: environment)
 			let subject = task.subject.trimmingCharacters(in: .whitespacesAndNewlines)
 			let body = task.body.trimmingCharacters(in: .whitespacesAndNewlines)
-			guard try await requestCommitPlanHead(at: repositoryURL) == input.headHash else {
+			guard try await requestCommitPlanHead(at: repositoryURL) == input.headHash,
+				try await requestCommitPlanBranchReference(at: repositoryURL) == input.branchReference
+			else {
 				throw GitCommitPlanError.repositoryChanged
 			}
 			_ = try await runner.requestRun(
@@ -803,6 +873,14 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			acceptedTerminationStatuses: [0, 1])
 		let hash = result.standardOutput.trimmingCharacters(in: .newlines)
 		return hash.isEmpty ? nil : hash
+	}
+
+	private func requestCommitPlanBranchReference(at repositoryURL: URL) async throws -> String? {
+		let result = try await runner.requestRun(
+			arguments: ["symbolic-ref", "--quiet", "HEAD"], at: repositoryURL,
+			acceptedTerminationStatuses: [0, 1])
+		let reference = result.standardOutput.trimmingCharacters(in: .newlines)
+		return reference.hasPrefix("refs/heads/") ? reference : nil
 	}
 
 	public func requestAmendWithoutEditingMessage(at repositoryURL: URL) async throws {
@@ -1372,7 +1450,10 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			case (let aheadCount, let behindCount):
 				return .diverged(
 					RepositoryPullDivergence(
+						branchName: updatedBranch.name,
+						headHash: updatedBranch.hash,
 						upstream: upstream,
+						upstreamHash: upstreamHash,
 						aheadCount: aheadCount,
 						behindCount: behindCount
 					)
@@ -1395,35 +1476,39 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			}
 			guard
 				let currentBranch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
-				currentBranch.upstream == divergence.upstream
+				currentBranch.name == divergence.branchName,
+				currentBranch.hash == divergence.headHash,
+				currentBranch.upstream == divergence.upstream,
+				try await runner.requestRun(
+					arguments: ["rev-parse", "--verify", "--end-of-options", "@{upstream}^{commit}"],
+					at: repositoryURL
+				).standardOutput.trimmingCharacters(in: .newlines) == divergence.upstreamHash
 			else {
 				throw GitRepositoryError.commandFailed(
-					"The upstream branch has changed. Pull again before resolving its history.")
+					"The current branch, HEAD or upstream has changed. Pull again to review its history.")
 			}
-			let reference = try await runner.requestRun(
-				arguments: ["rev-parse", "--symbolic-full-name", "--verify", "@{upstream}"],
-				at: repositoryURL
-			).standardOutput.trimmingCharacters(in: .newlines)
 			switch resolution {
 			case .rebase:
-				try await requestRebase(reference: reference, at: repositoryURL)
+				try await requestRebase(reference: divergence.upstreamHash, at: repositoryURL)
 			case .merge:
-				try await requestMerge(reference: reference, at: repositoryURL)
+				try await requestMerge(reference: divergence.upstreamHash, at: repositoryURL)
 			}
 		}
 	}
 
 	public func requestPush(_ target: GitPushTarget, at repositoryURL: URL) async throws {
-		try await requestEnsureIdle(at: repositoryURL)
-		let command = try await requestPushCommand(for: target, at: repositoryURL)
-		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
-			named: command.remoteName, usesPushURL: true, at: repositoryURL)
-		_ = try await runner.requestRun(
-			arguments: command.arguments,
-			at: repositoryURL,
-			isNetworkOperation: true,
-			requiresSSHTrustScope: requiresSSHTrustScope
-		)
+		try await requestMutation(at: repositoryURL) {
+			try await requestEnsureIdle(at: repositoryURL)
+			let command = try await requestPushCommand(for: target, at: repositoryURL)
+			let requiresSSHTrustScope = try await requestRemoteUsesSSH(
+				named: command.remoteName, usesPushURL: true, at: repositoryURL)
+			_ = try await runner.requestRun(
+				arguments: command.arguments,
+				at: repositoryURL,
+				isNetworkOperation: true,
+				requiresSSHTrustScope: requiresSSHTrustScope
+			)
+		}
 	}
 
 	public func requestForcePush(
@@ -1579,12 +1664,11 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		)
 	}
 
-	private func requestPushRemoteName(at repositoryURL: URL) async throws -> String? {
-		let branches = try await requestBranches(at: repositoryURL)
-		guard let currentBranch = branches.first(where: \.isCurrent) else { return nil }
+	private func requestPushRemoteName(branchName: String, at repositoryURL: URL) async throws
+		-> String?
+	{
 		for key in [
-			"branch.\(currentBranch.name).pushRemote", "remote.pushDefault",
-			"branch.\(currentBranch.name).remote",
+			"branch.\(branchName).pushRemote", "remote.pushDefault", "branch.\(branchName).remote",
 		] {
 			if let name = try await requestConfigurationValue(key, at: repositoryURL) { return name }
 		}
@@ -1634,11 +1718,11 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		)
 	{
 		switch target {
-		case .upstream:
+		case .upstream(let branchName, let selectedRemoteName):
 			guard
 				let branch = try await requestBranches(at: repositoryURL).first(where: \.isCurrent),
+				branchName == nil || branch.name == branchName,
 				branch.upstream != nil,
-				let remoteName = try await requestPushRemoteName(at: repositoryURL),
 				let upstreamRemote = try await requestConfigurationValue(
 					"branch.\(branch.name).remote", at: repositoryURL),
 				let upstreamReference = try await requestConfigurationValue(
@@ -1647,6 +1731,17 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			else {
 				throw GitRepositoryError.commandFailed(
 					"현재 브랜치의 push 대상을 확인할 수 없습니다. 브랜치와 upstream 설정을 확인해 주세요.")
+			}
+			let remoteName: String
+			if let selectedRemoteName {
+				guard try await requestRemoteNames(at: repositoryURL).contains(selectedRemoteName) else {
+					throw GitRepositoryError.commandFailed("The selected remote no longer exists.")
+				}
+				remoteName = selectedRemoteName
+			} else {
+				remoteName =
+					try await requestPushRemoteName(branchName: branch.name, at: repositoryURL)
+					?? upstreamRemote
 			}
 			let source = "refs/heads/\(branch.name)"
 			let destination = remoteName == upstreamRemote ? upstreamReference : source
