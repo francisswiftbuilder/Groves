@@ -22,18 +22,26 @@ struct RepositoryWelcomeContainerView: View {
 	}
 
 	var body: some View {
-		NavigationSplitView {
-			List(selection: Binding<Source?>(get: { source }, set: { selection = $0 })) {
-				sourceRow(.local, title: "Local Repositories", systemImage: "folder")
-				sourceRow(.remote, title: "Remote Repositories", systemImage: "network")
+		GeometryReader { geometry in
+			let sidebarMaximum = min(300, geometry.size.width / 3)
+			HSplitView {
+				sourceList
+					.frame(
+						minWidth: min(180, sidebarMaximum), idealWidth: min(220, sidebarMaximum),
+						maxWidth: sidebarMaximum)
+				repositoryContent
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
 			}
-			.listStyle(.sidebar)
-			.navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
-		} detail: {
-			repositoryContent
-				.navigationSplitViewColumnWidth(min: 360, ideal: 600)
+			.frame(width: geometry.size.width, height: geometry.size.height)
 		}
-		.navigationSplitViewStyle(.balanced)
+	}
+
+	private var sourceList: some View {
+		List(selection: Binding<Source?>(get: { source }, set: { selection = $0 })) {
+			sourceRow(.local, title: "Local Repositories", systemImage: "folder")
+			sourceRow(.remote, title: "Remote Repositories", systemImage: "network")
+		}
+		.listStyle(.sidebar)
 	}
 
 	@ViewBuilder
