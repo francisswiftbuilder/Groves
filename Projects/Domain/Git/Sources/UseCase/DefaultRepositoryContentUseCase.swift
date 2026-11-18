@@ -35,4 +35,26 @@ public struct DefaultRepositoryContentUseCase: RepositoryContentUseCase {
 	public func loadFileContents(at path: String, in repositoryURL: URL) async throws -> Data {
 		try await repository.requestFileContents(at: path, in: repositoryURL)
 	}
+
+	public func refreshWorkingTree(in snapshot: RepositorySnapshot, at repositoryURL: URL)
+		async throws
+		-> RepositorySnapshot
+	{
+		async let changes = repository.requestWorkingTreeChanges(at: repositoryURL)
+		async let amendChanges = repository.requestAmendChanges(at: repositoryURL)
+		async let operationState = repository.requestOperationState(at: repositoryURL)
+		let fileTree =
+			snapshot.commits.isEmpty
+			? try await repository.requestFileTree(at: repositoryURL) : snapshot.fileTree
+		return try await RepositorySnapshot(
+			changes: changes,
+			amendChanges: amendChanges,
+			commits: snapshot.commits,
+			branches: snapshot.branches,
+			remotes: snapshot.remotes,
+			operationState: operationState,
+			tags: snapshot.tags,
+			stashes: snapshot.stashes,
+			fileTree: fileTree)
+	}
 }

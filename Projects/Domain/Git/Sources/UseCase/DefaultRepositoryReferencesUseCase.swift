@@ -169,7 +169,7 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 			selectedRemoteName: selectedRemoteName
 		)
 		try await repository.requestPush(target, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
+		return try await loadSnapshotAfterPush(at: repositoryURL)
 	}
 
 	public func forcePush(
@@ -187,14 +187,14 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		)
 		guard let currentBranch else { throw GitRepositoryError.invalidOutput }
 		try await repository.requestForcePush(target, expecting: currentBranch, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
+		return try await loadSnapshotAfterPush(at: repositoryURL)
 	}
 
 	public func pushTags(remote name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestPushTags(remote: name, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
+		return try await loadSnapshotAfterPush(at: repositoryURL)
 	}
 
 	public func addRemote(
@@ -250,12 +250,27 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
+	private func loadSnapshotAfterPush(at repositoryURL: URL) async throws -> RepositorySnapshot {
+		do {
+			return try await content.loadSnapshot(at: repositoryURL)
+		} catch is CancellationError {
+			throw CancellationError()
+		} catch {
+			throw GitRepositoryError.commandFailed(
+				"Push succeeded, but Groves couldn’t refresh this repository.\n\n\(error.localizedDescription)"
+			)
+		}
+	}
+
 	private func pushTarget(
 		currentBranch: GitBranch?,
 		remotes: [GitRemote],
 		operationState: RepositoryOperationState,
 		selectedRemoteName: String?
 	) throws -> GitPushTarget {
+		if let selectedRemoteName, !remotes.contains(where: { $0.name == selectedRemoteName }) {
+			throw GitRepositoryError.commandFailed("The selected remote no longer exists.")
+		}
 		switch pushAction(
 			currentBranch: currentBranch,
 			remotes: remotes,
@@ -264,7 +279,7 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		case .unavailable:
 			throw GitRepositoryError.commandFailed("푸시할 브랜치 또는 리모트가 없습니다.")
 		case .upstream:
-			return .upstream
+			return .upstream(branchName: currentBranch?.name, remoteName: selectedRemoteName)
 		case .setUpstream(let remoteName, let branchName):
 			return .setUpstream(remoteName: remoteName, branchName: branchName)
 		case .chooseRemote(let remoteNames, let branchName):

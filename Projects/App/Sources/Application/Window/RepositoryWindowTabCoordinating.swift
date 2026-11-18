@@ -6,6 +6,7 @@ protocol RepositoryWindowTabCoordinating: AnyObject, Sendable {
 	func configure(_ window: NSWindow)
 	func register(_ window: NSWindow, repositoryID: UUID?)
 	func openNewTab(repositoryID: UUID?, from existingWindow: NSWindow?)
+	func focusRepositoryIfOpen(_ id: UUID) -> Bool
 	func restoreRepositoryWindows(_ restoration: RepositoryWindowRestoration)
 	func prepareForTermination()
 }

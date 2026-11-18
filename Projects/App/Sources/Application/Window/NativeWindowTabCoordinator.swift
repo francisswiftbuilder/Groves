@@ -65,6 +65,12 @@ final class NativeWindowTabCoordinator: NSObject, RepositoryWindowTabCoordinatin
 		restorePendingRepositoryWindows()
 	}
 
+	func focusRepositoryIfOpen(_ id: UUID) -> Bool {
+		guard let window = window(for: id) else { return false }
+		select(window)
+		return true
+	}
+
 	func prepareForTermination() {
 		isTerminating = true
 	}

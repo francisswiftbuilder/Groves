@@ -32,6 +32,29 @@ struct RepositoryTreeViewModelTests {
 	}
 
 	@Test
+	func aFileThatCanNoLongerBeReadDoesNotKeepItsPreviousPreview() async throws {
+		let content = Content()
+		let model = RepositoryTreeViewModel(dependencies: .init(contentUseCase: content))
+		defer { model.onDisappear() }
+		let url = URL(fileURLWithPath: "/repo")
+		model.apply(snapshot(), repositoryURL: url)
+		await model.didSelectTreeNode(id: "Value.swift")
+		try await waitUntil { await content.count == 1 }
+		let data = Data("old preview".utf8)
+		await content.resume(0, with: .success(data))
+		try await waitUntil {
+			model.filePreview == .text(content: "old preview", byteCount: data.count)
+		}
+
+		model.apply(snapshot(), repositoryURL: url)
+		try await waitUntil { await content.count == 2 }
+		await content.resume(1, with: .failure(GitRepositoryError.fileUnavailable))
+		try await waitUntil {
+			model.filePreview == .failure(GitRepositoryError.fileUnavailable.localizedDescription)
+		}
+	}
+
+	@Test
 	func cancelledPreviewFailureCannotReplaceANewerPreviewOfTheSameFile() async throws {
 		let content = Content()
 		let model = RepositoryTreeViewModel(dependencies: .init(contentUseCase: content))

@@ -152,6 +152,10 @@ public final class RepositorySyncViewModel {
 		activity != nil
 	}
 
+	public var isBlockingLocalRefresh: Bool {
+		isLoading && !isAutomaticFetch
+	}
+
 	public var canFetch: Bool { !isLoading && !remotes.isEmpty }
 	public var canPull: Bool {
 		!isLoading && operationState.isIdle && !operationState.isDetached

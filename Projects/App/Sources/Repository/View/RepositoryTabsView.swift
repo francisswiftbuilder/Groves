@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct RepositoryTabsView: View {
 	@Environment(\.windowTabCoordinator) private var coordinator
 	@Bindable var viewModel: RepositoryTabsViewModel
+	let accountViewModel: GitAccountViewModel
 	let windowViewModel: RepositoryWindowViewModel
 	@Binding var repositoryID: RepositoryTab.ID?
 
@@ -18,10 +19,12 @@ struct RepositoryTabsView: View {
 				)
 			} else {
 				RepositoryWelcomeContainerView(
-					viewModel: windowViewModel,
+					accountViewModel: accountViewModel,
+					repositories: viewModel.tabs.map(\.repository),
 					isWorking: viewModel.isAddingRepository,
 					onOpenRepository: presentRepositoryImporter,
-					onCloneRepository: presentCloneDestinationImporter,
+					onOpenSavedRepository: showRepository,
+					onCloneRepository: windowViewModel.didPresentCloneDestinationImporter,
 					onCancel: viewModel.didRequestCancelAddingRepository
 				)
 			}
@@ -64,10 +67,6 @@ struct RepositoryTabsView: View {
 
 	private func presentRepositoryImporter() {
 		windowViewModel.didPresentRepositoryImporter()
-	}
-
-	private func presentCloneDestinationImporter() {
-		windowViewModel.didPresentCloneDestinationImporter()
 	}
 
 	private func handleFolderImport(_ result: Result<[URL], any Error>) {
@@ -166,6 +165,7 @@ struct RepositoryTabsView: View {
 	}
 
 	private func showRepository(_ id: RepositoryTab.ID) {
+		guard coordinator?.focusRepositoryIfOpen(id) != true else { return }
 		if repositoryID == nil {
 			repositoryID = id
 		} else {

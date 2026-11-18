@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Synchronization
 import Testing
 
 @testable import CoreGitCredential
@@ -34,7 +35,13 @@ struct GitAccountViewModelTests {
 		}
 	}
 
-	private final class AuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
+	final class AuthenticationURLProtocol: URLProtocol, @unchecked Sendable {
+		private static let cacheTestRepositoryRequests = Mutex(0)
+
+		static var repositoryRequestCount: Int {
+			cacheTestRepositoryRequests.withLock { $0 }
+		}
+
 		override class func canInit(with request: URLRequest) -> Bool { true }
 		override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -45,10 +52,29 @@ struct GitAccountViewModelTests {
 			let status = authorization == "Bearer invalid-test-token" ? 401 : 200
 			let response = HTTPURLResponse(
 				url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
-			let data = Data(
-				"{\"login\":\"\(login)\",\"id\":42,\"name\":\"Test User\",\"email\":null}".utf8)
+			let body: String
+			switch request.url?.path {
+			case "/user/repos":
+				if authorization == "Bearer cache-test-token" {
+					Self.cacheTestRepositoryRequests.withLock { $0 += 1 }
+				}
+				body =
+					#"[{"id":42,"full_name":"\#(login)/ios-project","description":"iOS application","default_branch":"main","private":true,"archived":false}]"#
+			case "/repos/\(login)/ios-project/contents":
+				body = """
+					[
+						{"name":"Sources","path":"Sources","type":"dir","html_url":"https://github.com/\(login)/ios-project/tree/main/Sources"},
+						{"name":"README.md","path":"README.md","type":"file","html_url":"https://github.com/\(login)/ios-project/blob/main/README.md"}
+					]
+					"""
+			case "/repos/\(login)/ios-project/readme":
+				body =
+					"# iOS Project\n\nA native app with **SwiftUI** views.\n\n## Getting Started\nOpen Package.swift in Xcode."
+			default:
+				body = #"{"login":"\#(login)","id":42,"name":"Test User","email":null}"#
+			}
 			client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-			client?.urlProtocol(self, didLoad: data)
+			client?.urlProtocol(self, didLoad: Data(body.utf8))
 			client?.urlProtocolDidFinishLoading(self)
 		}
 
@@ -200,6 +226,47 @@ struct GitAccountViewModelTests {
 		reloaded.load()
 		#expect(reloaded.account == original)
 		#expect(Set(reloaded.accounts) == [original, added])
+	}
+
+	@Test
+	func repositoryDiscoveryUsesOnlyTheActiveAccountsStoredToken() async throws {
+		let context = try makeContext()
+		let first = GitCredentialDescriptor(kind: .https, host: "github.com", account: "octocat")
+		let second = GitCredentialDescriptor(kind: .https, host: "github.com", account: "different")
+		try context.store.save(secret: "valid-test-token", for: first)
+		try context.store.save(secret: "different-test-token", for: second)
+		let viewModel = context.viewModel
+		viewModel.switchAccount(to: first)
+		let firstList = try await viewModel.loadRepositories(for: first)
+		#expect(firstList.map(\.fullName) == ["octocat/ios-project"])
+
+		viewModel.switchAccount(to: second)
+		#expect(viewModel.accessibleRepositories == nil)
+		await #expect(throws: CancellationError.self) {
+			_ = try await viewModel.loadRepositories(for: first)
+		}
+		let secondList = try await viewModel.loadRepositories(for: second)
+		#expect(secondList.map(\.fullName) == ["different/ios-project"])
+	}
+
+	@Test
+	func repositoryDiscoveryReusesRequestsAndRefreshesOnDemand() async throws {
+		let context = try makeContext()
+		let account = GitCredentialDescriptor(kind: .https, host: "github.com", account: "octocat")
+		try context.store.save(secret: "cache-test-token", for: account)
+		let viewModel = context.viewModel
+		viewModel.switchAccount(to: account)
+		let previousRequests = AuthenticationURLProtocol.repositoryRequestCount
+
+		async let first = viewModel.loadRepositories(for: account)
+		async let second = viewModel.loadRepositories(for: account)
+		let (firstList, secondList) = try await (first, second)
+		#expect(firstList == secondList)
+		#expect(try await viewModel.loadRepositories(for: account) == firstList)
+		#expect(AuthenticationURLProtocol.repositoryRequestCount == previousRequests + 1)
+
+		#expect(try await viewModel.loadRepositories(for: account, forceRefresh: true) == firstList)
+		#expect(AuthenticationURLProtocol.repositoryRequestCount == previousRequests + 2)
 	}
 
 	@Test

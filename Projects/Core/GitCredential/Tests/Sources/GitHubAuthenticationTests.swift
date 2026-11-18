@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CoreGitCredential
@@ -40,6 +41,50 @@ struct GitHubAuthenticationTests {
 			_ = try await client().account(token: "forbidden-test-token")
 			Issue.record("Expected a permission error")
 		} catch GitHubAuthenticationError.forbidden {}
+	}
+
+	@Test
+	func repositoriesIncludeAllPagesOnceAndKeepPrivateMetadata() async throws {
+		let partialResults = Mutex<[[String]]>([])
+		let repositories = try await client().repositories(token: "valid-test-token") { partial in
+			partialResults.withLock { $0.append(partial.map(\.fullName)) }
+		}
+		#expect(partialResults.withLock { $0 } == [["octocat/Local"]])
+		#expect(repositories.map(\.fullName) == ["octocat/Local", "team/Project.v2"])
+		let team = try #require(repositories.last)
+		#expect(team.isPrivate && team.isArchived)
+		#expect(team.description == "Team repo")
+		#expect(team.cloneURL.absoluteString == "https://github.com/team/Project.v2.git")
+	}
+
+	@Test
+	func forbiddenTokenCannotListRepositories() async throws {
+		do {
+			_ = try await client().repositories(token: "forbidden-test-token")
+			Issue.record("Expected a permission error")
+		} catch GitHubAuthenticationError.forbidden {}
+	}
+
+	@Test
+	func repositoryPreviewIncludesReadmeAndRootContents() async throws {
+		let client = client()
+		let repositories = try await client.repositories(token: "valid-test-token")
+		let repository = try #require(repositories.first)
+		let preview = try await client.repositoryPreview(for: repository, token: "valid-test-token")
+		#expect(preview.files.map(\.name) == ["Sources", "README.md"])
+		#expect(preview.files.first?.isDirectory == true)
+		#expect(preview.files.last?.webURL?.path == "/octocat/Local/blob/main/README.md")
+		#expect(preview.readme == "# Repository README\n\nExample text.")
+	}
+
+	@Test
+	func repositoryPreviewStillShowsFilesWhenReadmeIsMissing() async throws {
+		let client = client()
+		let repositories = try await client.repositories(token: "valid-test-token")
+		let repository = try #require(repositories.last)
+		let preview = try await client.repositoryPreview(for: repository, token: "valid-test-token")
+		#expect(preview.files.map(\.name) == ["Package.swift"])
+		#expect(preview.readme == nil)
 	}
 
 	@Test

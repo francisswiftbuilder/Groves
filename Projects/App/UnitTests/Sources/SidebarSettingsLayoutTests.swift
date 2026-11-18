@@ -168,6 +168,134 @@ struct SidebarSettingsLayoutTests {
 		try capture(controller.view, name: "settings-\(scenario)-\(colorScheme)")
 	}
 
+	@Test(arguments: [680.0, 760.0, 1_280.0], [ColorScheme.light, .dark])
+	func newTabShowsTheRepositoryListAndFitsTheSearchField(
+		width: Double, colorScheme: ColorScheme
+	) async throws {
+		let suite = "Groves.NewTab.Layout.\(UUID())"
+		let defaults = try #require(UserDefaults(suiteName: suite))
+		defer { defaults.removePersistentDomain(forName: suite) }
+		let store = GitCredentialStore(
+			service: suite, securityClient: GitAccountViewModelTests.SecurityClientStub(),
+			accessGroupResolver: { "TESTTEAM.Groves.NewTab.Layout" })
+		try store.save(
+			secret: "valid-test-token", for: .init(kind: .https, host: "github.com", account: "octocat"))
+		let configuration = URLSessionConfiguration.ephemeral
+		configuration.protocolClasses = [GitAccountViewModelTests.AuthenticationURLProtocol.self]
+		let account = GitAccountViewModel(
+			store: store, client: .init(session: URLSession(configuration: configuration)),
+			defaults: defaults)
+		account.load()
+		let size = CGSize(width: width, height: 520)
+		let controller = NSHostingController(rootView: AnyView(EmptyView()))
+		let window = makeWindow(controller: controller, size: size, colorScheme: colorScheme)
+		window.styleMask.insert(.titled)
+		window.makeKeyAndOrderFront(nil)
+		controller.rootView = AnyView(
+			RepositoryWelcomeContainerView(
+				accountViewModel: account, repositories: [], isWorking: false, onOpenRepository: {},
+				onOpenSavedRepository: { _ in }, onCloneRepository: { _ in }, onCancel: {}
+			)
+			.frame(width: size.width, height: size.height)
+			.environment(\.colorScheme, colorScheme))
+		defer { close(window: window, controller: controller) }
+		try await settle(controller.view)
+
+		let fields = editableFields(in: controller.view)
+		try #require(!fields.isEmpty)
+		for field in fields {
+			#expect(controller.view.bounds.contains(controller.view.convert(field.bounds, from: field)))
+		}
+		#expect(tableRowCounts(in: controller.view).contains(1))
+		var captureResult: Result<Void, any Error> = .success(())
+		window.effectiveAppearance.performAsCurrentDrawingAppearance {
+			captureResult = Result {
+				try capture(controller.view, name: "new-tab-\(Int(width))-\(colorScheme)")
+			}
+		}
+		try captureResult.get()
+
+		let searchField = try #require(fields.first)
+		let originalTable = try #require(repositoryTable(in: controller.view))
+		let ancestors = sequence(first: originalTable as NSView, next: { $0.superview })
+		let split = try #require(ancestors.compactMap { $0 as? NSSplitView }.first)
+		let previewPane = try #require(split.subviews.last)
+		try #require(window.makeFirstResponder(originalTable))
+		originalTable.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+		try await settle(controller.view)
+		try #require(window.makeFirstResponder(searchField))
+		for (character, keyCode, expectedText) in [
+			("i", UInt16(34), "i"), ("x", UInt16(7), "ix"), ("z", UInt16(6), "ixz"),
+			("\u{7f}", UInt16(51), "ix"), ("\u{7f}", UInt16(51), "i"),
+		] {
+			let event = try #require(
+				NSEvent.keyEvent(
+					with: .keyDown, location: .zero, modifierFlags: [],
+					timestamp: ProcessInfo.processInfo.systemUptime,
+					windowNumber: window.windowNumber, context: nil,
+					characters: character, charactersIgnoringModifiers: character,
+					isARepeat: false, keyCode: keyCode))
+			window.sendEvent(event)
+			try await settle(controller.view)
+			let editor = try #require(
+				searchField.currentEditor(), "Search lost focus after \(expectedText)")
+			#expect(window.firstResponder === editor)
+			#expect(editor.string == expectedText)
+			#expect(split.isDescendant(of: controller.view))
+			#expect(split.subviews.last === previewPane)
+		}
+
+		let table = try #require(repositoryTable(in: controller.view))
+		try #require(window.makeFirstResponder(table))
+		#expect(table.selectedRow == 0)
+		let firstRow = controller.view.convert(table.rect(ofRow: 0), from: table)
+		let searchBounds = controller.view.convert(searchField.bounds, from: searchField)
+		#expect(firstRow.minY >= searchBounds.maxY)
+		try capture(controller.view, name: "new-tab-preview-\(Int(width))-\(colorScheme)")
+	}
+
+	@Test
+	func newTabCanSubmitAPublicCloneURLWithoutAGitHubAccount() async throws {
+		let suite = "Groves.CloneSearch.\(UUID())"
+		let defaults = try #require(UserDefaults(suiteName: suite))
+		defer { defaults.removePersistentDomain(forName: suite) }
+		let account = GitAccountViewModel(defaults: defaults)
+		var cloneRequests: [String] = []
+		let size = CGSize(width: 760, height: 520)
+		let controller = NSHostingController(rootView: AnyView(EmptyView()))
+		let window = makeWindow(controller: controller, size: size, colorScheme: .light)
+		window.styleMask.insert(.titled)
+		window.makeKeyAndOrderFront(nil)
+		controller.rootView = AnyView(
+			RepositoryWelcomeContainerView(
+				accountViewModel: account, repositories: [], isWorking: false, onOpenRepository: {},
+				onOpenSavedRepository: { _ in }, onCloneRepository: { cloneRequests.append($0) },
+				onCancel: {}
+			)
+			.frame(width: size.width, height: size.height))
+		defer { close(window: window, controller: controller) }
+		try await settle(controller.view)
+
+		let field = try #require(editableFields(in: controller.view).first)
+		#expect(field.isEnabled)
+		try #require(window.makeFirstResponder(field))
+		let editor = try #require(field.currentEditor() as? NSTextView)
+		let url = "https://gitlab.com/example/project.git"
+		editor.insertText(url, replacementRange: NSRange(location: NSNotFound, length: 0))
+		try await settle(controller.view)
+		#expect(window.firstResponder === editor)
+		#expect(cloneRequests.isEmpty)
+		let event = try #require(
+			NSEvent.keyEvent(
+				with: .keyDown, location: .zero, modifierFlags: [],
+				timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+				context: nil, characters: "\r", charactersIgnoringModifiers: "\r",
+				isARepeat: false, keyCode: 36))
+		window.sendEvent(event)
+		try await settle(controller.view)
+		#expect(cloneRequests == [url])
+	}
+
 	@Test(arguments: [760.0, 1_280.0], [ColorScheme.light, .dark])
 	func repositoryToolbarFitsNarrowAndWideWindows(
 		width: Double, colorScheme: ColorScheme
@@ -272,5 +400,15 @@ struct SidebarSettingsLayoutTests {
 	private func editableFields(in view: NSView) -> [NSTextField] {
 		if let field = view as? NSTextField, field.isEditable { return [field] }
 		return view.subviews.flatMap { editableFields(in: $0) }
+	}
+
+	private func tableRowCounts(in view: NSView) -> [Int] {
+		let ownCount = (view as? NSTableView).map { [$0.numberOfRows] } ?? []
+		return ownCount + view.subviews.flatMap { tableRowCounts(in: $0) }
+	}
+
+	private func repositoryTable(in view: NSView) -> NSTableView? {
+		if let table = view as? NSTableView, table.numberOfRows == 1 { return table }
+		return view.subviews.lazy.compactMap { repositoryTable(in: $0) }.first
 	}
 }

@@ -127,6 +127,25 @@ struct GitCommitPlanningTests {
 	}
 
 	@Test
+	func sameHeadOnAnotherBranchRejectsAReviewedPlan() async throws {
+		let context = try await makeContext()
+		try await run(["commit", "--allow-empty", "-m", "initial"], in: context)
+		try Data("staged\n".utf8).write(to: context.url.appending(path: "file.txt"))
+		try await run(["add", "."], in: context)
+		let input = try await context.repository.requestCommitPlanInput(at: context.url)
+		try await run(["switch", "-c", "other"], in: context)
+
+		await #expect(throws: GitCommitPlanError.self) {
+			try await context.repository.requestCommitTask(
+				GitCommitTask(subject: "feat: pending", body: "", unitIDs: input.units.map(\.id)),
+				expecting: input, at: context.url)
+		}
+		let head = try await output(["rev-parse", "HEAD"], in: context)
+		#expect(head.trimmingCharacters(in: .newlines) == input.headHash)
+		#expect(try await output(["show", ":file.txt"], in: context) == "staged\n")
+	}
+
+	@Test
 	func failingCommitHookPreservesTheIndexAndHead() async throws {
 		let context = try await makeContext()
 		try Data("staged\n".utf8).write(to: context.url.appending(path: "file.txt"))

@@ -293,6 +293,7 @@ actor GitProcessRunner {
 			result["GIT_SEQUENCE_EDITOR"] = "/usr/bin/true"
 			result["GIT_MERGE_AUTOEDIT"] = "no"
 			result["GIT_INDEX_FILE"] = environment["GIT_INDEX_FILE"]
+			result["GIT_OPTIONAL_LOCKS"] = environment["GIT_OPTIONAL_LOCKS"]
 			result["LC_ALL"] = "C"
 		}
 		if let runtimeURL = configuration.runtimeURL {

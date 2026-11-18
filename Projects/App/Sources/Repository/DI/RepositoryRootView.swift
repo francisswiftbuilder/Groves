@@ -25,6 +25,7 @@ struct RepositoryRootView: View {
 	private var repositoryContent: some View {
 		RepositoryTabsView(
 			viewModel: viewModel,
+			accountViewModel: accountViewModel,
 			windowViewModel: windowViewModel,
 			repositoryID: $repositoryID
 		)

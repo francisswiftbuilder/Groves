@@ -46,14 +46,14 @@ struct RepositoryUseCaseTests {
 		#expect(events == [.stage(path: change.path)])
 	}
 
-	@Test
-	func testPushWithoutUpstreamUsesSelectedRemoteAndReturnsSnapshot() async throws {
+	@Test(arguments: [false, true])
+	func testPushUsesSelectedRemoteAndReturnsSnapshot(hasUpstream: Bool) async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Groves", isDirectory: true)
 		let recorder = GitRepositoryRecorder()
 		let branch = GitBranch(
 			name: "feature/use-case",
 			shortHash: "1234567",
-			upstream: nil,
+			upstream: hasUpstream ? "origin/main" : nil,
 			isCurrent: true
 		)
 		let remotes = [
@@ -80,7 +80,11 @@ struct RepositoryUseCaseTests {
 		let events = await recorder.recordedEvents()
 
 		#expect(snapshot.branches == [branch])
-		#expect(events == [.push(.setUpstream(remoteName: "upstream", branchName: branch.name))])
+		let target: GitPushTarget =
+			hasUpstream
+			? .upstream(branchName: branch.name, remoteName: "upstream")
+			: .setUpstream(remoteName: "upstream", branchName: branch.name)
+		#expect(events == [.push(target)])
 	}
 
 	@Test

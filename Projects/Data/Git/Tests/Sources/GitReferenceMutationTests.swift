@@ -490,9 +490,9 @@ struct GitReferenceMutationTests {
 
 		if force {
 			try await context.repository.requestForcePush(
-				.upstream, expecting: try await requestCurrentBranch(in: context), at: context.url)
+				.upstream(), expecting: try await requestCurrentBranch(in: context), at: context.url)
 		} else {
-			try await context.repository.requestPush(.upstream, at: context.url)
+			try await context.repository.requestPush(.upstream(), at: context.url)
 		}
 
 		let references = try await context.runner.requestRun(
@@ -528,8 +528,8 @@ struct GitReferenceMutationTests {
 		#expect(upstream == "origin/release")
 	}
 
-	@Test(arguments: ["branch.tracked.pushRemote", "remote.pushDefault"])
-	func pushRemoteOverridesPreserveTheFetchUpstream(key: String) async throws {
+	@Test(arguments: ["branch.tracked.pushRemote", "remote.pushDefault", nil] as [String?])
+	func pushRemoteOverridesPreserveTheFetchUpstream(key: String?) async throws {
 		let context = try await makeContext()
 		let upstreamRemote = try await makeRemote(in: context)
 		_ = try await run(["push", "origin", "HEAD:refs/heads/main"], in: context)
@@ -539,11 +539,14 @@ struct GitReferenceMutationTests {
 		let pushRemote = context.url.appending(path: ".git/fork.git")
 		_ = try await run(["init", "--bare", pushRemote.path], in: context)
 		_ = try await run(["remote", "add", "fork", pushRemote.path], in: context)
-		_ = try await run(["config", key, "fork"], in: context)
+		if let key {
+			_ = try await run(["config", key, "fork"], in: context)
+		}
 		_ = try await run(["commit", "--allow-empty", "-m", "fork change"], in: context)
 		let head = try await run(["rev-parse", "HEAD"], in: context)
 
-		try await context.repository.requestPush(.upstream, at: context.url)
+		try await context.repository.requestPush(
+			.upstream(branchName: "tracked", remoteName: key == nil ? "fork" : nil), at: context.url)
 
 		let upstreamHead = try await context.runner.requestRun(
 			arguments: ["rev-parse", "refs/heads/main"], at: upstreamRemote)
@@ -572,7 +575,7 @@ struct GitReferenceMutationTests {
 
 		await #expect(throws: GitRepositoryError.self) {
 			try await context.repository.requestForcePush(
-				.upstream, expecting: try await requestCurrentBranch(in: context), at: context.url)
+				.upstream(), expecting: try await requestCurrentBranch(in: context), at: context.url)
 		}
 
 		let actual = try await context.runner.requestRun(
@@ -689,7 +692,8 @@ struct GitReferenceMutationTests {
 				$0.path == "new.txt"
 			})
 
-		try await context.repository.requestDiscard(change: change, at: context.url)
+		let discard = try await context.repository.requestDiscardContext(for: [change], at: context.url)
+		try await context.repository.requestDiscard(discard, at: context.url)
 
 		#expect(
 			try String(contentsOf: context.url.appending(path: "new.txt"), encoding: .utf8) == original)
@@ -847,7 +851,7 @@ struct GitReferenceMutationTests {
 
 		await #expect(throws: GitRepositoryError.self) {
 			try await context.repository.requestForcePush(
-				.upstream, expecting: try await requestCurrentBranch(in: context), at: context.url)
+				.upstream(), expecting: try await requestCurrentBranch(in: context), at: context.url)
 		}
 
 		let actual = try await context.runner.requestRun(
@@ -934,7 +938,8 @@ struct GitReferenceMutationTests {
 		}
 
 		await #expect(throws: GitRepositoryError.self) {
-			try await context.repository.requestForcePush(.upstream, expecting: expected, at: context.url)
+			try await context.repository.requestForcePush(
+				.upstream(), expecting: expected, at: context.url)
 		}
 
 		let actual = try await context.runner.requestRun(
@@ -956,7 +961,7 @@ struct GitReferenceMutationTests {
 		_ = try await run(["commit", "--allow-empty", "-m", "reviewed work"], in: context)
 		let expected = try await requestCurrentBranch(in: context)
 
-		try await context.repository.requestForcePush(.upstream, expecting: expected, at: context.url)
+		try await context.repository.requestForcePush(.upstream(), expecting: expected, at: context.url)
 
 		let actual = try await context.runner.requestRun(
 			arguments: ["rev-parse", "refs/heads/main"], at: remote)

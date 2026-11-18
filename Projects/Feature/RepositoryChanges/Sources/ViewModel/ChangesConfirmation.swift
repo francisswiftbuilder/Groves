@@ -2,7 +2,7 @@ import DomainGitInterface
 import Foundation
 
 public enum ChangesConfirmation {
-	case discard([WorkingTreeChange])
+	case discard(GitDiscardContext, repositoryURL: URL)
 
 	public var title: String {
 		let changes = changes
@@ -23,8 +23,8 @@ public enum ChangesConfirmation {
 
 	var changes: [WorkingTreeChange] {
 		switch self {
-		case .discard(let changes):
-			return changes
+		case .discard(let context, _):
+			return context.changes
 		}
 	}
 }
