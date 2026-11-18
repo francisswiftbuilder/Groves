@@ -12,11 +12,14 @@ public struct GitHubAuthenticationClient: Sendable {
 		return try JSONDecoder().decode(GitHubAccount.self, from: data)
 	}
 
-	public func repositories(token: String) async throws -> [GitHubRepository] {
+	public func repositories(
+		token: String, progress: @Sendable ([GitHubRepository]) async -> Void = { _ in }
+	) async throws -> [GitHubRepository] {
 		var repositories: [GitHubRepository] = []
 		var seen: Set<GitHubRepository.ID> = []
 		var page = 1
 		while true {
+			try Task.checkCancellation()
 			var components = URLComponents(string: "https://api.github.com/user/repos")!
 			components.queryItems = [
 				URLQueryItem(name: "affiliation", value: "owner,collaborator,organization_member"),
@@ -34,6 +37,7 @@ public struct GitHubAuthenticationClient: Sendable {
 					}
 				})
 			else { return repositories }
+			await progress(repositories)
 			page += 1
 		}
 	}

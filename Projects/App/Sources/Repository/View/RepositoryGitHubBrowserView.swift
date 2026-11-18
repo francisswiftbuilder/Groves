@@ -2,12 +2,6 @@ import CoreGitCredential
 import SwiftUI
 
 struct RepositoryGitHubBrowserView: View {
-	private struct Request: Equatable {
-		let account: GitCredentialDescriptor?
-		let accessRevision: Int
-		let refreshCount: Int
-	}
-
 	let accountViewModel: GitAccountViewModel
 	let isWorking: Bool
 	let onOpenRepository: () -> Void
@@ -16,20 +10,12 @@ struct RepositoryGitHubBrowserView: View {
 
 	@State private var query = ""
 	@State private var selection: GitHubRepository.ID?
-	@State private var repositories: [GitHubRepository] = []
-	@State private var loadedRequest: Request?
-	@State private var errorMessage: String?
-	@State private var refreshCount = 0
 
-	private var request: Request {
-		Request(
-			account: accountViewModel.account,
-			accessRevision: accountViewModel.repositoryAccessRevision,
-			refreshCount: refreshCount)
+	private var repositories: [GitHubRepository] {
+		accountViewModel.accessibleRepositories ?? []
 	}
 
 	private var filteredRepositories: [GitHubRepository] {
-		guard loadedRequest == request else { return [] }
 		let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !search.isEmpty else { return repositories }
 		return repositories.filter {
@@ -39,10 +25,7 @@ struct RepositoryGitHubBrowserView: View {
 	}
 
 	private var selectedRepository: GitHubRepository? {
-		guard loadedRequest?.account == request.account,
-			loadedRequest?.accessRevision == request.accessRevision
-		else { return nil }
-		return repositories.first { $0.id == selection }
+		repositories.first { $0.id == selection }
 	}
 
 	private var enteredRemoteURL: String? {
@@ -54,7 +37,6 @@ struct RepositoryGitHubBrowserView: View {
 	}
 
 	var body: some View {
-		let request = request
 		GeometryReader { geometry in
 			VStack(spacing: 0) {
 				Divider()
@@ -64,7 +46,7 @@ struct RepositoryGitHubBrowserView: View {
 							minWidth: min(195, geometry.size.width * 0.4), idealWidth: 255,
 							maxWidth: 360, maxHeight: .infinity)
 					RepositoryGitHubDetailView(
-						repository: selectedRepository, account: request.account,
+						repository: selectedRepository, account: accountViewModel.account,
 						accountViewModel: accountViewModel
 					)
 					.frame(
@@ -80,8 +62,9 @@ struct RepositoryGitHubBrowserView: View {
 				footer
 			}
 		}
-		.task(id: request) {
-			await loadRepositories(for: request)
+		.onChange(of: accountViewModel.repositoryAccessRevision) { selection = nil }
+		.task(id: accountViewModel.repositoryAccessRevision) {
+			await loadRepositories()
 		}
 	}
 
@@ -102,12 +85,17 @@ struct RepositoryGitHubBrowserView: View {
 					.frame(maxWidth: 290)
 					.onSubmit(cloneSelection)
 					.disabled(isWorking)
-				Button("Refresh Repositories", systemImage: "arrow.clockwise") {
-					refreshCount += 1
+				Button {
+					Task { await loadRepositories(forceRefresh: true) }
+				} label: {
+					Label(
+						"Refresh Repositories",
+						systemImage: accountViewModel.repositoryLoadError == nil
+							? "arrow.clockwise" : "exclamationmark.circle")
 				}
 				.labelStyle(.iconOnly)
-				.help("Refresh Repositories")
-				.disabled(accountViewModel.account == nil || loadedRequest != request)
+				.help(accountViewModel.repositoryLoadError ?? "Refresh Repositories")
+				.disabled(accountViewModel.account == nil || accountViewModel.isLoadingRepositories)
 			}
 			.padding(12)
 		}
@@ -135,20 +123,24 @@ struct RepositoryGitHubBrowserView: View {
 			} actions: {
 				SettingsLink { Text("Open Settings…") }
 			}
-		} else if loadedRequest != request {
+		} else if repositories.isEmpty && accountViewModel.isLoadingRepositories {
 			ProgressView("Loading Repositories…")
-		} else if let errorMessage {
+		} else if repositories.isEmpty, let errorMessage = accountViewModel.repositoryLoadError {
 			ContentUnavailableView {
 				Label("Couldn’t Load Repositories", systemImage: "exclamationmark.triangle")
 			} description: {
 				Text(errorMessage)
 			} actions: {
-				Button("Try Again") { refreshCount += 1 }
+				Button("Try Again") { Task { await loadRepositories(forceRefresh: true) } }
 			}
+		} else if accountViewModel.accessibleRepositories == nil {
+			ProgressView("Loading Repositories…")
 		} else if repositories.isEmpty {
 			ContentUnavailableView(
 				"No Accessible Repositories", systemImage: "folder",
 				description: Text("Check which repositories your GitHub token can access."))
+		} else if filteredRepositories.isEmpty && accountViewModel.isLoadingRepositories {
+			ProgressView("Searching Repositories…")
 		} else if filteredRepositories.isEmpty {
 			ContentUnavailableView.search(text: query)
 		} else {
@@ -225,31 +217,8 @@ struct RepositoryGitHubBrowserView: View {
 		onClone(cloneTarget)
 	}
 
-	private func loadRepositories(for request: Request) async {
-		guard let account = request.account else {
-			repositories = []
-			selection = nil
-			loadedRequest = nil
-			return
-		}
-		if loadedRequest?.account != account {
-			selection = nil
-		}
-		do {
-			let repositories = try await accountViewModel.loadRepositories(for: account)
-			guard !Task.isCancelled, request == self.request else { return }
-			self.repositories = repositories.sorted {
-				$0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending
-			}
-			errorMessage = nil
-			loadedRequest = request
-		} catch is CancellationError {
-			return
-		} catch {
-			guard !Task.isCancelled, request == self.request else { return }
-			repositories = []
-			errorMessage = error.localizedDescription
-			loadedRequest = request
-		}
+	private func loadRepositories(forceRefresh: Bool = false) async {
+		guard let account = accountViewModel.account else { return }
+		_ = try? await accountViewModel.loadRepositories(for: account, forceRefresh: forceRefresh)
 	}
 }

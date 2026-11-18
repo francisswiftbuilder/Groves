@@ -12,8 +12,15 @@ final class GitAccountViewModel {
 
 	var token = ""
 	var identity = GitIdentityConfiguration()
-	private(set) var account: GitCredentialDescriptor?
+	private(set) var account: GitCredentialDescriptor? {
+		didSet {
+			if account != oldValue { invalidateRepositoryAccess() }
+		}
+	}
 	private(set) var repositoryAccessRevision = 0
+	private(set) var accessibleRepositories: [GitHubRepository]?
+	private(set) var repositoryLoadError: String?
+	private(set) var isLoadingRepositories = false
 	private(set) var accounts: [GitCredentialDescriptor] = []
 	private(set) var tokenEntry: TokenEntry?
 	private(set) var pendingSignOut: GitCredentialDescriptor?
@@ -29,6 +36,8 @@ final class GitAccountViewModel {
 	private let configurationURL: URL
 	private let accountSelection: GitHubAccountSelection
 	@ObservationIgnored private var connectionTask: Task<Void, Never>?
+	@ObservationIgnored private var repositoryLoadTask: Task<[GitHubRepository], any Error>?
+	private var repositoriesUpdatedAt: ContinuousClock.Instant?
 	private var activeConnectionRequestID: Int?
 	private var connectionRequestSequence = 0
 
@@ -56,6 +65,7 @@ final class GitAccountViewModel {
 
 	deinit {
 		connectionTask?.cancel()
+		repositoryLoadTask?.cancel()
 	}
 
 	func load() {
@@ -79,15 +89,84 @@ final class GitAccountViewModel {
 		}
 	}
 
-	func loadRepositories(for account: GitCredentialDescriptor) async throws -> [GitHubRepository] {
+	func loadRepositories(for account: GitCredentialDescriptor, forceRefresh: Bool = false)
+		async throws -> [GitHubRepository]
+	{
 		guard self.account == account else { throw CancellationError() }
-		guard let token = try store.secret(for: account) else {
-			throw GitHubAccountSelectionError.accountUnavailable
-		}
-		let repositories = try await client.repositories(token: token)
 		try Task.checkCancellation()
-		guard self.account == account else { throw CancellationError() }
+		if repositoryLoadTask == nil, !forceRefresh, let accessibleRepositories,
+			let repositoriesUpdatedAt,
+			ContinuousClock.now - repositoriesUpdatedAt < .seconds(60)
+		{
+			return accessibleRepositories
+		}
+		let revision = repositoryAccessRevision
+		let task = repositoryLoadTask ?? startRepositoryLoad(for: account, revision: revision)
+		let repositories = try await task.value
+		try Task.checkCancellation()
+		guard repositoryAccessRevision == revision else { throw CancellationError() }
 		return repositories
+	}
+
+	private func startRepositoryLoad(for account: GitCredentialDescriptor, revision: Int)
+		-> Task<[GitHubRepository], any Error>
+	{
+		let showsPartialResults = accessibleRepositories == nil
+		repositoryLoadError = nil
+		isLoadingRepositories = true
+		let task = Task { [weak self, store, client] in
+			defer {
+				if let self, repositoryAccessRevision == revision {
+					repositoryLoadTask = nil
+					isLoadingRepositories = false
+				}
+			}
+			do {
+				guard let token = try store.secret(for: account) else {
+					throw GitHubAccountSelectionError.accountUnavailable
+				}
+				let repositories = try await client.repositories(token: token) { [weak self] partial in
+					guard showsPartialResults else { return }
+					await self?.publishRepositories(partial, revision: revision)
+				}
+				try Task.checkCancellation()
+				guard let self, repositoryAccessRevision == revision else { throw CancellationError() }
+				publishRepositories(repositories, revision: revision)
+				repositoriesUpdatedAt = .now
+				return accessibleRepositories ?? []
+			} catch {
+				if let self, repositoryAccessRevision == revision, !Task.isCancelled {
+					repositoryLoadError = error.localizedDescription
+					repositoriesUpdatedAt = nil
+					let authenticationError = error as? GitHubAuthenticationError
+					if authenticationError == .invalidToken || authenticationError == .forbidden
+						|| error is GitHubAccountSelectionError
+					{
+						accessibleRepositories = nil
+					}
+				}
+				throw error
+			}
+		}
+		repositoryLoadTask = task
+		return task
+	}
+
+	private func publishRepositories(_ repositories: [GitHubRepository], revision: Int) {
+		guard revision == repositoryAccessRevision else { return }
+		accessibleRepositories = repositories.sorted {
+			$0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending
+		}
+	}
+
+	private func invalidateRepositoryAccess() {
+		repositoryAccessRevision += 1
+		repositoryLoadTask?.cancel()
+		repositoryLoadTask = nil
+		accessibleRepositories = nil
+		repositoryLoadError = nil
+		repositoriesUpdatedAt = nil
+		isLoadingRepositories = false
 	}
 
 	func loadRepositoryPreview(
@@ -178,7 +257,7 @@ final class GitAccountViewModel {
 					return
 				}
 				try store.save(secret: submittedToken, for: descriptor)
-				repositoryAccessRevision += 1
+				if account == descriptor { invalidateRepositoryAccess() }
 				self.accounts = (accounts.filter { $0 != descriptor } + [descriptor]).sorted {
 					$0.account.localizedStandardCompare($1.account) == .orderedAscending
 				}

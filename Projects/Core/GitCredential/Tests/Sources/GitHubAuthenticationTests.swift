@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CoreGitCredential
@@ -44,7 +45,11 @@ struct GitHubAuthenticationTests {
 
 	@Test
 	func repositoriesIncludeAllPagesOnceAndKeepPrivateMetadata() async throws {
-		let repositories = try await client().repositories(token: "valid-test-token")
+		let partialResults = Mutex<[[String]]>([])
+		let repositories = try await client().repositories(token: "valid-test-token") { partial in
+			partialResults.withLock { $0.append(partial.map(\.fullName)) }
+		}
+		#expect(partialResults.withLock { $0 } == [["octocat/Local"]])
 		#expect(repositories.map(\.fullName) == ["octocat/Local", "team/Project.v2"])
 		let team = try #require(repositories.last)
 		#expect(team.isPrivate && team.isArchived)
