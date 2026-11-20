@@ -70,7 +70,7 @@ public struct RepositoryTreeView: View {
 	private var selectedTreeNodeBinding: Binding<String?> {
 		Binding(
 			get: { viewModel.selectedTreeNodeID },
-			set: viewModel.didSelectTreeNode(id:)
+			set: { nodeID in viewModel.didSelectTreeNode(id: nodeID) }
 		)
 	}
 
