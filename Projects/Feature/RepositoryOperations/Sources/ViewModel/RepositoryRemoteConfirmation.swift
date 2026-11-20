@@ -19,7 +19,8 @@ enum RepositoryRemoteConfirmation {
 			return
 				"The local configuration for \(remote.name) will be removed. The remote repository is not deleted."
 		case .deleteRemoteBranch(let branch):
-			return "\(branch.fullName) will be deleted from \(branch.remoteName) for all collaborators."
+			return
+				"\(branch.remoteDisplayName) will be deleted from \(branch.remoteName) for all collaborators."
 		}
 	}
 

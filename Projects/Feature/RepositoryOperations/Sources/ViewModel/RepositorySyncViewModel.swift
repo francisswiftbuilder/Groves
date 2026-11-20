@@ -377,7 +377,7 @@ public final class RepositorySyncViewModel {
 			remotes.contains(where: { $0.name == remoteName })
 		else { return }
 		let referencesUseCase = dependencies.referencesUseCase
-		requestNetworkMutation(activity: .pushTags(remoteName)) {
+		requestNetworkResult(activity: .pushTags(remoteName)) {
 			try await referencesUseCase.pushTags(
 				remote: remoteName,
 				at: repositoryURL
@@ -434,6 +434,16 @@ public final class RepositorySyncViewModel {
 		isAutomatic: Bool = false,
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot?
 	) {
+		requestNetworkResult(activity: activity, isAutomatic: isAutomatic) {
+			try await RepositoryReferenceMutationResult(snapshot: operation())
+		}
+	}
+
+	private func requestNetworkResult(
+		activity: Activity,
+		isAutomatic: Bool = false,
+		_ operation: @escaping @MainActor () async throws -> RepositoryReferenceMutationResult
+	) {
 		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		networkTask?.cancel()
 		let requestID = beginNetworkRequest(activity: activity)
@@ -442,16 +452,17 @@ public final class RepositorySyncViewModel {
 			defer { self?.finishNetworkRequest(id: requestID) }
 			do {
 				try Task.checkCancellation()
-				let snapshot = try await operation()
+				let result = try await operation()
 				try Task.checkCancellation()
 				guard let self, self.activeNetworkRequestID == requestID,
 					self.dependencies.repositoryURL() == expectedRepositoryURL
 				else { return }
 				if isAutomatic {
 					actions.didFetchAutomatically()
-				} else if let snapshot {
+				} else if let snapshot = result.snapshot {
 					actions.didProduceSnapshot(snapshot)
 				}
+				if let message = result.message { actions.didReceiveError(message) }
 			} catch is CancellationError {
 				return
 			} catch {

@@ -5,6 +5,19 @@ import Testing
 
 @MainActor
 struct RepositoryUseCaseTests {
+	private struct FailingSnapshot: RepositoryContentUseCase {
+		let recorder: GitRepositoryRecorder
+
+		func loadSnapshot(at repositoryURL: URL) async throws -> RepositorySnapshot {
+			await recorder.record(.loadSnapshot)
+			throw GitRepositoryError.commandFailed("Snapshot failed")
+		}
+
+		func loadFileContents(at path: String, in repositoryURL: URL) async throws -> Data {
+			Data()
+		}
+	}
+
 	@Test
 	func testOpeningRepositoryResolvesRootAndPersistsSelection() async throws {
 		let repositoryURL = URL(fileURLWithPath: "/tmp/Pluminon", isDirectory: true)
@@ -147,7 +160,7 @@ struct RepositoryUseCaseTests {
 		)
 		let events = await recorder.recordedEvents()
 
-		#expect(snapshot.tags == [tag])
+		#expect(snapshot.snapshot?.tags == [tag])
 		#expect(events == [.pushTags(remoteName: "origin")])
 	}
 
@@ -214,7 +227,7 @@ struct RepositoryUseCaseTests {
 		)
 		let events = await recorder.recordedEvents()
 
-		#expect(snapshot.commits == [commit])
+		#expect(snapshot.snapshot?.commits == [commit])
 		#expect(
 			events == [
 				.createTag(
@@ -247,7 +260,33 @@ struct RepositoryUseCaseTests {
 		)
 		let events = await recorder.recordedEvents()
 
-		#expect(snapshot.branches == [branch])
+		#expect(snapshot.snapshot?.branches == [branch])
 		#expect(events == [.deleteTag(name: "release/1.0.0")])
+	}
+
+	@Test
+	func testCombinedDeletionFinishesBeforeReadingTheSnapshot() async throws {
+		let repositoryURL = URL(fileURLWithPath: "/tmp/Pluminon", isDirectory: true)
+		let recorder = GitRepositoryRecorder()
+		let locals = ["first", "second"].map {
+			GitBranch(name: $0, shortHash: "abc", upstream: "origin/feature", isCurrent: false)
+		}
+		let remote = GitRemoteBranch(
+			name: "feature", fullName: "origin/feature", remoteName: "origin", shortHash: "abc",
+			hash: "abcdef", remoteReference: "refs/heads/feature")
+		let useCase = DefaultRepositoryReferencesUseCase(
+			repository: GitRepositoryStub(recorder: recorder),
+			content: FailingSnapshot(recorder: recorder))
+
+		let result = try await useCase.deleteBranches(
+			localBranches: locals, remoteBranch: remote, at: repositoryURL)
+
+		#expect(
+			await recorder.recordedEvents() == [
+				.deleteLocalBranches(["first", "second"]), .deleteRemoteBranch("origin/feature"),
+				.loadSnapshot,
+			])
+		#expect(result.snapshot == nil)
+		#expect(result.message?.contains("Snapshot failed") == true)
 	}
 }

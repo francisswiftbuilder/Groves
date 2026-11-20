@@ -39,23 +39,12 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	public func createBranch(named name: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
-	{
-		try await repository.requestCreateBranch(named: name, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
-	}
-
-	public func createBranch(named name: String, from commitHash: String, at repositoryURL: URL)
-		async throws
-		-> RepositorySnapshot
-	{
+	public func createBranch(
+		named name: String, from source: GitBranchCreationSource, checkout: Bool, at repositoryURL: URL
+	) async throws -> RepositoryReferenceMutationResult {
 		try await repository.requestCreateBranch(
-			named: name,
-			from: commitHash,
-			at: repositoryURL
-		)
-		return try await content.loadSnapshot(at: repositoryURL)
+			named: name, from: source, checkout: checkout, at: repositoryURL)
+		return await resultAfterMutation("Branch created.", at: repositoryURL)
 	}
 
 	public func checkoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
@@ -65,24 +54,53 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 
-	public func createTrackingBranch(
-		named name: String,
-		tracking remoteBranch: String,
-		at repositoryURL: URL
-	) async throws -> RepositorySnapshot {
-		try await repository.requestCreateTrackingBranch(
-			named: name,
-			tracking: remoteBranch,
-			at: repositoryURL
-		)
-		return try await content.loadSnapshot(at: repositoryURL)
-	}
-
 	public func deleteBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
 		try await repository.requestDeleteBranch(named: name, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
+	}
+
+	public func deleteBranches(
+		localBranches: [GitBranch], remoteBranch: GitRemoteBranch?, at repositoryURL: URL
+	) async throws -> RepositoryReferenceMutationResult {
+		var messages: [String] = []
+		if let remoteBranch, !localBranches.isEmpty {
+			try await repository.requestValidateRemoteBranchDeletion(remoteBranch, at: repositoryURL)
+			let current = try await repository.requestBranches(at: repositoryURL)
+			guard
+				localBranches.allSatisfy({ branch in
+					!current.contains { $0.name == branch.name }
+						|| current.contains {
+							$0.name == branch.name && $0.hash == branch.hash && $0.tracks(remoteBranch)
+						}
+				})
+			else {
+				throw GitRepositoryError.commandFailed(
+					"The tracking branches changed. Review the deletion again.")
+			}
+		}
+		if !localBranches.isEmpty {
+			let outcome = try await repository.requestForceDeleteBranches(
+				localBranches, at: repositoryURL)
+			if case .deletedWithWarning(let message) = outcome { messages.append(message) }
+		}
+		if let remoteBranch {
+			do {
+				let outcome = try await repository.requestDeleteRemoteBranch(
+					remoteBranch, at: repositoryURL)
+				if case .deletedWithWarning(let message) = outcome { messages.append(message) }
+			} catch {
+				try Task.checkCancellation()
+				guard !localBranches.isEmpty else { throw error }
+				let names = localBranches.map { "“\($0.name)”" }.joined(separator: ", ")
+				messages.append(
+					"Deleted local branches \(names). The remote branch “\(remoteBranch.remoteDisplayName)” could not be deleted. \(error.localizedDescription)"
+				)
+			}
+		}
+		return await resultAfterMutation(
+			"Branch deletion finished.", messages: messages, at: repositoryURL)
 	}
 
 	public func renameBranch(
@@ -106,21 +124,21 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		message: String,
 		commitHash: String,
 		at repositoryURL: URL
-	) async throws -> RepositorySnapshot {
+	) async throws -> RepositoryReferenceMutationResult {
 		try await repository.requestCreateTag(
 			named: name,
 			message: message,
 			commitHash: commitHash,
 			at: repositoryURL
 		)
-		return try await content.loadSnapshot(at: repositoryURL)
+		return await resultAfterMutation("Tag created.", at: repositoryURL)
 	}
 
 	public func deleteTag(_ tag: GitTag, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryReferenceMutationResult
 	{
 		try await repository.requestDeleteTag(tag, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
+		return await resultAfterMutation("Tag deleted.", at: repositoryURL)
 	}
 
 	public func fetch(remote name: String, at repositoryURL: URL) async throws -> RepositorySnapshot {
@@ -195,10 +213,28 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 	}
 
 	public func pushTags(remote name: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryReferenceMutationResult
 	{
-		try await repository.requestPushTags(remote: name, at: repositoryURL)
-		return try await loadSnapshotAfterPush(at: repositoryURL)
+		let message = try await repository.requestPushTags(remote: name, at: repositoryURL)
+		return await resultAfterMutation(
+			"Tag push finished.", messages: [message].compactMap { $0 }, at: repositoryURL)
+	}
+
+	private func resultAfterMutation(
+		_ completion: String, messages: [String] = [], at repositoryURL: URL
+	)
+		async -> RepositoryReferenceMutationResult
+	{
+		do {
+			return RepositoryReferenceMutationResult(
+				snapshot: try await content.loadSnapshot(at: repositoryURL),
+				message: messages.isEmpty ? nil : messages.joined(separator: "\n\n"))
+		} catch {
+			let refresh =
+				"\(completion) Pluminon couldn’t refresh the repository. \(error.localizedDescription)"
+			return RepositoryReferenceMutationResult(
+				snapshot: nil, message: (messages + [refresh]).joined(separator: "\n\n"))
+		}
 	}
 
 	public func addRemote(
@@ -244,13 +280,6 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 		-> RepositorySnapshot
 	{
 		try await repository.requestDeleteRemote(named: name, at: repositoryURL)
-		return try await content.loadSnapshot(at: repositoryURL)
-	}
-
-	public func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
-	{
-		try await repository.requestDeleteRemoteBranch(branch, at: repositoryURL)
 		return try await content.loadSnapshot(at: repositoryURL)
 	}
 

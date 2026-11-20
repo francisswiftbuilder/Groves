@@ -208,7 +208,9 @@ enum GitOutputParser {
 		}
 	}
 
-	static func parseRemoteBranches(_ output: String, remoteNames: [String]) -> [GitRemoteBranch] {
+	static func parseRemoteBranches(
+		_ output: String, remoteNames: [String], refspecs: [String: [GitFetchRefspec]] = [:]
+	) -> [GitRemoteBranch] {
 		let names = remoteNames.sorted {
 			$0.count == $1.count ? $0 < $1 : $0.count > $1.count
 		}
@@ -218,17 +220,22 @@ enum GitOutputParser {
 				fields[0].hasPrefix("refs/remotes/")
 			else { return nil }
 			let fullName = String(fields[0].dropFirst("refs/remotes/".count))
-			guard let remoteName = names.first(where: { fullName.hasPrefix($0 + "/") }) else {
+			let source = GitFetchRefspec.sourceBranch(for: fields[0], in: refspecs)
+			guard let remoteName = source?.remote ?? names.first(where: { fullName.hasPrefix($0 + "/") })
+			else {
 				return nil
 			}
-			let branchName = String(fullName.dropFirst(remoteName.count + 1))
+			let branchName =
+				source.map { String($0.reference.dropFirst("refs/heads/".count)) }
+				?? String(fullName.dropFirst(remoteName.count + 1))
 			guard !branchName.isEmpty else { return nil }
 			return GitRemoteBranch(
 				name: branchName,
 				fullName: fullName,
 				remoteName: remoteName,
 				shortHash: fields[1],
-				hash: fields[2]
+				hash: fields[2],
+				remoteReference: source?.reference
 			)
 		}
 	}

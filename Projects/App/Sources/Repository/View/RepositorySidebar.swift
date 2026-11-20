@@ -157,12 +157,14 @@ struct RepositorySidebar: View {
 						Button("Create Local Branch", systemImage: "arrow.down.to.line") {
 							switchToRemoteBranch(remoteBranch)
 						}
+						.disabled(remoteBranch.remoteReference == nil)
 					}
 
 					Divider()
 					Button("Delete Remote Branch…", systemImage: "trash", role: .destructive) {
 						remotesViewModel.didPresentBranchDeletion(remoteBranch)
 					}
+					.disabled(remoteBranch.remoteReference == nil || remoteBranch.pushURLs.isEmpty)
 				}
 			case .tag(_, let id):
 				if let tag = referencesViewModel.tags.first(where: { $0.id == id }) {
@@ -225,8 +227,7 @@ struct RepositorySidebar: View {
 	}
 
 	private func localBranch(tracking remoteBranch: GitRemoteBranch) -> GitBranch? {
-		referencesViewModel.branches.first { $0.upstream == remoteBranch.fullName }
-			?? referencesViewModel.branches.first { $0.name == remoteBranch.name }
+		referencesViewModel.branches.first { $0.tracks(remoteBranch) }
 	}
 
 	private func selectBranch(_ branch: GitBranch) {

@@ -45,6 +45,9 @@ public final class RepositoryReferencesViewModel {
 	private(set) var pendingBranchStartCommit: GitCommit?
 	var branchRenameName = ""
 	var pendingBranchRename: GitBranch?
+	var checkOutNewBranch = true
+	private(set) var mutationErrorDetails: String?
+	private(set) var pendingBranchRemote: GitRemoteBranch?
 	var newTagName = ""
 	var newTagMessage = ""
 	private(set) var pendingTagCommit: GitCommit?
@@ -155,6 +158,8 @@ public final class RepositoryReferencesViewModel {
 		branchPresentationID = UUID()
 		mutationErrorMessage = nil
 		newBranchName = ""
+		checkOutNewBranch = true
+		pendingBranchRemote = nil
 		pendingBranchStartCommit = commit
 		isPresentingNewBranch = true
 	}
@@ -162,39 +167,44 @@ public final class RepositoryReferencesViewModel {
 	public func didDismissNewBranch() {
 		branchPresentationID = UUID()
 		newBranchName = ""
+		pendingBranchRemote = nil
 		pendingBranchStartCommit = nil
 		isPresentingNewBranch = false
 	}
 
 	public func didRequestCreateBranch() {
-		guard let repositoryURL = dependencies.repositoryURL(), operationState.isIdle else { return }
+		guard let repositoryURL = dependencies.repositoryURL() else { return }
+		guard operationState.isIdle else {
+			mutationErrorMessage = "Finish the current Git operation before creating a branch."
+			return
+		}
 		let name = newBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !name.isEmpty else { return }
 		let startCommit = pendingBranchStartCommit
+		let source: GitBranchCreationSource
+		if let pendingBranchRemote {
+			source = .remoteBranch(pendingBranchRemote)
+		} else if let startCommit {
+			source = .commit(startCommit.hash)
+		} else {
+			source = .head
+		}
+		let checkout = checkOutNewBranch
 		let presentationID = branchPresentationID
 		let submittedName = newBranchName
 		let referencesUseCase = dependencies.referencesUseCase
-		requestMutation {
-			let snapshot: RepositorySnapshot
-			if let startCommit {
-				snapshot = try await referencesUseCase.createBranch(
-					named: name,
-					from: startCommit.hash,
-					at: repositoryURL
-				)
-			} else {
-				snapshot = try await referencesUseCase.createBranch(
-					named: name,
-					at: repositoryURL
-				)
-			}
-			return snapshot
-		} didSucceed: { [weak self] in
-			guard let self, self.branchPresentationID == presentationID,
-				self.newBranchName == submittedName
-			else { return }
-			self.didDismissNewBranch()
-		}
+		requestMutation(
+			{
+				try await referencesUseCase.createBranch(
+					named: name, from: source, checkout: checkout, at: repositoryURL)
+			}, formError: true,
+			applyResult: { [weak self] result in
+				guard let self else { return }
+				if branchPresentationID == presentationID, newBranchName == submittedName {
+					didDismissNewBranch()
+				}
+				applyReferenceResult(result)
+			})
 	}
 
 	public func didPresentNewTag(for commit: GitCommit) {
@@ -223,20 +233,24 @@ public final class RepositoryReferencesViewModel {
 		let submittedName = newTagName
 		let submittedMessage = newTagMessage
 		let referencesUseCase = dependencies.referencesUseCase
-		requestMutation {
-			let snapshot = try await referencesUseCase.createTag(
-				named: name,
-				message: message,
-				commitHash: commit.hash,
-				at: repositoryURL
-			)
-			return snapshot
-		} didSucceed: { [weak self] in
-			guard let self, self.tagPresentationID == presentationID,
-				self.newTagName == submittedName, self.newTagMessage == submittedMessage
-			else { return }
-			self.didDismissNewTag()
-		}
+		requestMutation(
+			{
+				try await referencesUseCase.createTag(
+					named: name,
+					message: message,
+					commitHash: commit.hash,
+					at: repositoryURL
+				)
+			}, formError: true,
+			applyResult: { [weak self] result in
+				guard let self else { return }
+				if tagPresentationID == presentationID, newTagName == submittedName,
+					newTagMessage == submittedMessage
+				{
+					didDismissNewTag()
+				}
+				applyReferenceResult(result)
+			})
 	}
 
 	public func didPresentTagDeletion(_ tag: GitTag) {
@@ -270,24 +284,25 @@ public final class RepositoryReferencesViewModel {
 	}
 
 	public func didRequestCreateLocalBranch(from remoteBranch: GitRemoteBranch) {
-		guard
-			let repositoryURL = dependencies.repositoryURL(),
-			!branches.contains(where: { $0.name == remoteBranch.name }),
-			operationState.isIdle
-		else { return }
-		let referencesUseCase = dependencies.referencesUseCase
-		requestMutation {
-			try await referencesUseCase.createTrackingBranch(
-				named: remoteBranch.name,
-				tracking: remoteBranch.fullName,
-				at: repositoryURL
+		guard remoteBranch.remoteReference != nil else {
+			actions.didReceiveError(
+				"This tracking reference has no verified server branch. Review the remote’s fetch mappings."
 			)
+			return
+		}
+		didPresentNewBranch()
+		pendingBranchRemote = remoteBranch
+		newBranchName = remoteBranch.name
+		if branches.contains(where: { $0.name == remoteBranch.name }) {
+			mutationErrorMessage = "A local branch already uses this name. Choose another name."
 		}
 	}
 
 	public func didPresentBranchDeletion(_ branch: GitBranch) {
 		guard !branch.isCurrent, operationState.isIdle, !isLoading else { return }
-		deletionRemoteBranch = remotes.flatMap(\.branches).first { $0.fullName == branch.upstream }
+		deletionRemoteBranch = remotes.flatMap(\.branches).first {
+			branch.tracks($0) && !$0.pushURLs.isEmpty
+		}
 		pendingConfirmation = .deleteBranch(branch)
 	}
 
@@ -335,7 +350,9 @@ public final class RepositoryReferencesViewModel {
 		deletionRemoteBranch = nil
 	}
 
-	func didConfirmPendingConfirmation(deleteLinkedBranch: Bool = false) {
+	func didConfirmPendingConfirmation(
+		deleteLinkedBranch: Bool = false, didDeleteTag: @escaping @MainActor (GitTag) -> Void = { _ in }
+	) {
 		guard !isLoading, let confirmation = pendingConfirmation else { return }
 		let remoteBranch = deleteLinkedBranch ? deletionRemoteBranch : nil
 		didDismissPendingConfirmation()
@@ -343,7 +360,7 @@ public final class RepositoryReferencesViewModel {
 		case .deleteBranch(let branch):
 			requestDeleteBranch(branch, remoteBranch: remoteBranch)
 		case .deleteTag(let tag):
-			requestDeleteTag(tag)
+			requestDeleteTag(tag, didDelete: didDeleteTag)
 		case .checkoutCommit(let commit):
 			requestCheckoutCommit(commit)
 		}
@@ -370,33 +387,29 @@ public final class RepositoryReferencesViewModel {
 			!branch.isCurrent,
 			operationState.isIdle
 		else { return }
-		guard branches.contains(branch) else {
+		guard let current = branches.first(where: { $0.name == branch.name }),
+			!current.isCurrent, current.hash == branch.hash
+		else {
 			actions.didReceiveError("The local branch changed. Review the deletion again.")
 			return
 		}
-		if let remoteBranch, !remotes.flatMap(\.branches).contains(remoteBranch) {
+		if let remoteBranch,
+			!current.tracks(remoteBranch)
+				|| !remotes.flatMap(\.branches).contains(remoteBranch)
+		{
 			actions.didReceiveError("The remote branch changed. Review the deletion again.")
 			return
 		}
 		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			let snapshot = try await referencesUseCase.deleteBranch(
-				named: branch.name,
-				at: repositoryURL
-			)
-			guard let remoteBranch else { return snapshot }
-			do {
-				try Task.checkCancellation()
-				return try await referencesUseCase.deleteRemoteBranch(remoteBranch, at: repositoryURL)
-			} catch {
-				throw GitRepositoryError.commandFailed(
-					"The local branch “\(branch.name)” was deleted, but “\(remoteBranch.fullName)” could not be deleted. \(error.localizedDescription)"
-				)
-			}
+			try await referencesUseCase.deleteBranches(
+				localBranches: [current], remoteBranch: remoteBranch, at: repositoryURL)
+		} applyResult: { [weak self] result in
+			self?.applyReferenceResult(result)
 		}
 	}
 
-	private func requestDeleteTag(_ tag: GitTag) {
+	private func requestDeleteTag(_ tag: GitTag, didDelete: @escaping @MainActor (GitTag) -> Void) {
 		guard let repositoryURL = dependencies.repositoryURL() else { return }
 		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
@@ -404,12 +417,34 @@ public final class RepositoryReferencesViewModel {
 				tag,
 				at: repositoryURL
 			)
+		} applyResult: { [weak self] result in
+			didDelete(tag)
+			self?.applyReferenceResult(result)
+		}
+	}
+
+	private func applyReferenceResult(_ result: RepositoryReferenceMutationResult) {
+		if let snapshot = result.snapshot { actions.didProduceSnapshot(snapshot) }
+		if let message = result.message {
+			mutationErrorMessage = message
+			actions.didReceiveError(message)
 		}
 	}
 
 	private func requestMutation(
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot,
 		didSucceed: @escaping @MainActor () -> Void = {}
+	) {
+		requestMutation(operation) { [weak self] snapshot in
+			didSucceed()
+			self?.actions.didProduceSnapshot(snapshot)
+		}
+	}
+
+	private func requestMutation<Result>(
+		_ operation: @escaping @MainActor () async throws -> Result,
+		formError: Bool = false,
+		applyResult: @escaping @MainActor (Result) -> Void
 	) {
 		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		mutationTask?.cancel()
@@ -418,17 +453,17 @@ public final class RepositoryReferencesViewModel {
 		activeMutationRequestID = requestID
 		isLoading = true
 		mutationErrorMessage = nil
+		mutationErrorDetails = nil
 		mutationTask = Task { [weak self] in
 			defer { self?.finishMutation(id: requestID) }
 			do {
 				try Task.checkCancellation()
-				let snapshot = try await operation()
+				let result = try await operation()
 				try Task.checkCancellation()
 				guard let self, self.activeMutationRequestID == requestID,
 					self.dependencies.repositoryURL() == expectedRepositoryURL
 				else { return }
-				didSucceed()
-				actions.didProduceSnapshot(snapshot)
+				applyResult(result)
 			} catch is CancellationError {
 				return
 			} catch {
@@ -436,7 +471,10 @@ public final class RepositoryReferencesViewModel {
 					self.dependencies.repositoryURL() == expectedRepositoryURL
 				else { return }
 				mutationErrorMessage = error.localizedDescription
-				actions.didReceiveError(error.localizedDescription)
+				if case GitRepositoryError.referenceOperationFailed(_, let details) = error {
+					mutationErrorDetails = details
+				}
+				if !formError { actions.didReceiveError(error.localizedDescription) }
 				if let snapshot = try? await dependencies.contentUseCase.loadSnapshot(
 					at: expectedRepositoryURL
 				) {

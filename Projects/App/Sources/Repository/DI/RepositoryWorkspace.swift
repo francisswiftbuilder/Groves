@@ -67,6 +67,7 @@ final class RepositoryWorkspace {
 	}
 
 	func onAppear() {
+		viewModel.didFetchRemoteState()
 		changesDiffViewModel.onAppear()
 		conflictViewModel.onAppear()
 		historyViewModel.onAppear()

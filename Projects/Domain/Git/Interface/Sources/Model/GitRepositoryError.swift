@@ -9,6 +9,7 @@ public enum GitRepositoryError: LocalizedError, Sendable {
 	case network(String)
 	case timeout
 	case commandFailed(String)
+	case referenceOperationFailed(message: String, details: String)
 	case invalidOutput
 	case invalidFilePath
 	case fileUnavailable
@@ -32,6 +33,8 @@ public enum GitRepositoryError: LocalizedError, Sendable {
 			return "Git 네트워크 작업 시간이 초과되었습니다."
 		case .commandFailed(let message):
 			return message.isEmpty ? "Git 명령을 실행하지 못했습니다." : message
+		case .referenceOperationFailed(let message, _):
+			return message
 		case .invalidOutput:
 			return "Git 출력 형식을 해석하지 못했습니다."
 		case .invalidFilePath:

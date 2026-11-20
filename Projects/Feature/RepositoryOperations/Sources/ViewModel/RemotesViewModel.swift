@@ -132,7 +132,13 @@ public final class RemotesViewModel {
 
 	public func didPresentBranchDeletion(_ branch: GitRemoteBranch) {
 		guard !isLoading, operationState.isIdle else { return }
-		deletionLocalBranches = branches.filter { $0.upstream == branch.fullName }
+		guard branch.remoteReference != nil else {
+			actions.didReceiveError(
+				"This tracking reference has no verified server branch. Review the remote’s fetch mappings."
+			)
+			return
+		}
+		deletionLocalBranches = branches.filter { $0.tracks(branch) }
 			.sorted { $0.name < $1.name }
 		pendingConfirmation = .deleteRemoteBranch(branch)
 	}
@@ -232,8 +238,11 @@ public final class RemotesViewModel {
 	private func requestDelete(_ branch: GitRemoteBranch, localBranches: [GitBranch]) {
 		guard let repositoryURL = dependencies.repositoryURL(), operationState.isIdle else { return }
 		guard remoteBranches.contains(branch),
-			localBranches.allSatisfy({
-				!$0.isCurrent && branches.contains($0) && $0.upstream == branch.fullName
+			localBranches.allSatisfy({ reviewed in
+				branches.contains {
+					$0.name == reviewed.name && $0.hash == reviewed.hash
+						&& !$0.isCurrent && $0.tracks(branch)
+				}
 			})
 		else {
 			actions.didReceiveError("The branches changed. Review the deletion again.")
@@ -241,20 +250,14 @@ public final class RemotesViewModel {
 		}
 		let referencesUseCase = dependencies.referencesUseCase
 		requestMutation {
-			var deletedNames: [String] = []
-			do {
-				for localBranch in localBranches {
-					try Task.checkCancellation()
-					_ = try await referencesUseCase.deleteBranch(named: localBranch.name, at: repositoryURL)
-					deletedNames.append(localBranch.name)
-				}
-				try Task.checkCancellation()
-				return try await referencesUseCase.deleteRemoteBranch(branch, at: repositoryURL)
-			} catch {
-				guard !deletedNames.isEmpty else { throw error }
-				throw GitRepositoryError.commandFailed(
-					"Local branches already deleted: \(deletedNames.joined(separator: ", ")). The deletion could not be completed. \(error.localizedDescription)"
-				)
+			try await referencesUseCase.deleteBranches(
+				localBranches: localBranches, remoteBranch: branch, at: repositoryURL)
+		} applyResult: { [weak self] result in
+			guard let self else { return }
+			if let snapshot = result.snapshot { actions.didProduceSnapshot(snapshot) }
+			if let message = result.message {
+				mutationErrorMessage = message
+				actions.didReceiveError(message)
 			}
 		}
 	}
@@ -262,6 +265,16 @@ public final class RemotesViewModel {
 	private func requestMutation(
 		_ operation: @escaping @MainActor () async throws -> RepositorySnapshot,
 		didSucceed: @escaping @MainActor () -> Void = {}
+	) {
+		requestMutation(operation) { [weak self] snapshot in
+			didSucceed()
+			self?.actions.didProduceSnapshot(snapshot)
+		}
+	}
+
+	private func requestMutation<Result>(
+		_ operation: @escaping @MainActor () async throws -> Result,
+		applyResult: @escaping @MainActor (Result) -> Void
 	) {
 		guard !isLoading, let expectedRepositoryURL = dependencies.repositoryURL() else { return }
 		mutationTask?.cancel()
@@ -274,13 +287,12 @@ public final class RemotesViewModel {
 			defer { self?.finishMutation(id: requestID) }
 			do {
 				try Task.checkCancellation()
-				let snapshot = try await operation()
+				let result = try await operation()
 				try Task.checkCancellation()
 				guard let self, self.activeMutationRequestID == requestID,
 					self.dependencies.repositoryURL() == expectedRepositoryURL
 				else { return }
-				didSucceed()
-				actions.didProduceSnapshot(snapshot)
+				applyResult(result)
 			} catch is CancellationError {
 				return
 			} catch {

@@ -29,7 +29,7 @@ struct BranchDeletionTests {
 		try await waitUntil { !model.isLoading }
 		#expect(
 			await recorder.calls
-				== (paired ? ["local:feature", "remote:origin/feature"] : ["local:feature"]))
+				== (paired ? ["force-local:feature", "remote:origin/feature"] : ["force-local:feature"]))
 		#expect(model.deletionRemoteBranch == nil)
 	}
 
@@ -45,7 +45,7 @@ struct BranchDeletionTests {
 		try await waitUntil { !model.isLoading }
 		#expect(
 			await recorder.calls
-				== (paired ? ["local:feature", "remote:origin/feature"] : ["remote:origin/feature"]))
+				== (paired ? ["force-local:feature", "remote:origin/feature"] : ["remote:origin/feature"]))
 	}
 
 	@Test
@@ -62,7 +62,7 @@ struct BranchDeletionTests {
 		try await waitUntil { !model.isLoading }
 		#expect(
 			await recorder.calls == [
-				"local:another-local", "local:renamed-local", "remote:origin/feature",
+				"force-local:another-local", "force-local:renamed-local", "remote:origin/feature",
 			])
 	}
 
@@ -81,27 +81,27 @@ struct BranchDeletionTests {
 
 	@Test
 	func failedLocalDeletionKeepsTheRemoteBranch() async throws {
-		let recorder = Recorder(failure: "local:feature")
+		let recorder = Recorder(failure: "force-local:feature")
 		let snapshot = snapshot()
 		let model = remotes(recorder: recorder, snapshot: snapshot)
 		let remote = try #require(snapshot.remotes.first?.branches.first)
 		model.didPresentBranchDeletion(remote)
 		model.didConfirmPendingConfirmation(deleteLinkedBranch: true)
 		try await waitUntil { !model.isLoading }
-		#expect(await recorder.calls == ["local:feature"])
+		#expect(await recorder.calls == ["force-local:feature"])
 		#expect(model.mutationErrorMessage?.contains("Deletion rejected") == true)
 	}
 
 	@Test
-	func remoteFailureReportsThatLocalDeletionAlreadySucceeded() async throws {
+	func combinedDeletionPublishesTheUseCaseWarning() async throws {
 		let recorder = Recorder(failure: "remote:origin/feature")
 		let snapshot = snapshot()
 		let model = references(recorder: recorder, snapshot: snapshot)
 		model.didPresentBranchDeletion(try #require(snapshot.branches.first))
 		model.didConfirmPendingConfirmation(deleteLinkedBranch: true)
 		try await waitUntil { !model.isLoading }
-		#expect(await recorder.calls == ["local:feature", "remote:origin/feature"])
-		#expect(model.mutationErrorMessage?.contains("local branch “feature” was deleted") == true)
+		#expect(await recorder.calls == ["force-local:feature", "remote:origin/feature"])
+		#expect(model.mutationErrorMessage == "Deletion rejected")
 	}
 
 	@Test
@@ -131,13 +131,18 @@ struct BranchDeletionTests {
 		-> OperationsReferencesUseCaseStub
 	{
 		var useCase = OperationsReferencesUseCaseStub()
-		useCase.deleteBranchOperation = { name, _ in
-			try await recorder.record("local:" + name)
-			return snapshot
-		}
-		useCase.deleteRemoteBranchOperation = { branch, _ in
-			try await recorder.record("remote:" + branch.fullName)
-			return snapshot
+		useCase.deleteBranchesOperation = { localBranches, remoteBranch, _ in
+			for branch in localBranches {
+				try await recorder.record("force-local:" + branch.name)
+			}
+			if let remoteBranch {
+				do {
+					try await recorder.record("remote:" + remoteBranch.fullName)
+				} catch {
+					return .init(snapshot: snapshot, message: error.localizedDescription)
+				}
+			}
+			return .init(snapshot: snapshot)
 		}
 		return useCase
 	}
@@ -178,7 +183,8 @@ struct BranchDeletionTests {
 					branches: [
 						.init(
 							name: "feature", fullName: "origin/feature", remoteName: "origin", shortHash: "abc",
-							hash: "abcdef")
+							hash: "abcdef", pushURLs: ["https://example.com/repo.git"],
+							remoteReference: "refs/heads/feature")
 					])
 			],
 			operationState: .normal, tags: [], stashes: [], fileTree: [])
@@ -187,7 +193,11 @@ struct BranchDeletionTests {
 	private func local(_ name: String, upstream: String? = "origin/feature", current: Bool = false)
 		-> GitBranch
 	{
-		.init(name: name, shortHash: "abc", hash: "abcdef", upstream: upstream, isCurrent: current)
+		let fields = upstream?.split(separator: "/", maxSplits: 1)
+		return .init(
+			name: name, shortHash: "abc", hash: "abcdef", upstream: upstream, isCurrent: current,
+			upstreamRemoteName: fields?.first.map(String.init),
+			upstreamRemoteReference: fields?.last.map { "refs/heads/\($0)" })
 	}
 
 	private func waitUntil(_ condition: () -> Bool) async throws {

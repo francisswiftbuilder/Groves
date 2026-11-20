@@ -214,6 +214,18 @@ struct GitRepositoryStub: GitRepository {
 		await recorder?.record(.createBranch(name: name, commitHash: nil))
 	}
 	func requestCreateBranch(
+		named name: String, from source: GitBranchCreationSource, checkout: Bool, at repositoryURL: URL
+	) async throws {
+		switch source {
+		case .head: try await requestCreateBranch(named: name, at: repositoryURL)
+		case .commit(let hash):
+			try await requestCreateBranch(named: name, from: hash, at: repositoryURL)
+		case .remoteBranch(let branch):
+			try await requestCreateTrackingBranch(
+				named: name, tracking: branch.fullName, at: repositoryURL)
+		}
+	}
+	func requestCreateBranch(
 		named name: String,
 		from commitHash: String,
 		at repositoryURL: URL
@@ -229,6 +241,12 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws {}
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws {}
+	func requestForceDeleteBranches(_ branches: [GitBranch], at repositoryURL: URL) async throws
+		-> GitBranchDeletionOutcome
+	{
+		await recorder?.record(.deleteLocalBranches(branches.map(\.name)))
+		return .deleted
+	}
 	func requestRenameBranch(named name: String, to newName: String, at repositoryURL: URL)
 		async throws
 	{}
@@ -330,8 +348,9 @@ struct GitRepositoryStub: GitRepository {
 	{
 		await recorder?.record(.forcePush(target))
 	}
-	func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
+	func requestPushTags(remote name: String, at repositoryURL: URL) async throws -> String? {
 		await recorder?.record(.pushTags(remoteName: name))
+		return nil
 	}
 	func requestAddRemote(
 		named name: String,
@@ -349,7 +368,15 @@ struct GitRepositoryStub: GitRepository {
 		at repositoryURL: URL
 	) async throws {}
 	func requestDeleteRemote(named name: String, at repositoryURL: URL) async throws {}
-	func requestDeleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws {}
+	func requestDeleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
+		-> GitBranchDeletionOutcome
+	{
+		await recorder?.record(.deleteRemoteBranch(branch.fullName))
+		return .deleted
+	}
+	func requestValidateRemoteBranchDeletion(_ branch: GitRemoteBranch, at repositoryURL: URL)
+		async throws
+	{}
 }
 
 @MainActor

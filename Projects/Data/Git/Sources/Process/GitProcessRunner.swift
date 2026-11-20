@@ -1,6 +1,7 @@
 import CoreGitCredential
 import DomainGitInterface
 import Foundation
+import Synchronization
 
 actor GitProcessRunner {
 	private let configuration: GitProcessConfiguration
@@ -29,7 +30,8 @@ actor GitProcessRunner {
 		acceptedTerminationStatuses: Set<Int32> = [0],
 		isNetworkOperation: Bool = false,
 		requiresSSHTrustScope: Bool = false,
-		allowsUserInteraction: Bool = true
+		allowsUserInteraction: Bool = true,
+		validatePreparedReferences: (@Sendable () async throws -> Void)? = nil
 	) async throws -> GitCommandResult {
 		try Task.checkCancellation()
 		guard FileManager.default.isExecutableFile(atPath: configuration.executableURL.path) else {
@@ -88,14 +90,15 @@ actor GitProcessRunner {
 			trustScope: trustScope,
 			authenticationArguments: authenticationArguments,
 			credentialSocketPath: broker?.socketPath,
-			allowsUserInteraction: allowsUserInteraction
+			allowsUserInteraction: allowsUserInteraction,
+			validatePreparedReferences: validatePreparedReferences
 		)
 		broker?.stop()
-		if isNetworkOperation {
+		if isNetworkOperation, result.terminationStatus == 0 {
 			commitPendingCredentials(operationID: operationID)
 			decisionStore.discard(operationID: operationID)
 		}
-		didSucceed = true
+		didSucceed = result.terminationStatus == 0
 		return result
 	}
 
@@ -110,7 +113,8 @@ actor GitProcessRunner {
 		trustScope: GitSSHTrustScope? = nil,
 		authenticationArguments: [String] = [],
 		credentialSocketPath: String? = nil,
-		allowsUserInteraction: Bool = true
+		allowsUserInteraction: Bool = true,
+		validatePreparedReferences: (@Sendable () async throws -> Void)? = nil
 	) async throws -> GitCommandResult {
 		let standardOutputPipe = Pipe()
 		let standardErrorPipe = Pipe()
@@ -144,10 +148,28 @@ actor GitProcessRunner {
 		process.standardError = standardErrorPipe
 		let standardInputPipe = standardInput.map { _ in Pipe() }
 		process.standardInput = standardInputPipe ?? FileHandle.nullDevice
+		defer { try? standardInputPipe?.fileHandleForWriting.close() }
+		let validationError = Mutex<(any Error)?>(nil)
+		let onPrepared: (@Sendable () -> Void)?
+		if let validatePreparedReferences, let standardInputPipe {
+			onPrepared = {
+				Task {
+					do {
+						try await validatePreparedReferences()
+						Self.write("commit\n", to: standardInputPipe)
+					} catch {
+						validationError.withLock { $0 = error }
+						Self.write("abort\n", to: standardInputPipe)
+					}
+				}
+			}
+		} else {
+			onPrepared = nil
+		}
 
 		let standardOutputCollector = try GitProcessOutputCollector(
 			pipe: standardOutputPipe,
-			label: "stdout"
+			label: "stdout", onPrepared: onPrepared
 		)
 		let standardErrorCollector = try GitProcessOutputCollector(
 			pipe: standardErrorPipe,
@@ -160,23 +182,28 @@ actor GitProcessRunner {
 			standardInputPipe: standardInputPipe,
 			standardOutputCollector: standardOutputCollector,
 			standardErrorCollector: standardErrorCollector,
-			timeout: isNetworkOperation ? configuration.networkPolicy.operationTimeout : nil
+			timeout: isNetworkOperation ? configuration.networkPolicy.operationTimeout : nil,
+			keepInputOpen: onPrepared != nil
 		)
 		let standardOutputData = output.standardOutput
 		let standardError = String(decoding: output.standardError, as: UTF8.self)
 		let standardOutput = String(decoding: standardOutputData, as: UTF8.self)
 		try Task.checkCancellation()
+		if let error = validationError.withLock({ $0 }) { throw error }
+		if output.terminationStatus != 0, standardError.contains("PLUMINON_ASKPASS_CANCELLED") {
+			throw CancellationError()
+		}
 
 		guard acceptedTerminationStatuses.contains(output.terminationStatus) else {
-			if standardError.contains("PLUMINON_ASKPASS_CANCELLED") {
-				throw CancellationError()
-			}
 			throw repositoryError(for: standardError)
 		}
 		return GitCommandResult(
+			terminationStatus: output.terminationStatus,
 			standardOutputData: standardOutputData,
 			standardOutput: standardOutput,
-			standardError: standardError
+			standardError: standardError,
+			failureDescription: output.terminationStatus == 0
+				? nil : repositoryError(for: standardError).localizedDescription
 		)
 	}
 
@@ -391,7 +418,7 @@ actor GitProcessRunner {
 		standardInputPipe: Pipe?,
 		standardOutputCollector: GitProcessOutputCollector,
 		standardErrorCollector: GitProcessOutputCollector,
-		timeout: TimeInterval?
+		timeout: TimeInterval?, keepInputOpen: Bool
 	) async throws -> (terminationStatus: Int32, standardOutput: Data, standardError: Data) {
 		guard let timeout else {
 			return try await waitForCommandOutput(
@@ -399,7 +426,7 @@ actor GitProcessRunner {
 				standardInput: standardInput,
 				standardInputPipe: standardInputPipe,
 				standardOutputCollector: standardOutputCollector,
-				standardErrorCollector: standardErrorCollector
+				standardErrorCollector: standardErrorCollector, keepInputOpen: keepInputOpen
 			)
 		}
 
@@ -410,7 +437,7 @@ actor GitProcessRunner {
 					standardInput: standardInput,
 					standardInputPipe: standardInputPipe,
 					standardOutputCollector: standardOutputCollector,
-					standardErrorCollector: standardErrorCollector
+					standardErrorCollector: standardErrorCollector, keepInputOpen: keepInputOpen
 				)
 			}
 			group.addTask {
@@ -430,7 +457,8 @@ actor GitProcessRunner {
 		standardInput: String?,
 		standardInputPipe: Pipe?,
 		standardOutputCollector: GitProcessOutputCollector,
-		standardErrorCollector: GitProcessOutputCollector
+		standardErrorCollector: GitProcessOutputCollector,
+		keepInputOpen: Bool
 	) async throws -> (terminationStatus: Int32, standardOutput: Data, standardError: Data) {
 		let lifecycle = GitProcessLifecycle(
 			process: process,
@@ -448,7 +476,7 @@ actor GitProcessRunner {
 						}
 					)
 					guard didStart, let standardInput, let standardInputPipe else { return }
-					Self.write(standardInput, to: standardInputPipe)
+					Self.write(standardInput, to: standardInputPipe, close: !keepInputOpen)
 				}
 				async let standardOutput = standardOutputCollector.finish()
 				async let standardError = standardErrorCollector.finish()
@@ -465,11 +493,12 @@ actor GitProcessRunner {
 		}
 	}
 
-	nonisolated private static func write(_ standardInput: String, to pipe: Pipe) {
+	nonisolated private static func write(_ standardInput: String, to pipe: Pipe, close: Bool = true)
+	{
 		DispatchQueue.global(qos: .userInitiated).async {
 			let handle = pipe.fileHandleForWriting
 			try? handle.write(contentsOf: Data(standardInput.utf8))
-			try? handle.close()
+			if close { try? handle.close() }
 		}
 	}
 

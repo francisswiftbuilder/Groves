@@ -3,12 +3,12 @@ import SwiftUI
 
 public struct RepositoryReferencesPresentationHost<Content: View>: View {
 	@Bindable private var viewModel: RepositoryReferencesViewModel
-	private let onConfirmDeleteTag: (GitTag) -> Void
+	private let onConfirmDeleteTag: @MainActor (GitTag) -> Void
 	private let content: Content
 
 	public init(
 		viewModel: RepositoryReferencesViewModel,
-		onConfirmDeleteTag: @escaping (GitTag) -> Void,
+		onConfirmDeleteTag: @escaping @MainActor (GitTag) -> Void,
 		@ViewBuilder content: () -> Content
 	) {
 		self.viewModel = viewModel
@@ -21,9 +21,12 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 			.sheet(isPresented: newBranchPresentation) {
 				NewBranchSheet(
 					name: $viewModel.newBranchName,
+					checkout: $viewModel.checkOutNewBranch,
 					startCommit: viewModel.pendingBranchStartCommit,
+					remoteStart: viewModel.pendingBranchRemote?.remoteDisplayName,
 					isLoading: viewModel.isLoading,
 					errorMessage: viewModel.mutationErrorMessage,
+					errorDetails: viewModel.mutationErrorDetails,
 					onCancel: viewModel.didDismissNewBranch,
 					onCreate: viewModel.didRequestCreateBranch
 				)
@@ -54,9 +57,9 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 					BranchDeletionSheet(
 						title: "Delete “\(branch.name)”?",
 						message:
-							"The local branch will be deleted. Remote deletion affects all collaborators.",
+							"The local branch will be deleted even if it has unmerged commits. Remote deletion affects all collaborators.",
 						optionTitle: viewModel.deletionRemoteBranch.map {
-							"Also delete remote branch “\($0.fullName)”"
+							"Also delete “\($0.remoteDisplayName)” from \($0.pushURLs.joined(separator: ", "))"
 						}
 							?? "Also delete remote branch",
 						unavailableReason: viewModel.deletionRemoteBranch == nil
@@ -73,7 +76,7 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 			) {
 				if let confirmation = viewModel.pendingConfirmation {
 					Button(confirmation.actionTitle, role: .destructive) {
-						confirm(confirmation)
+						viewModel.didConfirmPendingConfirmation(didDeleteTag: onConfirmDeleteTag)
 					}
 				}
 				Button("Cancel", role: .cancel) {
@@ -132,10 +135,4 @@ public struct RepositoryReferencesPresentationHost<Content: View>: View {
 		)
 	}
 
-	private func confirm(_ confirmation: RepositoryReferenceConfirmation) {
-		if case .deleteTag(let tag) = confirmation {
-			onConfirmDeleteTag(tag)
-		}
-		viewModel.didConfirmPendingConfirmation()
-	}
 }

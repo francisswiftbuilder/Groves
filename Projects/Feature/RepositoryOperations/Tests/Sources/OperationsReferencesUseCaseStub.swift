@@ -2,11 +2,11 @@ import DomainGitInterface
 import Foundation
 
 struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
-	var deleteBranchOperation: @Sendable (String, URL) async throws -> RepositorySnapshot = { _, _ in
-		fatalError()
-	}
-	var deleteRemoteBranchOperation:
-		@Sendable (GitRemoteBranch, URL) async throws -> RepositorySnapshot = { _, _ in fatalError() }
+	var deleteBranchesOperation:
+		@Sendable ([GitBranch], GitRemoteBranch?, URL) async throws -> RepositoryReferenceMutationResult =
+			{
+				_, _, _ in fatalError()
+			}
 	var createBranchOperation: @Sendable (String, String?, URL) async throws -> RepositorySnapshot = {
 		_, _, _ in fatalError()
 	}
@@ -68,18 +68,12 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		fatalError()
 	}
 
-	func createBranch(named name: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
-	{
-		try await createBranchOperation(name, nil, repositoryURL)
-	}
-
 	func createBranch(
-		named name: String,
-		from commitHash: String,
-		at repositoryURL: URL
-	) async throws -> RepositorySnapshot {
-		try await createBranchOperation(name, commitHash, repositoryURL)
+		named name: String, from source: GitBranchCreationSource, checkout: Bool, at repositoryURL: URL
+	) async throws -> RepositoryReferenceMutationResult {
+		let hash: String?
+		if case .commit(let commit) = source { hash = commit } else { hash = nil }
+		return .init(snapshot: try await createBranchOperation(name, hash, repositoryURL))
 	}
 
 	func checkoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
@@ -88,18 +82,16 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		fatalError()
 	}
 
-	func createTrackingBranch(
-		named name: String,
-		tracking remoteBranch: String,
-		at repositoryURL: URL
-	) async throws -> RepositorySnapshot {
-		fatalError()
-	}
-
 	func deleteBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	{
-		try await deleteBranchOperation(name, repositoryURL)
+		fatalError()
+	}
+
+	func deleteBranches(
+		localBranches: [GitBranch], remoteBranch: GitRemoteBranch?, at repositoryURL: URL
+	) async throws -> RepositoryReferenceMutationResult {
+		try await deleteBranchesOperation(localBranches, remoteBranch, repositoryURL)
 	}
 
 	func renameBranch(
@@ -121,12 +113,12 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		message: String,
 		commitHash: String,
 		at repositoryURL: URL
-	) async throws -> RepositorySnapshot {
-		try await createTagOperation(name, message, commitHash, repositoryURL)
+	) async throws -> RepositoryReferenceMutationResult {
+		.init(snapshot: try await createTagOperation(name, message, commitHash, repositoryURL))
 	}
 
 	func deleteTag(_ tag: GitTag, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryReferenceMutationResult
 	{
 		fatalError()
 	}
@@ -180,7 +172,7 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 	}
 
 	func pushTags(remote name: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryReferenceMutationResult
 	{
 		fatalError()
 	}
@@ -217,9 +209,4 @@ struct OperationsReferencesUseCaseStub: RepositoryReferencesUseCase {
 		fatalError()
 	}
 
-	func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
-	{
-		try await deleteRemoteBranchOperation(branch, repositoryURL)
-	}
 }
