@@ -4,14 +4,14 @@ import Foundation
 import SwiftUI
 
 struct RepositoryTreeHeader: View {
-	let statistics: (directories: Int, files: Int)
+	let fileCount: Int
 
 	var body: some View {
 		VStack(spacing: 0) {
 			HStack {
 				Text("Files").font(.headline)
 				Spacer()
-				Text("\(statistics.files)").font(.caption).foregroundStyle(.secondary)
+				Text("\(fileCount)").font(.caption).foregroundStyle(.secondary)
 			}
 			.padding(.horizontal, 12)
 			.frame(height: 52)

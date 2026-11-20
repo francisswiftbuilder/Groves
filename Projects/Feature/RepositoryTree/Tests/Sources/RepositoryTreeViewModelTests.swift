@@ -7,13 +7,14 @@ import Testing
 @MainActor
 struct RepositoryTreeViewModelTests {
 	private actor Content: RepositoryContentUseCase {
-		private(set) var count = 0
+		private(set) var paths: [String] = []
+		var count: Int { paths.count }
 		private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
 
 		func loadSnapshot(at repositoryURL: URL) async throws -> RepositorySnapshot { fatalError() }
 		func loadFileContents(at path: String, in repositoryURL: URL) async throws -> Data {
-			let id = count
-			count += 1
+			let id = paths.count
+			paths.append(path)
 			return try await withCheckedThrowingContinuation { pending[id] = $0 }
 		}
 		func resume(_ id: Int, with result: Result<Data, Error>) {
@@ -29,6 +30,7 @@ struct RepositoryTreeViewModelTests {
 		model.reset()
 		#expect(model.fileTree.isEmpty)
 		#expect(model.visibleTreeItems.isEmpty)
+		#expect(model.fileCount == 0)
 	}
 
 	@Test
@@ -38,7 +40,7 @@ struct RepositoryTreeViewModelTests {
 		defer { model.onDisappear() }
 		let url = URL(fileURLWithPath: "/repo")
 		model.apply(snapshot(), repositoryURL: url)
-		await model.didSelectTreeNode(id: "Value.swift")
+		model.didSelectTreeNode(id: "Value.swift")
 		try await waitUntil { await content.count == 1 }
 		let data = Data("old preview".utf8)
 		await content.resume(0, with: .success(data))
@@ -61,7 +63,7 @@ struct RepositoryTreeViewModelTests {
 		defer { model.onDisappear() }
 		let url = URL(fileURLWithPath: "/repo")
 		model.apply(snapshot(), repositoryURL: url)
-		await model.didSelectTreeNode(id: "Value.swift")
+		model.didSelectTreeNode(id: "Value.swift")
 		try await waitUntil { await content.count == 1 }
 		model.apply(snapshot(), repositoryURL: url)
 		try await waitUntil { await content.count == 2 }
@@ -75,12 +77,78 @@ struct RepositoryTreeViewModelTests {
 		#expect(model.filePreview == .text(content: "new preview", byteCount: data.count))
 	}
 
-	private func snapshot() -> RepositorySnapshot {
+	@Test
+	func repeatedSelectionUpdatesImmediatelyAndLoadsOnlyTheSettledFile() async throws {
+		let content = Content()
+		let model = RepositoryTreeViewModel(dependencies: .init(contentUseCase: content))
+		defer { model.onDisappear() }
+		let files = (0..<1_000).map { file("File\($0).swift") }
+		model.apply(snapshot(files), repositoryURL: URL(fileURLWithPath: "/repo"))
+		let itemIDs = model.visibleTreeItems.map(\.id)
+
+		for file in files.suffix(30) {
+			model.didSelectTreeNode(id: file.id)
+			#expect(model.selectedTreeNodeID == file.id)
+			#expect(model.selectedTreeItem?.node == file)
+			await Task.yield()
+		}
+
+		let last = try #require(files.last)
+		try await waitUntil { await content.count > 0 }
+		let data = Data("settled".utf8)
+		await content.resume(0, with: .success(data))
+		try await waitUntil {
+			model.filePreview == .text(content: "settled", byteCount: data.count)
+		}
+		#expect(await content.paths == [last.path])
+		#expect(model.visibleTreeItems.map(\.id) == itemIDs)
+		#expect(model.fileCount == files.count)
+	}
+
+	@Test
+	func collapsingAParentClearsSelectionAndIgnoresAnInFlightPreview() async throws {
+		let content = Content()
+		let model = RepositoryTreeViewModel(dependencies: .init(contentUseCase: content))
+		defer { model.onDisappear() }
+		let child = file("Sources/Value.swift")
+		let directory = RepositoryTreeNode(name: "Sources", path: "Sources", children: [child])
+		model.apply(snapshot([directory]), repositoryURL: URL(fileURLWithPath: "/repo"))
+		model.setTreeNode(directory.id, isExpanded: true)
+		model.didSelectTreeNode(id: child.id)
+		try await waitUntil { await content.count == 1 }
+
+		model.setTreeNode(directory.id, isExpanded: false)
+		model.didSelectTreeNode(id: child.id)
+		#expect(model.visibleTreeItems.map(\.id) == [directory.id])
+		#expect(model.selectedTreeNodeID == nil)
+		#expect(model.selectedTreeItem == nil)
+		#expect(model.filePreview == .none)
+		await content.resume(0, with: .success(Data("hidden".utf8)))
+
+		model.setTreeNode(directory.id, isExpanded: true)
+		model.didSelectTreeNode(id: child.id)
+		try await waitUntil { await content.count == 2 }
+		#expect(model.filePreview == .loading)
+		let data = Data("visible".utf8)
+		await content.resume(1, with: .success(data))
+		try await waitUntil {
+			model.filePreview == .text(content: "visible", byteCount: data.count)
+		}
+		#expect(model.visibleTreeItems.map(\.id) == [directory.id, child.id])
+	}
+
+	private func file(_ path: String) -> RepositoryTreeNode {
+		.init(name: URL(fileURLWithPath: path).lastPathComponent, path: path, children: [])
+	}
+
+	private func snapshot(
+		_ nodes: [RepositoryTreeNode] = [.init(name: "Value.swift", path: "Value.swift", children: [])]
+	) -> RepositorySnapshot {
 		.init(
 			changes: [], amendChanges: [], commits: [], branches: [], remotes: [],
 			operationState: .normal,
 			tags: [], stashes: [],
-			fileTree: [.init(name: "Value.swift", path: "Value.swift", children: [])])
+			fileTree: nodes)
 	}
 
 	private func waitUntil(_ condition: () async -> Bool) async throws {

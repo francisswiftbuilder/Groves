@@ -14,47 +14,46 @@ public final class RepositoryTreeViewModel {
 	}
 
 	private(set) var fileTree: [RepositoryTreeNode] = []
+	private(set) var visibleTreeItems: [RepositoryTreeItem] = []
+	private(set) var fileCount = 0
 	private(set) var selectedTreeNodeID: String?
-	var expandedTreeNodeIDs: Set<String> = []
+	private(set) var expandedTreeNodeIDs: Set<String> = []
 	private(set) var filePreview: RepositoryFilePreview = .none
 
 	private let dependencies: Dependencies
 	private var repositoryURL: URL?
+	@ObservationIgnored private var visibleTreeIndices: [String: Int] = [:]
 	@ObservationIgnored private var filePreviewTask: Task<Void, Never>?
 
 	public init(dependencies: Dependencies) {
 		self.dependencies = dependencies
 	}
 
-	private var contentUseCase: any RepositoryContentUseCase {
-		dependencies.contentUseCase
-	}
-
 	deinit {
 		filePreviewTask?.cancel()
 	}
 
-	var visibleTreeItems: [RepositoryTreeItem] {
-		RepositoryTreeLayoutBuilder.build(
-			nodes: fileTree,
-			expandedNodeIDs: expandedTreeNodeIDs
-		)
-	}
-
 	var selectedTreeItem: RepositoryTreeItem? {
-		visibleTreeItems.first { $0.id == selectedTreeNodeID }
+		guard let selectedTreeNodeID, let index = visibleTreeIndices[selectedTreeNodeID] else {
+			return nil
+		}
+		return visibleTreeItems[index]
 	}
 
 	public func apply(_ snapshot: RepositorySnapshot, repositoryURL: URL?) {
+		let preservesCurrentPreview = self.repositoryURL == repositoryURL
 		self.repositoryURL = repositoryURL
 		if fileTree != snapshot.fileTree {
 			fileTree = snapshot.fileTree
+			fileCount = RepositoryTreeLayoutBuilder.statistics(in: fileTree).files
+			updateVisibleTreeItems()
 		}
 		guard selectedTreeNodeID != nil else { return }
-		didSelectTreeNode(
-			node(id: selectedTreeNodeID, in: fileTree),
-			preservesCurrentPreview: true
-		)
+		if selectedTreeItem == nil {
+			didSelectTreeNode(id: nil)
+		} else {
+			loadSelectedPreview(preservesCurrentPreview: preservesCurrentPreview)
+		}
 	}
 
 	public func reset() {
@@ -62,6 +61,9 @@ public final class RepositoryTreeViewModel {
 		filePreviewTask = nil
 		repositoryURL = nil
 		fileTree = []
+		visibleTreeItems = []
+		visibleTreeIndices = [:]
+		fileCount = 0
 		selectedTreeNodeID = nil
 		expandedTreeNodeIDs = []
 		filePreview = .none
@@ -69,10 +71,7 @@ public final class RepositoryTreeViewModel {
 
 	public func onAppear() {
 		guard selectedTreeNodeID != nil, filePreview == .none else { return }
-		didSelectTreeNode(
-			node(id: selectedTreeNodeID, in: fileTree),
-			preservesCurrentPreview: false
-		)
+		loadSelectedPreview(preservesCurrentPreview: false)
 	}
 
 	public func onDisappear() {
@@ -84,81 +83,71 @@ public final class RepositoryTreeViewModel {
 	}
 
 	func setTreeNode(_ nodeID: String, isExpanded: Bool) {
+		guard expandedTreeNodeIDs.contains(nodeID) != isExpanded else { return }
 		if isExpanded {
-			guard !expandedTreeNodeIDs.contains(nodeID) else { return }
 			expandedTreeNodeIDs.insert(nodeID)
 		} else {
-			guard expandedTreeNodeIDs.contains(nodeID) else { return }
 			expandedTreeNodeIDs.remove(nodeID)
 		}
-	}
-
-	func didSelectTreeNode(id: String?) async {
-		await Task.yield()
-		guard !Task.isCancelled, selectedTreeNodeID != id else { return }
-		didSelectTreeNode(
-			node(id: id, in: fileTree),
-			preservesCurrentPreview: false
-		)
-	}
-
-	private func didSelectTreeNode(
-		_ node: RepositoryTreeNode?,
-		preservesCurrentPreview: Bool
-	) {
-		if selectedTreeNodeID != node?.id {
-			selectedTreeNodeID = node?.id
+		updateVisibleTreeItems()
+		if selectedTreeNodeID != nil, selectedTreeItem == nil {
+			didSelectTreeNode(id: nil)
 		}
+	}
+
+	func didSelectTreeNode(id: String?) {
+		let visibleID = id.flatMap { visibleTreeIndices[$0] == nil ? nil : $0 }
+		guard selectedTreeNodeID != visibleID else { return }
+		selectedTreeNodeID = visibleID
+		loadSelectedPreview(preservesCurrentPreview: false)
+	}
+
+	private func updateVisibleTreeItems() {
+		let items = RepositoryTreeLayoutBuilder.build(
+			nodes: fileTree, expandedNodeIDs: expandedTreeNodeIDs)
+		visibleTreeIndices = Dictionary(
+			items.enumerated().map { ($0.element.id, $0.offset) },
+			uniquingKeysWith: { first, _ in first })
+		visibleTreeItems = items
+	}
+
+	private func loadSelectedPreview(preservesCurrentPreview: Bool) {
 		filePreviewTask?.cancel()
-		if !preservesCurrentPreview {
+		filePreviewTask = nil
+		guard let node = selectedTreeItem?.node, !node.isDirectory, let repositoryURL else {
 			filePreview = .none
-		}
-
-		guard let node, !node.isDirectory, let repositoryURL else {
-			if node == nil || node?.isDirectory == true {
-				filePreview = .none
-			}
 			return
 		}
 
-		if !preservesCurrentPreview || filePreview == .none {
+		if !preservesCurrentPreview || filePreview == .none, filePreview != .loading {
 			filePreview = .loading
 		}
-		filePreviewTask = Task {
+		let contentUseCase = dependencies.contentUseCase
+		filePreviewTask = Task { [weak self] in
+			let preview: RepositoryFilePreview
 			do {
-				let data = try await contentUseCase.loadFileContents(
-					at: node.path,
-					in: repositoryURL
-				)
-				guard !Task.isCancelled, self.repositoryURL == repositoryURL, selectedTreeNodeID == node.id
-				else {
-					return
-				}
-				filePreview = RepositoryFilePreview.make(path: node.path, data: data)
+				try await Task.sleep(for: .milliseconds(150))
+				preview = try await Self.loadPreview(
+					at: node.path, in: repositoryURL, using: contentUseCase)
 			} catch is CancellationError {
 				return
 			} catch {
-				guard !Task.isCancelled, self.repositoryURL == repositoryURL, selectedTreeNodeID == node.id
-				else {
-					return
-				}
-				filePreview = .failure(error.localizedDescription)
+				preview = .failure(error.localizedDescription)
 			}
+			guard let self, !Task.isCancelled, self.repositoryURL == repositoryURL,
+				selectedTreeNodeID == node.id
+			else { return }
+			filePreview = preview
 		}
 	}
 
-	private func node(id: String?, in nodes: [RepositoryTreeNode]) -> RepositoryTreeNode? {
-		guard let id else { return nil }
-
-		for node in nodes {
-			if node.id == id {
-				return node
-			}
-			if let match = self.node(id: id, in: node.children) {
-				return match
-			}
-		}
-
-		return nil
+	@concurrent
+	private static func loadPreview(
+		at path: String, in repositoryURL: URL, using contentUseCase: any RepositoryContentUseCase
+	) async throws -> RepositoryFilePreview {
+		try Task.checkCancellation()
+		let data = try await contentUseCase.loadFileContents(at: path, in: repositoryURL)
+		try Task.checkCancellation()
+		return RepositoryFilePreview.make(path: path, data: data)
 	}
 }
