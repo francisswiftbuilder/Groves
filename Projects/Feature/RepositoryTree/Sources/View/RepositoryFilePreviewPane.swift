@@ -5,8 +5,10 @@ import Foundation
 import SwiftUI
 
 struct RepositoryFilePreviewPane: View {
-	let node: RepositoryTreeNode?
-	let preview: RepositoryFilePreview
+	let viewModel: RepositoryTreeViewModel
+
+	private var node: RepositoryTreeNode? { viewModel.selectedTreeItem?.node }
+	private var preview: RepositoryFilePreview { viewModel.filePreview }
 
 	var body: some View {
 		previewContent

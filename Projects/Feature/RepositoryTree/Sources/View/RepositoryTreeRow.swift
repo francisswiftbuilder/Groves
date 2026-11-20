@@ -8,7 +8,6 @@ struct RepositoryTreeRow: View {
 	let item: RepositoryTreeItem
 	let isExpanded: Bool
 	let onToggleExpansion: () -> Void
-	let onSelect: () -> Void
 
 	var body: some View {
 		HStack(spacing: 6) {
@@ -48,12 +47,6 @@ struct RepositoryTreeRow: View {
 		}
 		.frame(minHeight: 24)
 		.contentShape(.rect)
-		.simultaneousGesture(
-			TapGesture()
-				.onEnded {
-					onSelect()
-				}
-		)
 		.simultaneousGesture(
 			TapGesture(count: 2)
 				.onEnded {
