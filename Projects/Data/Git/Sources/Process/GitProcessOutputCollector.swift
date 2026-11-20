@@ -5,8 +5,10 @@ final class GitProcessOutputCollector: @unchecked Sendable {
 	private let source: DispatchSourceRead
 	private let queue: DispatchQueue
 	private var output = Data()
+	private var onPrepared: (@Sendable () -> Void)?
 
-	init(pipe: Pipe, label: String) throws {
+	init(pipe: Pipe, label: String, onPrepared: (@Sendable () -> Void)? = nil) throws {
+		self.onPrepared = onPrepared
 		let handle = pipe.fileHandleForReading
 		let descriptor = handle.fileDescriptor
 		guard fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0 else {
@@ -44,6 +46,10 @@ final class GitProcessOutputCollector: @unchecked Sendable {
 			let count = Darwin.read(Int32(source.handle), &buffer, min(buffer.count, budget - consumed))
 			if count > 0 {
 				output.append(contentsOf: buffer.prefix(count))
+				if let onPrepared, output.starts(with: Data("start: ok\nprepare: ok\n".utf8)) {
+					self.onPrepared = nil
+					onPrepared()
+				}
 				consumed += count
 			} else if count == 0 {
 				source.cancel()

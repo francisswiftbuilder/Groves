@@ -9,6 +9,9 @@ enum GitRepositoryRecorderEvent: Equatable, Sendable {
 	case stage(path: String)
 	case merge(branchName: String)
 	case createBranch(name: String, commitHash: String?)
+	case deleteLocalBranches([String])
+	case deleteRemoteBranch(String)
+	case loadSnapshot
 	case checkoutCommit(String)
 	case createTag(name: String, message: String, commitHash: String)
 	case deleteTag(name: String)

@@ -38,9 +38,9 @@ public struct RepositoryRemotePresentationHost<Content: View>: View {
 			.sheet(isPresented: branchDeletionPresentation) {
 				if case .deleteRemoteBranch(let branch) = viewModel.pendingConfirmation {
 					BranchDeletionSheet(
-						title: "Delete “\(branch.fullName)”?",
+						title: "Delete “\(branch.remoteDisplayName)”?",
 						message:
-							"This branch will be deleted from “\(branch.remoteName)” for all collaborators.",
+							"This branch will be deleted for all collaborators on these push destinations:\n\(branch.pushURLs.joined(separator: "\n"))",
 						optionTitle: localDeletionOptionTitle,
 						unavailableReason: localDeletionUnavailableReason,
 						onCancel: viewModel.didDismissConfirmation
@@ -72,7 +72,7 @@ public struct RepositoryRemotePresentationHost<Content: View>: View {
 		let label =
 			viewModel.deletionLocalBranches.count == 1
 			? "Also delete local branch" : "Also delete local branches"
-		return "\(label) \(names)"
+		return "\(label) \(names) (even with unmerged commits)"
 	}
 
 	private var localDeletionUnavailableReason: String? {

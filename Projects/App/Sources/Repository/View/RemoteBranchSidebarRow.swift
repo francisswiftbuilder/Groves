@@ -12,6 +12,6 @@ struct RemoteBranchSidebarRow: View {
 			accessory: showsRemoteName ? branch.remoteName : nil
 		)
 		.accessibilityElement(children: .combine)
-		.accessibilityLabel(branch.fullName)
+		.accessibilityLabel(branch.remoteDisplayName)
 	}
 }

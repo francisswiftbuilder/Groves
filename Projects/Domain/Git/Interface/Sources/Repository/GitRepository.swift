@@ -86,6 +86,9 @@ public protocol GitRepository: Sendable {
 	func requestSwitchBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateBranch(named name: String, at repositoryURL: URL) async throws
 	func requestCreateBranch(
+		named name: String, from source: GitBranchCreationSource, checkout: Bool, at repositoryURL: URL
+	) async throws
+	func requestCreateBranch(
 		named name: String,
 		from commitHash: String,
 		at repositoryURL: URL
@@ -97,6 +100,8 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	) async throws
 	func requestDeleteBranch(named name: String, at repositoryURL: URL) async throws
+	func requestForceDeleteBranches(_ branches: [GitBranch], at repositoryURL: URL) async throws
+		-> GitBranchDeletionOutcome
 	func requestRenameBranch(named name: String, to newName: String, at repositoryURL: URL)
 		async throws
 	func requestMergeBranch(named name: String, at repositoryURL: URL) async throws
@@ -163,7 +168,7 @@ public protocol GitRepository: Sendable {
 		at repositoryURL: URL
 	)
 		async throws
-	func requestPushTags(remote name: String, at repositoryURL: URL) async throws
+	func requestPushTags(remote name: String, at repositoryURL: URL) async throws -> String?
 	func requestAddRemote(
 		named name: String,
 		fetchURL: String,
@@ -180,6 +185,9 @@ public protocol GitRepository: Sendable {
 	) async throws
 	func requestDeleteRemote(named name: String, at repositoryURL: URL) async throws
 	func requestDeleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
+		-> GitBranchDeletionOutcome
+	func requestValidateRemoteBranchDeletion(_ branch: GitRemoteBranch, at repositoryURL: URL)
+		async throws
 }
 
 extension GitRepository {

@@ -8,19 +8,16 @@ public protocol RepositoryReferencesUseCase: Sendable {
 	) -> RepositoryPushAction
 	func switchBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
-	func createBranch(named name: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
-	func createBranch(named name: String, from commitHash: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+	func createBranch(
+		named name: String, from source: GitBranchCreationSource, checkout: Bool, at repositoryURL: URL
+	) async throws -> RepositoryReferenceMutationResult
 	func checkoutCommit(_ commitHash: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
-	func createTrackingBranch(
-		named name: String,
-		tracking remoteBranch: String,
-		at repositoryURL: URL
-	) async throws -> RepositorySnapshot
 	func deleteBranch(named name: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
+	func deleteBranches(
+		localBranches: [GitBranch], remoteBranch: GitRemoteBranch?, at repositoryURL: URL
+	) async throws -> RepositoryReferenceMutationResult
 	func renameBranch(named name: String, to newName: String, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 	func mergeBranch(named name: String, at repositoryURL: URL) async throws
@@ -30,9 +27,9 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		message: String,
 		commitHash: String,
 		at repositoryURL: URL
-	) async throws -> RepositorySnapshot
+	) async throws -> RepositoryReferenceMutationResult
 	func deleteTag(_ tag: GitTag, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryReferenceMutationResult
 	func fetch(remote name: String, at repositoryURL: URL) async throws -> RepositorySnapshot
 	func fetchAll(at repositoryURL: URL) async throws -> RepositorySnapshot
 	func fetchAutomatically(at repositoryURL: URL) async throws
@@ -58,7 +55,7 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot
 	func pushTags(remote name: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
+		-> RepositoryReferenceMutationResult
 	func addRemote(
 		named name: String,
 		fetchURL: String,
@@ -74,7 +71,5 @@ public protocol RepositoryReferencesUseCase: Sendable {
 		at repositoryURL: URL
 	) async throws -> RepositorySnapshot
 	func deleteRemote(named name: String, at repositoryURL: URL) async throws
-		-> RepositorySnapshot
-	func deleteRemoteBranch(_ branch: GitRemoteBranch, at repositoryURL: URL) async throws
 		-> RepositorySnapshot
 }

@@ -321,7 +321,10 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	}
 
 	public func requestRemotes(at repositoryURL: URL) async throws -> [GitRemote] {
-		let remotes = try await requestRemoteConfiguration(at: repositoryURL)
+		let commonDirectory = try await requestCommonGitDirectory(at: repositoryURL)
+		let configuration = try await requestRemoteConfigurationOutput(at: repositoryURL)
+		let remotes = GitOutputParser.parseRemotes(configuration)
+		let refspecs = GitFetchRefspec.parseConfiguration(configuration)
 		let branchFormat =
 			"%(refname)\t%(objectname:short)\t%(objectname)\t%(symref)"
 		let branchResult = try await runner.requestRun(
@@ -334,10 +337,14 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			at: repositoryURL
 		)
 		let branches = GitOutputParser.parseRemoteBranches(
-			branchResult.standardOutput, remoteNames: remotes.map(\.name))
+			branchResult.standardOutput, remoteNames: remotes.map(\.name), refspecs: refspecs)
 
 		var result: [GitRemote] = []
 		for remote in remotes {
+			let fetchURLs = try await requestRemoteURLs(
+				named: remote.name, usesPushURL: false, at: repositoryURL)
+			let status = await GitRemoteFetchState.shared.status(
+				in: commonDirectory, remote: remote.name, url: fetchURLs.first)
 			let urls = try await requestRemoteURLs(
 				named: remote.name, usesPushURL: true, at: repositoryURL)
 			let safeURLs =
@@ -345,7 +352,8 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			let remoteBranches = branches.filter { $0.remoteName == remote.name }.map { branch in
 				GitRemoteBranch(
 					name: branch.name, fullName: branch.fullName, remoteName: branch.remoteName,
-					shortHash: branch.shortHash, hash: branch.hash, pushURLs: safeURLs)
+					shortHash: branch.shortHash, hash: branch.hash, pushURLs: safeURLs,
+					remoteReference: branch.remoteReference)
 			}
 			result.append(
 				GitRemote(
@@ -353,7 +361,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 					fetchURLs: remote.fetchURLs,
 					pushURLs: remote.pushURLs,
 					branches: remoteBranches,
-					effectivePushURLs: safeURLs))
+					effectivePushURLs: safeURLs, lastFetchedAt: status.0, fetchError: status.1))
 		}
 		return result
 	}
@@ -1051,12 +1059,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	}
 
 	public func requestCreateBranch(named name: String, at repositoryURL: URL) async throws {
-		try await requestMutation(at: repositoryURL) {
-			try await requestValidateReference(name, prefix: "refs/heads/", at: repositoryURL)
-			try await requestEnsureIdle(at: repositoryURL)
-			_ = try await runner.requestRun(
-				arguments: ["switch", "--no-overwrite-ignore", "-c", name], at: repositoryURL)
-		}
+		try await requestCreateBranch(named: name, from: .head, checkout: true, at: repositoryURL)
 	}
 
 	public func requestCreateBranch(
@@ -1064,13 +1067,68 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		from commitHash: String,
 		at repositoryURL: URL
 	) async throws {
+		try await requestCreateBranch(
+			named: name, from: .commit(commitHash), checkout: true, at: repositoryURL)
+	}
+
+	public func requestCreateBranch(
+		named name: String, from source: GitBranchCreationSource, checkout: Bool, at repositoryURL: URL
+	) async throws {
 		try await requestMutation(at: repositoryURL) {
-			try await requestValidateReference(name, prefix: "refs/heads/", at: repositoryURL)
 			try await requestEnsureIdle(at: repositoryURL)
-			_ = try await runner.requestRun(
-				arguments: ["switch", "--no-overwrite-ignore", "-c", name, commitHash],
-				at: repositoryURL
-			)
+			try await requestValidateAvailableReference(name, prefix: "refs/heads/", at: repositoryURL)
+			let branchName = try await runner.requestRun(
+				arguments: ["check-ref-format", "--branch", name], at: repositoryURL,
+				acceptedTerminationStatuses: [0, 128])
+			guard branchName.terminationStatus == 0 else {
+				throw GitRepositoryError.commandFailed("Enter a valid branch name. HEAD is reserved.")
+			}
+			let start: String?
+			let tracking: [String]
+			switch source {
+			case .head:
+				start = nil
+				tracking = []
+			case .commit(let hash):
+				start = hash
+				tracking = []
+			case .remoteBranch(let branch):
+				let reference = "refs/remotes/\(branch.fullName)"
+				let configuration = try await requestRemoteConfigurationOutput(at: repositoryURL)
+				guard let remoteReference = branch.remoteReference,
+					let mapped = GitFetchRefspec.sourceBranch(
+						for: reference, in: GitFetchRefspec.parseConfiguration(configuration)),
+					mapped.remote == branch.remoteName, mapped.reference == remoteReference
+				else {
+					throw GitRepositoryError.commandFailed(
+						"This tracking reference has no verified server branch. Review the remote’s fetch mappings."
+					)
+				}
+				start = reference
+				tracking = ["--track"]
+			}
+			let arguments =
+				checkout
+				? ["switch", "--no-overwrite-ignore"] + tracking + ["-c", name]
+				: ["branch"] + tracking + ["--", name]
+			do {
+				_ = try await runner.requestRun(
+					arguments: arguments + [start].compactMap { $0 }, at: repositoryURL)
+			} catch GitRepositoryError.commandFailed(let message) {
+				if checkout, message.contains("would be overwritten") {
+					throw GitRepositoryError.referenceOperationFailed(
+						message:
+							"Uncheck Check Out New Branch to keep your working files. Commit or stash your changes before switching.",
+						details: message)
+				}
+				if case .remoteBranch = source, message.contains("invalid reference") {
+					throw GitRepositoryError.referenceOperationFailed(
+						message:
+							"The remote tracking branch is unavailable. Fetch the remote and select a branch again.",
+						details: message)
+				}
+				throw GitRepositoryError.commandFailed(message)
+			}
 		}
 	}
 
@@ -1112,6 +1170,95 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			try await requestValidateReference(name, prefix: "refs/heads/", at: repositoryURL)
 			try await requestEnsureIdle(at: repositoryURL)
 			_ = try await runner.requestRun(arguments: ["branch", "-d", "--", name], at: repositoryURL)
+		}
+	}
+
+	public func requestForceDeleteBranches(_ branches: [GitBranch], at repositoryURL: URL)
+		async throws -> GitBranchDeletionOutcome
+	{
+		guard !branches.isEmpty else { return .deleted }
+		return try await requestMutation(at: repositoryURL) {
+			try await requestEnsureIdle(at: repositoryURL)
+			let existing = try await runner.requestRun(
+				arguments: ["for-each-ref", "--format=%(refname)", "refs/heads/"], at: repositoryURL)
+			let existingReferences = Set(
+				existing.standardOutput.split(whereSeparator: \.isNewline).map(String.init))
+			var deletions: [String] = []
+			for branch in branches {
+				try await requestValidateReference(branch.name, prefix: "refs/heads/", at: repositoryURL)
+				guard [40, 64].contains(branch.hash.utf8.count),
+					branch.hash.allSatisfy({ $0.isASCII && $0.isHexDigit }),
+					branch.hash.contains(where: { $0 != "0" })
+				else { throw GitRepositoryError.invalidOutput }
+				let reference = "refs/heads/\(branch.name)"
+				if existingReferences.contains(reference) {
+					deletions.append("option no-deref\ndelete \(reference) \(branch.hash)\n")
+				} else {
+					deletions.append(
+						"option no-deref\nverify \(reference) \(String(repeating: "0", count: branch.hash.utf8.count))\n"
+					)
+				}
+			}
+			let configuration = try await requestConfigurationTransaction(at: repositoryURL)
+			let branchKeys = try await runner.requestRun(
+				arguments: [
+					"config", "--file", configuration.stagingURL.path, "--null", "--name-only",
+					"--get-regexp", "^branch\\.",
+				], at: repositoryURL, acceptedTerminationStatuses: [0, 1]
+			).standardOutput.split(separator: "\0")
+			let sections = Set(
+				branchKeys.compactMap { key in
+					key.lastIndex(of: ".").map { index in
+						String(key[..<index])
+					}
+				})
+			for branch in branches where sections.contains("branch.\(branch.name)") {
+				_ = try await runner.requestRun(
+					arguments: [
+						"config", "--file", configuration.stagingURL.path, "--remove-section",
+						"branch.\(branch.name)",
+					],
+					at: repositoryURL)
+			}
+			let directory = try await requestCommonGitDirectory(at: repositoryURL)
+			let format = try await runner.requestRun(
+				arguments: ["rev-parse", "--show-ref-format"], at: repositoryURL)
+			let directories = try GitWorktreeBranchUsage.directories(in: directory)
+			let locks = try GitWorktreeHeadLocks(
+				directories: directories,
+				reftable: format.standardOutput.trimmingCharacters(in: .newlines) == "reftable")
+			defer { withExtendedLifetime(locks) {} }
+			_ = try await runner.requestRun(
+				arguments: ["update-ref", "--stdin"], at: repositoryURL,
+				standardInput: "start\n" + deletions.joined() + "prepare\n",
+				validatePreparedReferences: {
+					let worktrees = try await runner.requestRun(
+						arguments: ["worktree", "list", "--porcelain", "-z"], at: repositoryURL)
+					guard try GitWorktreeBranchUsage.directories(in: directory) == directories else {
+						throw GitRepositoryError.commandFailed(
+							"A worktree changed during deletion. Review and retry.")
+					}
+					let inUse = try GitWorktreeBranchUsage.references(
+						worktrees.standardOutput, in: directories)
+					if let branch = branches.first(where: {
+						let reference = "refs/heads/\($0.name)"
+						return existingReferences.contains(reference) && inUse.contains(reference)
+					}) {
+						throw GitRepositoryError.commandFailed(
+							"The branch “\(branch.name)” is in use by a worktree. Switch branches or finish the Git operation there first."
+						)
+					}
+				})
+			if branches.contains(where: { sections.contains("branch.\($0.name)") }) {
+				do {
+					try configuration.commit()
+				} catch {
+					return .deletedWithWarning(
+						"The local branches were deleted, but their configuration could not be removed. \(error.localizedDescription)"
+					)
+				}
+			}
+			return .deleted
 		}
 	}
 
@@ -1620,19 +1767,29 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		commitHash: String,
 		at repositoryURL: URL
 	) async throws {
-		try await requestValidateReference(name, prefix: "refs/tags/", at: repositoryURL)
-		let arguments =
-			message.isEmpty
-			? ["tag", "--", name, commitHash]
-			: ["tag", "-a", "-m", message, "--", name, commitHash]
-		_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+		try await requestMutation(at: repositoryURL) {
+			try await requestValidateAvailableReference(name, prefix: "refs/tags/", at: repositoryURL)
+			let arguments =
+				message.isEmpty
+				? ["tag", "--", name, commitHash]
+				: ["tag", "-a", "-m", message, "--", name, commitHash]
+			_ = try await runner.requestRun(arguments: arguments, at: repositoryURL)
+		}
 	}
 
 	public func requestDeleteTag(_ tag: GitTag, at repositoryURL: URL) async throws {
 		try await requestValidateReference(tag.name, prefix: "refs/tags/", at: repositoryURL)
+		let reference = "refs/tags/\(tag.name)"
+		let existing = try await runner.requestRun(
+			arguments: ["for-each-ref", "--format=%(refname)", reference], at: repositoryURL)
+		if existing.standardOutput.split(whereSeparator: \.isNewline).contains(Substring(reference)) {
+			_ = try await runner.requestRun(
+				arguments: ["update-ref", "--no-deref", "-d", reference, tag.objectHash], at: repositoryURL)
+			return
+		}
 		_ = try await runner.requestRun(
-			arguments: ["update-ref", "--no-deref", "-d", "refs/tags/\(tag.name)", tag.objectHash],
-			at: repositoryURL)
+			arguments: ["update-ref", "--stdin"], at: repositoryURL,
+			standardInput: "option no-deref\nverify \(reference)\n")
 	}
 
 	@discardableResult public func requestCreateStash(
@@ -1739,40 +1896,107 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		try await requestFetch(remote: name, reference: nil, at: repositoryURL)
 	}
 
-	private func requestFetch(remote name: String, reference: String?, at repositoryURL: URL)
-		async throws
-	{
-		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
-			named: name,
-			usesPushURL: false,
-			at: repositoryURL
-		)
-		_ = try await runner.requestRun(
-			arguments: ["fetch", "--", name] + [reference].compactMap { $0 },
-			at: repositoryURL,
-			isNetworkOperation: true,
-			requiresSSHTrustScope: requiresSSHTrustScope
-		)
+	private func requestFetch(
+		remote name: String, reference: String?, at repositoryURL: URL,
+		allowsUserInteraction: Bool = true
+	) async throws {
+		let directory = try await requestCommonGitDirectory(at: repositoryURL)
+		let urls = try await requestRemoteURLs(named: name, usesPushURL: false, at: repositoryURL)
+		do {
+			guard !urls.contains(where: GitRemoteURLValidator.containsEmbeddedCredential) else {
+				throw GitRepositoryError.invalidRemoteURL
+			}
+			let scope =
+				reference == nil ? try await requestScopedPruneRefspecs(for: name, at: repositoryURL) : []
+			let arguments =
+				scope.isEmpty
+				? ["fetch", "--", name] + [reference].compactMap { $0 }
+				: ["fetch", "--prune", "--no-prune-tags", "--refmap=", "--", name] + scope
+			_ = try await runner.requestRun(
+				arguments: arguments, at: repositoryURL, isNetworkOperation: true,
+				requiresSSHTrustScope: urls.contains(where: GitRemoteURLValidator.isSSHRemote),
+				allowsUserInteraction: allowsUserInteraction)
+			if reference == nil {
+				await GitRemoteFetchState.shared.record(
+					in: directory, remote: name, url: urls.first, error: nil)
+			}
+		} catch is CancellationError {
+			throw CancellationError()
+		} catch {
+			if reference == nil {
+				await GitRemoteFetchState.shared.record(
+					in: directory, remote: name, url: urls.first, error: error.localizedDescription)
+			}
+			throw error
+		}
 	}
 
 	public func requestFetchAll(at repositoryURL: URL, allowsUserInteraction: Bool) async throws {
 		let remoteNames = try await requestRemoteNames(at: repositoryURL)
-		var requiresSSHTrustScope = false
-		for remoteName in remoteNames {
-			let remoteUsesSSH = try await requestRemoteUsesSSH(
-				named: remoteName,
-				usesPushURL: false,
-				at: repositoryURL
-			)
-			requiresSSHTrustScope = requiresSSHTrustScope || remoteUsesSSH
+		let configuration = try await runner.requestRun(
+			arguments: [
+				"config", "-z", "--type=bool", "--get-regexp",
+				"^remote\\..*\\.(skipfetchall|skipdefaultupdate)$",
+			],
+			at: repositoryURL, acceptedTerminationStatuses: [0, 1])
+		var skip: [String: Bool] = [:]
+		for record in configuration.standardOutput.split(separator: "\0") {
+			let fields = record.split(separator: "\n", maxSplits: 1)
+			if fields.count == 2, let dot = fields[0].lastIndex(of: ".") {
+				skip[String(fields[0].dropFirst("remote.".count)[..<dot])] = fields[1] == "true"
+			}
 		}
-		_ = try await runner.requestRun(
-			arguments: ["fetch", "--all"],
-			at: repositoryURL,
-			isNetworkOperation: true,
-			requiresSSHTrustScope: requiresSSHTrustScope,
-			allowsUserInteraction: allowsUserInteraction
-		)
+		var failures: [String] = []
+		for name in remoteNames where skip[name] != true {
+			do {
+				try await requestFetch(
+					remote: name, reference: nil, at: repositoryURL,
+					allowsUserInteraction: allowsUserInteraction)
+			} catch is CancellationError {
+				throw CancellationError()
+			} catch {
+				failures.append("\(name) — \(error.localizedDescription)")
+			}
+		}
+		if !failures.isEmpty {
+			throw GitRepositoryError.commandFailed(failures.joined(separator: "\n\n"))
+		}
+	}
+
+	private func requestScopedPruneRefspecs(for name: String, at repositoryURL: URL) async throws
+		-> [String]
+	{
+		let configuration = try await requestRemoteConfigurationOutput(at: repositoryURL)
+		let refspecs = GitFetchRefspec.parseConfiguration(configuration)
+		let pruningConfiguration = try await runner.requestRun(
+			arguments: [
+				"config", "-z", "--type=bool", "--get-regexp", "^(fetch|remote\\..*)\\.(prune|prunetags)$",
+			], at: repositoryURL, acceptedTerminationStatuses: [0, 1]
+		).standardOutput.split(separator: "\0")
+		var pruning: [String: Substring] = [:]
+		for record in pruningConfiguration {
+			let fields = record.split(separator: "\n", maxSplits: 1)
+			if fields.count == 2 { pruning[String(fields[0])] = fields[1] }
+		}
+		do {
+			let prefix = "refs/remotes/\(name)/"
+			let destinations = refspecs[name, default: []].compactMap(\.destination)
+			guard !destinations.isEmpty, destinations.allSatisfy({ $0.hasPrefix(prefix) }),
+				pruning["remote.\(name).prune"] == nil, pruning["fetch.prune"] == nil,
+				(pruning["remote.\(name).prunetags"] ?? pruning["fetch.prunetags"]) != "true"
+			else { return [] }
+			let overlaps = refspecs.contains { remote, mappings in
+				remote != name
+					&& mappings.compactMap(\.destination).contains { destination in
+						guard let wildcard = destination.firstIndex(of: "*") else {
+							return destination.hasPrefix(prefix) || prefix.hasPrefix(destination + "/")
+						}
+						let otherPrefix = destination[..<wildcard]
+						return otherPrefix.hasPrefix(prefix) || prefix.hasPrefix(otherPrefix)
+					}
+			}
+			return overlaps ? [] : refspecs[name, default: []].map(\.value)
+		}
 	}
 
 	public func requestPreparePull(expecting branch: GitBranch, at repositoryURL: URL) async throws
@@ -1976,19 +2200,51 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		}
 	}
 
-	public func requestPushTags(remote name: String, at repositoryURL: URL) async throws {
+	@discardableResult public func requestPushTags(remote name: String, at repositoryURL: URL)
+		async throws -> String?
+	{
 		try await requestEnsureIdle(at: repositoryURL)
-		let requiresSSHTrustScope = try await requestRemoteUsesSSH(
-			named: name,
-			usesPushURL: true,
-			at: repositoryURL
-		)
-		_ = try await runner.requestRun(
-			arguments: ["push", name, "--tags"],
-			at: repositoryURL,
-			isNetworkOperation: true,
-			requiresSSHTrustScope: requiresSSHTrustScope
-		)
+		let urls = try await requestRemoteURLs(named: name, usesPushURL: true, at: repositoryURL)
+		guard !urls.isEmpty, !urls.contains(where: GitRemoteURLValidator.containsEmbeddedCredential)
+		else {
+			throw GitRepositoryError.invalidRemoteURL
+		}
+		var completed: [String] = []
+		var rejected: [String] = []
+		for (index, url) in urls.enumerated() {
+			do {
+				let endpoint = pinnedEndpoint(url)
+				let result = try await runner.requestRun(
+					arguments: ["push", "--porcelain", "--tags", "--", endpoint.name],
+					at: repositoryURL, environment: endpoint.environment,
+					acceptedTerminationStatuses: [0, 1, 128],
+					isNetworkOperation: true, requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(url))
+				let report = GitPushReport(result)
+				if result.terminationStatus == 0 || !report.completed.isEmpty {
+					completed.append(
+						"\(url) — \(report.completed.isEmpty ? "Tags are up to date." : report.completed.joined(separator: ", "))"
+					)
+				}
+				if !report.rejected.isEmpty {
+					rejected.append("\(url) — \(report.rejected.joined(separator: ", "))")
+				}
+			} catch is CancellationError {
+				try Task.checkCancellation()
+				guard !completed.isEmpty else { throw CancellationError() }
+				rejected.append("\(url) — authentication cancelled.")
+				rejected.append(
+					contentsOf: urls.dropFirst(index + 1).map {
+						"\($0) — not attempted."
+					})
+				break
+			} catch {
+				rejected.append("\(url) — \(error.localizedDescription)")
+			}
+		}
+		guard !rejected.isEmpty else { return nil }
+		let summary = (completed + rejected).joined(separator: "\n\n")
+		if completed.isEmpty { throw GitRepositoryError.commandFailed(summary) }
+		return summary
 	}
 
 	public func requestAddRemote(
@@ -2073,22 +2329,173 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		_ = try await runner.requestRun(arguments: ["remote", "remove", "--", name], at: repositoryURL)
 	}
 
-	public func requestDeleteRemoteBranch(
-		_ branch: GitRemoteBranch,
-		at repositoryURL: URL
-	) async throws {
-		try await requestMutation(at: repositoryURL) {
-			try await requestValidateReference(branch.name, prefix: "refs/heads/", at: repositoryURL)
-			try await requestEnsureIdle(at: repositoryURL)
-			let reference = "refs/heads/\(branch.name)"
-			try await requestPinnedPush(
-				remote: branch.remoteName, urls: branch.pushURLs, lease: "\(reference):\(branch.hash)",
-				refspec: ":\(reference)", at: repositoryURL)
+	public func requestValidateRemoteBranchDeletion(_ branch: GitRemoteBranch, at repositoryURL: URL)
+		async throws
+	{
+		let reference = try await requestRemoteDeletionReference(branch, at: repositoryURL)
+		for url in branch.pushURLs {
+			if let actual = try await requestAdvertisedReference(
+				reference, atEndpoint: url, repositoryURL: repositoryURL),
+				actual != branch.hash
+			{
+				throw GitRepositoryError.commandFailed(
+					"The branch on \(url) changed. Fetch and review the deletion before deleting the local branches."
+				)
+			}
 		}
 	}
 
+	private func requestRemoteDeletionReference(_ branch: GitRemoteBranch, at repositoryURL: URL)
+		async throws -> String
+	{
+		try await requestEnsureIdle(at: repositoryURL)
+		let configuration = try await requestRemoteConfigurationOutput(at: repositoryURL)
+		let mappings = GitFetchRefspec.parseConfiguration(configuration)
+		guard let reference = branch.remoteReference,
+			let current = GitFetchRefspec.sourceBranch(
+				for: "refs/remotes/\(branch.fullName)", in: mappings),
+			current.remote == branch.remoteName, current.reference == reference
+		else {
+			throw GitRepositoryError.commandFailed(
+				"The server branch could not be verified. Review the remote’s fetch mappings.")
+		}
+		try await requestValidateReference(
+			String(reference.dropFirst("refs/heads/".count)), prefix: "refs/heads/", at: repositoryURL)
+		let urls = try await requestRemoteURLs(
+			named: branch.remoteName, usesPushURL: true, at: repositoryURL)
+		guard !urls.isEmpty, urls == branch.pushURLs,
+			!urls.contains(where: GitRemoteURLValidator.containsEmbeddedCredential)
+		else {
+			throw GitRepositoryError.commandFailed("The push destination changed. Review it again.")
+		}
+		return reference
+	}
+
+	@discardableResult public func requestDeleteRemoteBranch(
+		_ branch: GitRemoteBranch, at repositoryURL: URL
+	) async throws -> GitBranchDeletionOutcome {
+		let result: (completed: [String], failed: [String], separateFetchServer: Bool)
+		do {
+			result = try await requestMutation(at: repositoryURL) {
+				let reference = try await requestRemoteDeletionReference(branch, at: repositoryURL)
+				let fetchURL = try await requestRemoteURLs(
+					named: branch.remoteName, usesPushURL: false, at: repositoryURL
+				).first
+				var completed: [String] = []
+				var failed: [String] = []
+				for url in branch.pushURLs {
+					do {
+						let tracking = url == fetchURL ? ["+\(reference):refs/remotes/\(branch.fullName)"] : []
+						let message = try await requestDeleteAtEndpoint(
+							url, reference: reference, expectedHash: branch.hash, tracking: tracking,
+							at: repositoryURL)
+						completed.append("\(url) — \(message)")
+					} catch is CancellationError {
+						try Task.checkCancellation()
+						guard !completed.isEmpty else { throw CancellationError() }
+						failed.append("\(url) — authentication cancelled.")
+						failed.append(
+							contentsOf: branch.pushURLs.dropFirst(completed.count + failed.count).map {
+								"\($0) — not attempted."
+							})
+						break
+					} catch {
+						failed.append("\(url) — \(error.localizedDescription)")
+					}
+				}
+				return (completed, failed, fetchURL.map { !branch.pushURLs.contains($0) } ?? false)
+			}
+		} catch {
+			try Task.checkCancellation()
+			if error is CancellationError { throw error }
+			try? await requestFetch(
+				remote: branch.remoteName, reference: nil, at: repositoryURL, allowsUserInteraction: false)
+			throw error
+		}
+		var notices: [String] = []
+		if !result.failed.isEmpty || result.separateFetchServer {
+			notices += result.completed + result.failed
+		}
+		if result.separateFetchServer {
+			notices.append(
+				"The branch list reflects the fetch server, which is separate from the push destinations.")
+		}
+		do {
+			try await requestFetch(
+				remote: branch.remoteName, reference: nil, at: repositoryURL,
+				allowsUserInteraction: result.failed.isEmpty)
+		} catch {
+			try Task.checkCancellation()
+			if !result.completed.isEmpty && notices.isEmpty { notices += result.completed }
+			notices.append(
+				"Remote state couldn’t be refreshed. Use Fetch to retry the refresh. \(error.localizedDescription)"
+			)
+		}
+		if result.completed.isEmpty {
+			throw GitRepositoryError.commandFailed(notices.joined(separator: "\n\n"))
+		}
+		return notices.isEmpty ? .deleted : .deletedWithWarning(notices.joined(separator: "\n\n"))
+	}
+
+	private func requestDeleteAtEndpoint(
+		_ url: String, reference: String, expectedHash: String, tracking: [String],
+		at repositoryURL: URL
+	) async throws -> String {
+		let endpoint = pinnedEndpoint(url, tracking: tracking)
+		let result = try await runner.requestRun(
+			arguments: [
+				"push", "--porcelain", "--force-with-lease=\(reference):\(expectedHash)", "--",
+				endpoint.name, ":\(reference)",
+			],
+			at: repositoryURL, environment: endpoint.environment,
+			acceptedTerminationStatuses: [0, 1, 128],
+			isNetworkOperation: true, requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(url))
+		if result.terminationStatus == 0 { return "Branch deleted." }
+		do {
+			if try await requestAdvertisedReference(
+				reference, atEndpoint: url, repositoryURL: repositoryURL, allowsUserInteraction: false)
+				== nil
+			{
+				return "Branch already absent."
+			}
+		} catch {
+			try Task.checkCancellation()
+		}
+		try Task.checkCancellation()
+		throw GitRepositoryError.commandFailed(GitPushReport(result).rejected.joined(separator: "\n"))
+	}
+
+	private func requestAdvertisedReference(
+		_ reference: String, atEndpoint url: String, repositoryURL: URL,
+		allowsUserInteraction: Bool = true
+	) async throws -> String? {
+		let endpoint = pinnedEndpoint(url)
+		let advertised = try await runner.requestRun(
+			arguments: ["ls-remote", "--refs", "--exit-code", "--", endpoint.name, reference],
+			at: repositoryURL, environment: endpoint.environment, acceptedTerminationStatuses: [0, 2],
+			isNetworkOperation: true, requiresSSHTrustScope: GitRemoteURLValidator.isSSHRemote(url),
+			allowsUserInteraction: allowsUserInteraction)
+		if advertised.terminationStatus == 2 { return nil }
+		for line in advertised.standardOutput.split(whereSeparator: \.isNewline) {
+			let fields = line.split(separator: "\t")
+			if fields.count == 2, fields[1] == reference { return String(fields[0]) }
+		}
+		return nil
+	}
+
+	private func pinnedEndpoint(_ url: String, tracking: [String] = [])
+		-> (name: String, environment: [String: String])
+	{
+		let name = "pluminon-push-\(UUID().uuidString)"
+		let address = "\(name)-endpoint"
+		var settings = tracking.map { ("remote.\(name).fetch", $0) }
+		settings += [("remote.\(name).url", address), ("url.\(url).insteadOf", address)]
+		return (name, gitConfigurationEnvironment(settings))
+	}
+
 	private func requestPinnedPush(
-		remote: String, urls: [String], lease: String, refspec: String, at repositoryURL: URL
+		remote: String, urls: [String], lease: String, refspec: String,
+		trackingRefspecs: [String]? = nil, at repositoryURL: URL
 	) async throws {
 		let current = try await requestRemoteURLs(named: remote, usesPushURL: true, at: repositoryURL)
 		guard !urls.isEmpty, urls == current,
@@ -2097,25 +2504,38 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			throw GitRepositoryError.commandFailed("The push destination changed. Review it again.")
 		}
 		let alias = "pluminon-push-\(UUID().uuidString)"
-		let mappings = try await runner.requestRun(
-			arguments: ["config", "-z", "--get-all", "remote.\(remote).fetch"], at: repositoryURL,
-			acceptedTerminationStatuses: [0, 1]
-		).standardOutput.split(separator: "\0")
-		var settings = mappings.map { ("remote.\(alias).fetch", String($0)) }
+		let mappings: [String]
+		if let trackingRefspecs {
+			mappings = trackingRefspecs
+		} else {
+			mappings = try await runner.requestRun(
+				arguments: ["config", "-z", "--get-all", "remote.\(remote).fetch"], at: repositoryURL,
+				acceptedTerminationStatuses: [0, 1]
+			).standardOutput.split(separator: "\0").map(String.init)
+		}
+		var settings = mappings.map { ("remote.\(alias).fetch", $0) }
 		for (index, url) in urls.enumerated() {
 			let address = "\(alias)-\(index)"
 			settings.append(("remote.\(alias).url", address))
 			settings.append(("url.\(url).insteadOf", address))
 		}
-		var environment = ["GIT_CONFIG_COUNT": String(settings.count)]
-		for (index, setting) in settings.enumerated() {
-			environment["GIT_CONFIG_KEY_\(index)"] = setting.0
-			environment["GIT_CONFIG_VALUE_\(index)"] = setting.1
-		}
 		_ = try await runner.requestRun(
 			arguments: ["push", "--force-with-lease=\(lease)", "--", alias, refspec],
-			at: repositoryURL, environment: environment, isNetworkOperation: true,
+			at: repositoryURL, environment: gitConfigurationEnvironment(settings),
+			isNetworkOperation: true,
 			requiresSSHTrustScope: urls.contains(where: GitRemoteURLValidator.isSSHRemote))
+	}
+
+	private func gitConfigurationEnvironment(_ settings: [(key: String, value: String)]) -> [String:
+		String]
+	{
+		guard !settings.isEmpty else { return [:] }
+		var environment = ["GIT_CONFIG_COUNT": String(settings.count)]
+		for (index, setting) in settings.enumerated() {
+			environment["GIT_CONFIG_KEY_\(index)"] = setting.key
+			environment["GIT_CONFIG_VALUE_\(index)"] = setting.value
+		}
+		return environment
 	}
 
 	private func requestPushRemoteName(branchName: String, at repositoryURL: URL) async throws
@@ -2361,22 +2781,32 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 	}
 
 	private func requestRemoteConfiguration(at repositoryURL: URL) async throws -> [GitRemote] {
-		let result = try await runner.requestRun(
+		GitOutputParser.parseRemotes(try await requestRemoteConfigurationOutput(at: repositoryURL))
+	}
+
+	private func requestRemoteConfigurationOutput(at repositoryURL: URL) async throws -> String {
+		try await runner.requestRun(
 			arguments: ["config", "--null", "--get-regexp", "^remote\\."], at: repositoryURL,
-			acceptedTerminationStatuses: [0, 1])
-		return GitOutputParser.parseRemotes(result.standardOutput)
+			acceptedTerminationStatuses: [0, 1]
+		).standardOutput
 	}
 
 	private func requestModifyConfiguration(
 		at repositoryURL: URL, _ operation: @Sendable (URL) async throws -> Void
 	) async throws {
+		let transaction = try await requestConfigurationTransaction(at: repositoryURL)
+		try await operation(transaction.stagingURL)
+		try transaction.commit()
+	}
+
+	private func requestConfigurationTransaction(at repositoryURL: URL) async throws
+		-> GitConfigurationTransaction
+	{
 		let result = try await runner.requestRun(
 			arguments: ["rev-parse", "--path-format=absolute", "--git-path", "config"], at: repositoryURL)
 		let url = URL(fileURLWithPath: result.standardOutput.trimmingCharacters(in: .newlines))
 		do {
-			let transaction = try GitConfigurationTransaction(configurationURL: url)
-			try await operation(transaction.stagingURL)
-			try transaction.commit()
+			return try GitConfigurationTransaction(configurationURL: url)
 		} catch let error as POSIXError where error.code == .EEXIST {
 			throw GitRepositoryError.commandFailed(
 				"Another Git process is updating this repository’s configuration. Wait for it to finish and retry."
@@ -2399,15 +2829,39 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		}
 	}
 
+	private func requestValidateAvailableReference(
+		_ name: String, prefix: String, at repositoryURL: URL
+	)
+		async throws
+	{
+		try await requestValidateReference(name, prefix: prefix, at: repositoryURL)
+		let reference = prefix + name
+		let refs = try await runner.requestRun(
+			arguments: ["for-each-ref", "--format=%(refname)", prefix], at: repositoryURL)
+		for existing in refs.standardOutput.split(whereSeparator: \.isNewline) {
+			if existing == reference {
+				throw GitRepositoryError.commandFailed("“\(name)” already exists. Choose another name.")
+			}
+			if existing.hasPrefix(reference + "/") || reference.hasPrefix(existing + "/") {
+				throw GitRepositoryError.commandFailed(
+					"“\(name)” conflicts with “\(existing.dropFirst(prefix.count))”. Choose another name.")
+			}
+		}
+	}
+
 	private func requestMutation<Value: Sendable>(
 		at repositoryURL: URL, _ operation: @Sendable () async throws -> Value
 	) async throws -> Value {
+		let url = try await requestCommonGitDirectory(at: repositoryURL)
+		return try await GitRepositoryMutationCoordinator.shared.withMutation(
+			at: url, operation: operation)
+	}
+
+	private func requestCommonGitDirectory(at repositoryURL: URL) async throws -> URL {
 		let directory = try await runner.requestRun(
 			arguments: ["rev-parse", "--path-format=absolute", "--git-common-dir"], at: repositoryURL
 		).standardOutput.trimmingCharacters(in: .newlines)
-		let url = URL(fileURLWithPath: directory).standardizedFileURL.resolvingSymlinksInPath()
-		return try await GitRepositoryMutationCoordinator.shared.withMutation(
-			at: url, operation: operation)
+		return URL(fileURLWithPath: directory).standardizedFileURL.resolvingSymlinksInPath()
 	}
 
 	private func requestValidateResetContext(_ context: GitResetContext, at repositoryURL: URL)

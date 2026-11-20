@@ -390,7 +390,9 @@ struct GitReferenceMutationTests {
 			try await context.repository.requestRemotes(at: context.url).first?.branches.first)
 		_ = try await run(["commit", "--allow-empty", "-m", "new remote commit"], in: context)
 		let next = try await run(["rev-parse", "HEAD"], in: context)
-		_ = try await run(["push", "origin", "HEAD:refs/heads/release"], in: context)
+		_ = try await run(["push", remote.path, "HEAD:refs/heads/release"], in: context)
+		let cached = try await context.repository.requestRemotes(at: context.url)
+		#expect(cached.first?.branches.first?.hash == branch.hash)
 
 		await #expect(throws: GitRepositoryError.self) {
 			try await context.repository.requestDeleteRemoteBranch(branch, at: context.url)
@@ -398,6 +400,184 @@ struct GitReferenceMutationTests {
 		let current = try await context.runner.requestRun(
 			arguments: ["rev-parse", "refs/heads/release"], at: remote)
 		#expect(current.standardOutput.trimmingCharacters(in: .newlines) == next)
+		let refreshed = try await context.repository.requestRemotes(at: context.url)
+		#expect(refreshed.first?.branches.first?.hash == next)
+	}
+
+	@Test
+	func remoteBranchDeletionFetchesNewBranchesAndPrunesRemovedBranches() async throws {
+		let context = try await makeContext()
+		let remote = try await makeRemote(in: context)
+		_ = try await run(
+			["push", "origin", "HEAD:refs/heads/release", "HEAD:refs/heads/obsolete"], in: context)
+		let remotes = try await context.repository.requestRemotes(at: context.url)
+		let branch = try #require(remotes.first?.branches.first { $0.name == "release" })
+		_ = try await run(
+			["push", remote.path, "HEAD:refs/heads/new", ":refs/heads/obsolete"], in: context)
+
+		try await context.repository.requestDeleteRemoteBranch(branch, at: context.url)
+
+		let refreshed = try await context.repository.requestRemotes(at: context.url)
+		#expect(refreshed.first?.branches.map(\.name) == ["new"])
+	}
+
+	@Test
+	func remoteBranchDeletionShowsTheActualFetchServerWhenPushUsesAnotherServer() async throws {
+		let context = try await makeContext()
+		let fetchServer = try await makeRemote(in: context)
+		let pushServer = context.url.appending(path: ".git/push.git")
+		_ = try await run(["init", "--bare", pushServer.path], in: context)
+		_ = try await run(["push", "origin", "HEAD:refs/heads/release"], in: context)
+		_ = try await run(["push", pushServer.path, "HEAD:refs/heads/release"], in: context)
+		_ = try await run(["remote", "set-url", "--push", "origin", pushServer.path], in: context)
+		let remotes = try await context.repository.requestRemotes(at: context.url)
+		let branch = try #require(remotes.first?.branches.first)
+
+		try await context.repository.requestDeleteRemoteBranch(branch, at: context.url)
+
+		let references = ["for-each-ref", "--format=%(objectname)", "refs/heads/release"]
+		let pushState = try await context.runner.requestRun(arguments: references, at: pushServer)
+		let fetchState = try await context.runner.requestRun(arguments: references, at: fetchServer)
+		let refreshed = try await context.repository.requestRemotes(at: context.url)
+		#expect(pushState.standardOutput.isEmpty)
+		#expect(fetchState.standardOutput == branch.hash + "\n")
+		#expect(refreshed.first?.branches == [branch])
+	}
+
+	@Test
+	func remoteBranchDeletionUsesTheSourceOfACustomTrackingRefspec() async throws {
+		let context = try await makeContext()
+		let remote = try await makeRemote(in: context)
+		_ = try await run(
+			["push", remote.path, "HEAD:refs/heads/stable", "HEAD:refs/heads/release"], in: context)
+		_ = try await run(
+			[
+				"config", "--replace-all", "remote.origin.fetch",
+				"+refs/heads/stable:refs/remotes/origin/release",
+			], in: context)
+		try await context.repository.requestFetch(remote: "origin", at: context.url)
+		let branch = try #require(
+			try await context.repository.requestRemotes(at: context.url).first?.branches.first)
+		#expect(branch.fullName == "origin/release")
+		#expect(branch.remoteDisplayName == "origin/stable")
+		#expect(branch.remoteReference == "refs/heads/stable")
+
+		_ = try await run(
+			["config", "remote.origin.fetch", "+refs/heads/release:refs/remotes/origin/release"],
+			in: context)
+		await #expect(throws: GitRepositoryError.self) {
+			_ = try await context.repository.requestDeleteRemoteBranch(branch, at: context.url)
+		}
+		_ = try await run(
+			["config", "remote.origin.fetch", "+refs/heads/stable:refs/remotes/origin/release"],
+			in: context)
+		_ = try await context.repository.requestDeleteRemoteBranch(branch, at: context.url)
+
+		let refs = try await context.runner.requestRun(
+			arguments: ["for-each-ref", "--format=%(refname)", "refs/heads/"], at: remote)
+		#expect(refs.standardOutput == "refs/heads/release\n")
+		#expect(
+			try await context.repository.requestRemotes(at: context.url).first?.branches.isEmpty == true)
+	}
+
+	@Test
+	func cancelledFetchReportsCompletedRemoteDeletion() async throws {
+		let context = try await makeContext()
+		let remote = try await makeRemote(in: context)
+		_ = try await run(["push", "origin", "HEAD:refs/heads/release"], in: context)
+		let branch = try #require(
+			try await context.repository.requestRemotes(at: context.url).first?.branches.first)
+		let executable = context.url.appending(path: ".git/cancel-fetch")
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" fetch "*) echo PLUMINON_ASKPASS_CANCELLED >&2; exit 1 ;;
+		esac
+		exec /usr/bin/git "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let repository = LocalGitRepository(
+			runner: GitProcessRunner(
+				configuration: .init(
+					executableURL: executable,
+					globalConfigurationURL: context.url.appending(path: ".git/app.config"))))
+
+		let outcome = try await repository.requestDeleteRemoteBranch(branch, at: context.url)
+		guard case .deletedWithWarning(let message) = outcome else {
+			Issue.record("Expected completed deletion with a fetch warning")
+			return
+		}
+		#expect(message.contains("Fetch was cancelled"))
+		let refs = try await context.runner.requestRun(
+			arguments: ["for-each-ref", "--format=%(refname)", "refs/heads/release"], at: remote)
+		#expect(refs.standardOutput.isEmpty)
+	}
+
+	@Test
+	func fetchingDoesNotPruneRefsMappedByAnotherRemote() async throws {
+		let context = try await makeContext()
+		let origin = try await makeRemote(in: context)
+		let foreign = context.url.appending(path: ".git/foreign.git")
+		_ = try await run(["init", "--bare", foreign.path], in: context)
+		_ = try await run(["remote", "add", "foreign", foreign.path], in: context)
+		_ = try await run(["push", origin.path, "HEAD:refs/heads/main"], in: context)
+		_ = try await run(["push", foreign.path, "HEAD:refs/heads/foreign-only"], in: context)
+		_ = try await run(
+			["config", "--replace-all", "remote.foreign.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+			in: context)
+		try await context.repository.requestFetch(remote: "foreign", at: context.url)
+
+		try await context.repository.requestFetch(remote: "origin", at: context.url)
+
+		let reference = "refs/remotes/origin/foreign-only"
+		#expect(
+			try await run(["for-each-ref", "--format=%(refname)", reference], in: context) == reference)
+		let remotes = try await context.repository.requestRemotes(at: context.url)
+		let ambiguous = try #require(
+			remotes.flatMap(\.branches).first { $0.fullName == "origin/foreign-only" })
+		#expect(ambiguous.remoteReference == nil)
+	}
+
+	@Test(arguments: [false, true], ["origin", "team/remote=name"])
+	func fetchingPrunesTrackingBranchesWithoutPruningLocalTags(fetchAll: Bool, name: String)
+		async throws
+	{
+		let context = try await makeContext()
+		let remote = try await makeRemote(in: context)
+		if name != "origin" {
+			_ = try await run(["remote", "rename", "origin", name], in: context)
+		}
+		_ = try await run(["push", name, "HEAD:refs/heads/obsolete"], in: context)
+		_ = try await run(["push", remote.path, ":refs/heads/obsolete"], in: context)
+		_ = try await run(["tag", "local-only"], in: context)
+		_ = try await run(["config", "fetch.pruneTags", "false"], in: context)
+
+		if fetchAll {
+			try await context.repository.requestFetchAll(at: context.url, allowsUserInteraction: false)
+		} else {
+			try await context.repository.requestFetch(remote: name, at: context.url)
+		}
+
+		let refreshed = try await context.repository.requestRemotes(at: context.url)
+		#expect(refreshed.first?.branches.isEmpty == true)
+		#expect(try await run(["tag", "--list"], in: context) == "local-only")
+	}
+
+	@Test(arguments: [false, true])
+	func fetchingKeepsLocalTagsWithExplicitTagSettings(usesTagRefspec: Bool) async throws {
+		let context = try await makeContext()
+		_ = try await makeRemote(in: context)
+		_ = try await run(["push", "origin", "HEAD:refs/tags/remote-only"], in: context)
+		let settings =
+			usesTagRefspec
+			? ["--add", "remote.origin.fetch", "+refs/tags/*:refs/tags/*"]
+			: ["fetch.pruneTags", "true"]
+		_ = try await run(["config"] + settings, in: context)
+		_ = try await run(["tag", "local-only"], in: context)
+
+		try await context.repository.requestFetch(remote: "origin", at: context.url)
+
+		#expect(try await run(["tag", "--list"], in: context) == "local-only\nremote-only")
 	}
 
 	@Test
@@ -421,6 +601,89 @@ struct GitReferenceMutationTests {
 		try await context.repository.requestDeleteBranch(named: "feature/renamed", at: context.url)
 		let branches = try await context.repository.requestBranches(at: context.url)
 		#expect(!branches.contains { $0.name == "feature/renamed" })
+	}
+
+	@Test
+	func forceDeletionRemovesOnlyTheReviewedUnmergedBranch() async throws {
+		let context = try await makeContext()
+		let mainBranch = try await requestCurrentBranch(in: context)
+		try await context.repository.requestCreateBranch(named: "feature/work", at: context.url)
+		let original = try await requestCurrentBranch(in: context)
+		await #expect(throws: GitRepositoryError.self) {
+			_ = try await context.repository.requestForceDeleteBranches([original], at: context.url)
+		}
+		_ = try await run(["commit", "--allow-empty", "-m", "unmerged work"], in: context)
+		let reviewed = try await requestCurrentBranch(in: context)
+		try await context.repository.requestSwitchBranch(named: mainBranch.name, at: context.url)
+		await #expect(throws: GitRepositoryError.self) {
+			_ = try await context.repository.requestForceDeleteBranches([original], at: context.url)
+		}
+		#expect(try await run(["rev-parse", "refs/heads/feature/work"], in: context) == reviewed.hash)
+
+		_ = try await context.repository.requestForceDeleteBranches([reviewed], at: context.url)
+
+		let branches = try await context.repository.requestBranches(at: context.url)
+		#expect(branches.map(\.name) == [mainBranch.name])
+	}
+
+	@Test
+	func aConcurrentRefUpdateAbortsTheEntireLocalDeletionBatch() async throws {
+		let context = try await makeContext()
+		_ = try await run(["branch", "first"], in: context)
+		_ = try await run(["branch", "second"], in: context)
+		_ = try await run(["config", "branch.first.description", "Keep on failure"], in: context)
+		let branches = try await context.repository.requestBranches(at: context.url).filter {
+			!$0.isCurrent
+		}
+		let head = try await run(["rev-parse", "HEAD"], in: context)
+		let tree = try await run(["rev-parse", "HEAD^{tree}"], in: context)
+		let next = try await run(["commit-tree", tree, "-p", head, "-m", "unseen work"], in: context)
+		let executable = context.url.appending(path: ".git/concurrent-git")
+		try """
+		#!/bin/sh
+		case " $* " in
+		  *" update-ref --stdin "*) /usr/bin/git -C '\(context.url.path)' update-ref refs/heads/second '\(next)' || exit 91 ;;
+		esac
+		exec /usr/bin/git "$@"
+		""".write(to: executable, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+		let repository = LocalGitRepository(
+			runner: GitProcessRunner(
+				configuration: .init(
+					executableURL: executable,
+					globalConfigurationURL: context.url.appending(path: ".git/app.config"))))
+
+		await #expect(throws: GitRepositoryError.self) {
+			_ = try await repository.requestForceDeleteBranches(branches, at: context.url)
+		}
+		#expect(try await run(["rev-parse", "refs/heads/first"], in: context) == head)
+		#expect(try await run(["rev-parse", "refs/heads/second"], in: context) == next)
+		#expect(
+			try await run(["config", "--get", "branch.first.description"], in: context)
+				== "Keep on failure")
+
+		let refreshed = try await context.repository.requestBranches(at: context.url).filter {
+			!$0.isCurrent
+		}
+		_ = try await context.repository.requestForceDeleteBranches(refreshed, at: context.url)
+		#expect(try await run(["branch", "--list", "first", "second"], in: context).isEmpty)
+		#expect(
+			try await run(["config", "--name-only", "--list"], in: context).contains(
+				"branch.first.description") == false)
+	}
+
+	@Test
+	func forceDeletionRespectsACheckoutInAnotherWorktree() async throws {
+		let context = try await makeContext()
+		let worktree = context.url.appending(path: "linked")
+		_ = try await run(["worktree", "add", "-b", "linked", worktree.path], in: context)
+		let branch = try #require(
+			try await context.repository.requestBranches(at: context.url).first { $0.name == "linked" })
+
+		await #expect(throws: GitRepositoryError.self) {
+			_ = try await context.repository.requestForceDeleteBranches([branch], at: context.url)
+		}
+		#expect(try await run(["rev-parse", "refs/heads/linked"], in: context) == branch.hash)
 	}
 
 	@Test

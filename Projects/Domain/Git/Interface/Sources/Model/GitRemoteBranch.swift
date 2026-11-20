@@ -7,8 +7,13 @@ public struct GitRemoteBranch: Identifiable, Hashable, Sendable {
 	public let shortHash: String
 	public let hash: String
 	public let pushURLs: [String]
+	public let remoteReference: String?
 
 	public var id: String { fullName }
+	public var remoteDisplayName: String {
+		guard let remoteReference, remoteReference.hasPrefix("refs/heads/") else { return fullName }
+		return "\(remoteName)/\(remoteReference.dropFirst("refs/heads/".count))"
+	}
 
 	public init(
 		name: String,
@@ -16,7 +21,8 @@ public struct GitRemoteBranch: Identifiable, Hashable, Sendable {
 		remoteName: String,
 		shortHash: String,
 		hash: String,
-		pushURLs: [String] = []
+		pushURLs: [String] = [],
+		remoteReference: String? = nil
 	) {
 		self.name = name
 		self.fullName = fullName
@@ -24,5 +30,6 @@ public struct GitRemoteBranch: Identifiable, Hashable, Sendable {
 		self.shortHash = shortHash
 		self.hash = hash
 		self.pushURLs = pushURLs
+		self.remoteReference = remoteReference
 	}
 }

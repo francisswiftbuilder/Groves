@@ -15,6 +15,11 @@ public struct GitBranch: Identifiable, Hashable, Sendable {
 
 	public var id: String { name }
 
+	public func tracks(_ branch: GitRemoteBranch) -> Bool {
+		guard let reference = branch.remoteReference else { return false }
+		return upstreamRemoteName == branch.remoteName && upstreamRemoteReference == reference
+	}
+
 	public init(
 		name: String,
 		shortHash: String,

@@ -59,10 +59,21 @@ struct RepositoryNavigationRows: View {
 			ForEach(remotesViewModel.remoteBranches) { branch in
 				RemoteBranchSidebarRow(branch: branch, showsRemoteName: remotesViewModel.remotes.count > 1)
 					.tag(RepositorySidebarSelection.remoteBranch(repositoryID: repositoryID, id: branch.id))
-					.help(branch.fullName)
+					.help(remoteBranchHelp(branch))
 			}
 		} header: {
-			Text("Remotes").contextMenu {
+			HStack {
+				Text("Remotes")
+				if remotesViewModel.remotes.contains(where: { $0.fetchError != nil }) {
+					Image(systemName: "exclamationmark.circle")
+						.foregroundStyle(.secondary)
+						.accessibilityLabel("Some remotes could not be refreshed")
+				}
+			}
+			.help(
+				remotesViewModel.remotes.map { "\($0.name) · \(fetchStatus($0))" }.joined(separator: "\n")
+			)
+			.contextMenu {
 				Button("Manage Remotes…", systemImage: "network", action: onManageRemotes)
 				Button("Add Remote…", systemImage: "plus") {
 					remotesViewModel.didPresentAddRemote()
@@ -91,6 +102,25 @@ struct RepositoryNavigationRows: View {
 				Button("Manage Stashes…", systemImage: "archivebox", action: onManageStashes)
 			}
 		}
+	}
+
+	private func remoteBranchHelp(_ branch: GitRemoteBranch) -> String {
+		guard branch.remoteReference != nil else {
+			return "\(branch.fullName) · Server branch is unverified. Review the remote’s fetch mappings."
+		}
+		guard let remote = remotesViewModel.remotes.first(where: { $0.name == branch.remoteName })
+		else { return branch.remoteDisplayName }
+		return "\(branch.remoteDisplayName) · \(fetchStatus(remote))"
+	}
+
+	private func fetchStatus(_ remote: GitRemote) -> String {
+		let timestamp =
+			remote.lastFetchedAt.map {
+				"Last fetched \($0.formatted(date: .abbreviated, time: .shortened))"
+			}
+			?? "No confirmed fetch in this session"
+		if remote.fetchError != nil { return "Fetch failed. \(timestamp)." }
+		return timestamp
 	}
 
 	private func sectionRow(
