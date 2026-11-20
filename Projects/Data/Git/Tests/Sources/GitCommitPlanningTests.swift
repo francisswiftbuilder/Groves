@@ -164,7 +164,7 @@ struct GitCommitPlanningTests {
 		#expect(try await context.repository.requestCommitHistory(at: context.url).isEmpty)
 		let files = try FileManager.default.contentsOfDirectory(
 			atPath: context.url.appending(path: ".git").path)
-		#expect(!files.contains { $0.hasPrefix("groves-commit-") || $0 == "index.lock" })
+		#expect(!files.contains { $0.hasPrefix("pluminon-commit-") || $0 == "index.lock" })
 	}
 
 	@Test
@@ -188,10 +188,10 @@ struct GitCommitPlanningTests {
 	}
 
 	private func makeContext() async throws -> Context {
-		let url = try makeTemporaryRepository(name: "GrovesCommitPlanningTests")
+		let url = try makeTemporaryRepository(name: "PluminonCommitPlanningTests")
 		let runner = GitProcessRunner(configuration: GitProcessConfiguration())
 		let context = Context(url: url, runner: runner)
-		try await run(["config", "user.name", "Groves Tests"], in: context)
+		try await run(["config", "user.name", "Pluminon Tests"], in: context)
 		try await run(["config", "user.email", "tests@example.com"], in: context)
 		return context
 	}

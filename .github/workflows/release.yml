@@ -37,16 +37,16 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           cd dist
-          shasum -a 256 -c "Groves-${VERSION#v}.dmg.sha256"
-          hdiutil verify "Groves-${VERSION#v}.dmg"
+          shasum -a 256 -c "Pluminon-${VERSION#v}.dmg.sha256"
+          hdiutil verify "Pluminon-${VERSION#v}.dmg"
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.ref_name }}
         run: |
           gh release create "$VERSION" \
-            "dist/Groves-${VERSION#v}.dmg" \
-            "dist/Groves-${VERSION#v}.dmg.sha256" \
+            "dist/Pluminon-${VERSION#v}.dmg" \
+            "dist/Pluminon-${VERSION#v}.dmg.sha256" \
             --verify-tag \
-            --title "Groves ${VERSION#v}" \
+            --title "Pluminon ${VERSION#v}" \
             --generate-notes

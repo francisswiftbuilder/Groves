@@ -1,29 +1,29 @@
 import Foundation
 import Testing
 
-@testable import Groves
+@testable import Pluminon
 
-struct GrovesAskPassLocatorTests {
+struct PluminonAskPassLocatorTests {
 	@Test
 	func testTheLocatorResolvesTheHelperEmbeddedInTheHostBundle() throws {
 		let expected = Bundle.main.bundleURL
 			.appending(path: "Contents", directoryHint: .isDirectory)
 			.appending(path: "Helpers", directoryHint: .isDirectory)
-			.appending(path: "GrovesAskPass.app", directoryHint: .isDirectory)
+			.appending(path: "PluminonAskPass.app", directoryHint: .isDirectory)
 			.appending(path: "Contents", directoryHint: .isDirectory)
 			.appending(path: "MacOS", directoryHint: .isDirectory)
-			.appending(path: "GrovesAskPass")
+			.appending(path: "PluminonAskPass")
 
 		#expect(
 			FileManager.default.isExecutableFile(atPath: expected.path),
 			"The app bundle must embed an executable AskPass helper")
-		#expect(GrovesAskPassLocator.bundledHelperURL == expected)
+		#expect(PluminonAskPassLocator.bundledHelperURL == expected)
 	}
 
 	@Test
 	func testTheEmbeddedHelperCanExecuteWithoutAccessingCredentials() throws {
 		let process = Process()
-		process.executableURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		process.executableURL = try #require(PluminonAskPassLocator.bundledHelperURL)
 		process.arguments = ["credential", "get"]
 		let input = Pipe()
 		process.standardInput = input

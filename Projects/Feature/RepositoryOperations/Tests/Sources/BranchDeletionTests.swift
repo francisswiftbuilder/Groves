@@ -149,7 +149,7 @@ struct BranchDeletionTests {
 			dependencies: .init(
 				contentUseCase: OperationsContentUseCaseStub(snapshotOperation: { _ in snapshot }),
 				referencesUseCase: useCase(recorder: recorder, snapshot: snapshot),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }),
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }),
 			actions: .init(didProduceSnapshot: { _ in }, didReceiveError: { _ in }))
 		model.apply(snapshot)
 		return model
@@ -163,7 +163,7 @@ struct BranchDeletionTests {
 			dependencies: .init(
 				contentUseCase: OperationsContentUseCaseStub(snapshotOperation: { _ in snapshot }),
 				referencesUseCase: useCase(recorder: recorder, snapshot: snapshot),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }),
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }),
 			actions: .init(didProduceSnapshot: { _ in }, didReceiveError: didReceiveError))
 		model.apply(snapshot)
 		return model

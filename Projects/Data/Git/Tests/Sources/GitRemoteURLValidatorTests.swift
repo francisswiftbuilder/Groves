@@ -117,9 +117,9 @@ struct GitRemoteURLValidatorTests {
 	@Test
 	func testLocalPathsAreAccepted() {
 		let remoteURLs = [
-			"/Users/groves/repo",
-			"/Users/groves@work/repo",
-			"file:///Users/groves/repo",
+			"/Users/pluminon/repo",
+			"/Users/pluminon@work/repo",
+			"file:///Users/pluminon/repo",
 			"../sibling/repo",
 		]
 
@@ -153,8 +153,8 @@ struct GitRemoteURLValidatorTests {
 		let nonSSHRemoteURLs = [
 			"https://github.com/owner/repo.git",
 			"git://github.com/owner/repo.git",
-			"file:///Users/groves/repo",
-			"/Users/groves/repo",
+			"file:///Users/pluminon/repo",
+			"/Users/pluminon/repo",
 			"../sibling/repo",
 		]
 

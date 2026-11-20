@@ -25,7 +25,7 @@ final class AppDIContainer {
 			configuration: GitProcessConfiguration(
 				executableURL: Bundle.main.bundleURL.appending(path: "Contents/Resources/Git/bin/git"),
 				runtimeURL: Bundle.main.bundleURL.appending(path: "Contents/Resources/Git"),
-				askPassHelperURL: GrovesAskPassLocator.bundledHelperURL,
+				askPassHelperURL: PluminonAskPassLocator.bundledHelperURL,
 				globalConfigurationURL: GitIdentityConfiguration.defaultURL,
 				noticeHandler: { notice in noticeCenter.post(notice) }
 			)
@@ -131,7 +131,7 @@ final class AppDIContainer {
 		case .failure(let error):
 			return AnyView(
 				ContentUnavailableView(
-					"Unable to Open Groves",
+					"Unable to Open Pluminon",
 					systemImage: "externaldrive.badge.exclamationmark",
 					description: Text(error.localizedDescription)
 				)

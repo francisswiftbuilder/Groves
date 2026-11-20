@@ -196,7 +196,7 @@ struct ReferenceMutationStateTests {
 				contentUseCase: content
 					?? OperationsContentUseCaseStub(snapshotOperation: { _ in snapshot }),
 				referencesUseCase: references,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }),
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }),
 			actions: .init(didProduceSnapshot: didProduceSnapshot, didReceiveError: { _ in }))
 	}
 
@@ -208,7 +208,7 @@ struct ReferenceMutationStateTests {
 			dependencies: .init(
 				contentUseCase: OperationsContentUseCaseStub(snapshotOperation: { _ in snapshot }),
 				referencesUseCase: references,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }),
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }),
 			actions: .init(didProduceSnapshot: { _ in }, didReceiveError: { _ in }))
 	}
 
@@ -232,7 +232,7 @@ struct ReferenceMutationStateTests {
 
 	private func commit() -> GitCommit {
 		GitCommit(
-			hash: "abcdef", shortHash: "abcdef", parentHashes: [], author: "Groves",
+			hash: "abcdef", shortHash: "abcdef", parentHashes: [], author: "Pluminon",
 			date: .distantPast, references: [], subject: "Commit", body: "")
 	}
 }

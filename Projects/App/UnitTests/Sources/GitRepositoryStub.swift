@@ -2,7 +2,7 @@ import DomainGit
 import DomainGitInterface
 import Foundation
 
-@testable import Groves
+@testable import Pluminon
 
 struct GitRepositoryStub: GitRepository {
 	actor ResponseSequence<Value: Sendable> {

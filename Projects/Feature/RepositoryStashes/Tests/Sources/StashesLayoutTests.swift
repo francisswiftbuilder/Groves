@@ -89,7 +89,7 @@ struct StashesLayoutTests {
 		host.cacheDisplay(in: host.bounds, to: bitmap)
 		let png = try #require(bitmap.representation(using: .png, properties: [:]))
 		try png.write(
-			to: URL(fileURLWithPath: "/tmp/groves-stash-detail-\(Int(width))-\(colorScheme).png"))
+			to: URL(fileURLWithPath: "/tmp/pluminon-stash-detail-\(Int(width))-\(colorScheme).png"))
 		model.didSelectStash(stashes[1].id)
 		#expect(model.selectedStashID == stashes[1].id)
 	}

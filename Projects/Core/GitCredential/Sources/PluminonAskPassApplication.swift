@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-public final class GrovesAskPassApplication {
+public final class PluminonAskPassApplication {
 	private let brokerClient: GitCredentialBrokerClient?
 	private let makePresenter: @MainActor (Int32?) -> any GitCredentialPromptPresenting
 	private let readStandardInput: @MainActor () -> Data
@@ -42,7 +42,7 @@ public final class GrovesAskPassApplication {
 			writeStandardOutput(Data((value + "\n").utf8))
 			return EXIT_SUCCESS
 		} catch is CancellationError {
-			writeStandardError(Data("GROVES_ASKPASS_CANCELLED\n".utf8))
+			writeStandardError(Data("PLUMINON_ASKPASS_CANCELLED\n".utf8))
 			return EXIT_FAILURE
 		} catch {
 			let diagnostic: String
@@ -53,7 +53,7 @@ public final class GrovesAskPassApplication {
 			} else {
 				diagnostic = "error-type=\(String(reflecting: type(of: error)))"
 			}
-			writeStandardError(Data("Groves authentication helper failed (\(diagnostic)).\n".utf8))
+			writeStandardError(Data("Pluminon authentication helper failed (\(diagnostic)).\n".utf8))
 			if arguments.prefix(2) == ["credential", "get"] {
 				writeStandardOutput(Data("quit=true\n\n".utf8))
 			}
@@ -88,8 +88,8 @@ public final class GrovesAskPassApplication {
 
 	private func client(in environment: [String: String]) throws -> GitCredentialBrokerClient {
 		if let brokerClient { return brokerClient }
-		guard let socketPath = environment["GROVES_CREDENTIAL_SOCKET"],
-			let operationID = environment["GROVES_OPERATION_IDENTIFIER"]
+		guard let socketPath = environment["PLUMINON_CREDENTIAL_SOCKET"],
+			let operationID = environment["PLUMINON_OPERATION_IDENTIFIER"]
 		else { throw GitCredentialBrokerError.unavailable }
 		return try GitCredentialBrokerClient(
 			socketPath: socketPath, operationID: operationID,
@@ -98,6 +98,6 @@ public final class GrovesAskPassApplication {
 	}
 
 	private func parentProcessIdentifier(in environment: [String: String]) -> Int32? {
-		environment["GROVES_PARENT_PROCESS_IDENTIFIER"].flatMap(Int32.init)
+		environment["PLUMINON_PARENT_PROCESS_IDENTIFIER"].flatMap(Int32.init)
 	}
 }

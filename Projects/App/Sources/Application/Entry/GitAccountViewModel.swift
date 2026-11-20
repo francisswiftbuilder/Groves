@@ -327,7 +327,7 @@ final class GitAccountViewModel {
 			defaults.set(true, forKey: "isolatedGitSetupCompleted")
 			hasCompletedSetup = true
 			errorMessage = nil
-			statusMessage = "Git identity saved for Groves."
+			statusMessage = "Git identity saved for Pluminon."
 		} catch {
 			errorMessage = error.localizedDescription
 			identityErrorMessage = error.localizedDescription
@@ -378,7 +378,7 @@ final class GitAccountViewModel {
 			if let account = self.account {
 				statusMessage = "Signed out. Using \(account.account) for new GitHub operations."
 			} else {
-				statusMessage = "Signed out of Groves. Already running Git operations may still finish."
+				statusMessage = "Signed out of Pluminon. Already running Git operations may still finish."
 			}
 		} catch {
 			errorMessage = error.localizedDescription

@@ -274,9 +274,9 @@ struct SwiftDataSavedRepositoryStoreTests {
 		let directory = try requestTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let storeURLs = [
-			directory.appending(path: "Groves.store"),
-			directory.appending(path: "Groves Dev/Repositories.store"),
-			directory.appending(path: "Groves Staging/Repositories.store"),
+			directory.appending(path: "Pluminon/Repositories.store"),
+			directory.appending(path: "Pluminon Dev/Repositories.store"),
+			directory.appending(path: "Pluminon Staging/Repositories.store"),
 		]
 		var expectedIDs: [UUID] = []
 		for (index, url) in storeURLs.enumerated() {
@@ -288,7 +288,7 @@ struct SwiftDataSavedRepositoryStoreTests {
 			let store = SwiftDataSavedRepositoryStore(
 				container: try ModelContainer(
 					for: SavedRepositoryRecord.self,
-					configurations: ModelConfiguration("Groves", url: url)))
+					configurations: ModelConfiguration("Pluminon", url: url)))
 			let saved = try store.requestSaveRepository(at: repositoryURL)
 			try store.requestSelectRepository(id: saved.id)
 			expectedIDs.append(saved.id)
@@ -297,7 +297,7 @@ struct SwiftDataSavedRepositoryStoreTests {
 			let reloaded = SwiftDataSavedRepositoryStore(
 				container: try ModelContainer(
 					for: SavedRepositoryRecord.self,
-					configurations: ModelConfiguration("Groves", url: url)))
+					configurations: ModelConfiguration("Pluminon", url: url)))
 			let repositories = try reloaded.requestRepositories()
 			#expect(repositories.map(\.id) == [expectedIDs[index]])
 			#expect(repositories.first?.isSelected == true)
@@ -351,7 +351,7 @@ struct SwiftDataSavedRepositoryStoreTests {
 		try ModelContainer(
 			for: SavedRepositoryRecord.self,
 			configurations: ModelConfiguration(
-				"GrovesTests-\(UUID().uuidString)",
+				"PluminonTests-\(UUID().uuidString)",
 				isStoredInMemoryOnly: true
 			)
 		)

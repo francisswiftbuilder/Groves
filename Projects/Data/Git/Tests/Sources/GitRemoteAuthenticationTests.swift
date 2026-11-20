@@ -127,7 +127,7 @@ struct GitRemoteAuthenticationTests {
 		let expected: String
 		switch kind {
 		case "keychain":
-			input = "Groves authentication helper failed (stage=copy-secret status=-25293)."
+			input = "Pluminon authentication helper failed (stage=copy-secret status=-25293)."
 			expected = "Keychain"
 		case "repository":
 			input = "remote: Repository not found."

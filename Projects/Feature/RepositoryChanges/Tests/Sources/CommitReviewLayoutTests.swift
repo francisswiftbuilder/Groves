@@ -304,7 +304,7 @@ struct CommitReviewLayoutTests {
 		try png.write(
 			to: URL(
 				fileURLWithPath:
-					"/tmp/groves-selection-flow-\(Int(width))-\(multiple ? "multiple" : "single").png"))
+					"/tmp/pluminon-selection-flow-\(Int(width))-\(multiple ? "multiple" : "single").png"))
 	}
 
 	@Test(
@@ -417,7 +417,7 @@ struct CommitReviewLayoutTests {
 		try png.write(
 			to: URL(
 				fileURLWithPath:
-					"/tmp/groves-commit-\(scenario)-\(colorScheme == .dark ? "dark" : "light").png"))
+					"/tmp/pluminon-commit-\(scenario)-\(colorScheme == .dark ? "dark" : "light").png"))
 	}
 
 	private func scrollViews(in view: NSView) -> [NSScrollView] {

@@ -12,7 +12,7 @@ final class GitConfigurationTransaction {
 		self.configurationURL = configurationURL.resolvingSymlinksInPath()
 		lockURL = self.configurationURL.appendingPathExtension("lock")
 		stagingURL = self.configurationURL.deletingLastPathComponent()
-			.appending(path: "groves-config-\(UUID().uuidString).config")
+			.appending(path: "pluminon-config-\(UUID().uuidString).config")
 		let lockDescriptor = open(lockURL.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
 		guard lockDescriptor >= 0 else {
 			throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)

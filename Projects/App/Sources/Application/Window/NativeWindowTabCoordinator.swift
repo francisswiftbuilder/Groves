@@ -45,7 +45,7 @@ final class NativeWindowTabCoordinator: NSObject, RepositoryWindowTabCoordinatin
 	}
 
 	func configure(_ window: NSWindow) {
-		window.tabbingIdentifier = GrovesRuntimeConfiguration.credentialNamespace + ".Repository"
+		window.tabbingIdentifier = PluminonRuntimeConfiguration.credentialNamespace + ".Repository"
 		window.tabbingMode = .preferred
 	}
 
@@ -130,7 +130,7 @@ final class NativeWindowTabCoordinator: NSObject, RepositoryWindowTabCoordinatin
 			defer: false
 		)
 		configure(newWindow)
-		newWindow.title = GrovesRuntimeConfiguration.displayName
+		newWindow.title = PluminonRuntimeConfiguration.displayName
 		newWindow.minSize = NSSize(width: 760, height: 520)
 		newWindow.isReleasedWhenClosed = false
 		if anchor == nil {

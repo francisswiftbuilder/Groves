@@ -1,14 +1,11 @@
-import AppKit
-import DomainGitInterface
-import Foundation
 import SwiftUI
 
 struct RepositoryTreeSelectionBar: View {
-	let node: RepositoryTreeNode?
+	let viewModel: RepositoryTreeViewModel
 
 	var body: some View {
 		HStack(spacing: 7) {
-			if let node {
+			if let node = viewModel.selectedTreeItem?.node {
 				Image(systemName: node.isDirectory ? "folder" : "doc")
 					.symbolRenderingMode(.hierarchical)
 					.accessibilityHidden(true)

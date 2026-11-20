@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 @testable import FeatureRepositoryChanges
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 struct RepositoryTabsViewModelTests {
@@ -51,7 +51,7 @@ struct RepositoryTabsViewModelTests {
 
 	@Test
 	func testChoosingRepositorySavesAndOpensRepository() async throws {
-		let repositoryURL = URL(fileURLWithPath: "/tmp/ExistingGroves", isDirectory: true)
+		let repositoryURL = URL(fileURLWithPath: "/tmp/ExistingPluminon", isDirectory: true)
 		let store = SavedRepositoryStoreSpy(repositories: [])
 		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
 		var openedRepositoryID: UUID?
@@ -73,8 +73,8 @@ struct RepositoryTabsViewModelTests {
 	@Test
 	func testChoosingMultipleRepositoriesSavesAndOpensEveryRepository() async throws {
 		let repositoryURLs = [
-			URL(fileURLWithPath: "/tmp/FirstGroves", isDirectory: true),
-			URL(fileURLWithPath: "/tmp/SecondGroves", isDirectory: true),
+			URL(fileURLWithPath: "/tmp/FirstPluminon", isDirectory: true),
+			URL(fileURLWithPath: "/tmp/SecondPluminon", isDirectory: true),
 		]
 		let store = SavedRepositoryStoreSpy(repositories: [])
 		let viewModel = makeRepositoryTabsViewModel(savedRepositoryStore: store)
@@ -96,7 +96,7 @@ struct RepositoryTabsViewModelTests {
 
 	@Test
 	func testCloningRepositorySavesAndOpensClonedRepository() async throws {
-		let clonedRepositoryURL = URL(fileURLWithPath: "/tmp/ClonedGroves", isDirectory: true)
+		let clonedRepositoryURL = URL(fileURLWithPath: "/tmp/ClonedPluminon", isDirectory: true)
 		let store = SavedRepositoryStoreSpy(repositories: [])
 		let viewModel = makeRepositoryTabsViewModel(
 			repository: GitRepositoryStub(clonedRepositoryURL: clonedRepositoryURL),
@@ -105,7 +105,7 @@ struct RepositoryTabsViewModelTests {
 		var openedRepositoryID: UUID?
 
 		viewModel.didRequestCloneRepository(
-			from: "https://github.com/owner/ClonedGroves.git",
+			from: "https://github.com/owner/ClonedPluminon.git",
 			into: URL(fileURLWithPath: "/tmp", isDirectory: true),
 			actions: .init { repositoryID in
 				openedRepositoryID = repositoryID
@@ -188,11 +188,11 @@ struct RepositoryTabsViewModelTests {
 		)
 
 		viewModel.didPresentCloneDestinationImporter(
-			remoteURL: "  https://github.com/owner/Groves.git  ")
+			remoteURL: "  https://github.com/owner/Pluminon.git  ")
 
 		#expect(viewModel.isFolderImporterPresented)
 		if case .clone(let remoteURL) = viewModel.consumeFolderImportRequest() {
-			#expect(remoteURL == "https://github.com/owner/Groves.git")
+			#expect(remoteURL == "https://github.com/owner/Pluminon.git")
 		} else {
 			Issue.record("Expected a clone folder import request")
 		}
@@ -226,7 +226,7 @@ struct RepositoryTabsViewModelTests {
 	@Test
 	func testCloneDestinationImporterOnlyAllowsOneSelection() {
 		let viewModel = RepositoryWindowViewModel()
-		viewModel.didPresentCloneDestinationImporter(remoteURL: "https://github.com/owner/Groves.git")
+		viewModel.didPresentCloneDestinationImporter(remoteURL: "https://github.com/owner/Pluminon.git")
 
 		#expect(viewModel.isFolderImporterPresented)
 		#expect(viewModel.folderImportRequest?.allowsMultipleSelection == false)

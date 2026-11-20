@@ -191,7 +191,7 @@ struct GitProcessRunnerTests {
 
 	private func makeRepository() throws -> URL {
 		let url = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesProcessTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonProcessTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 		let process = Process()
 		process.executableURL = URL(fileURLWithPath: "/usr/bin/env")

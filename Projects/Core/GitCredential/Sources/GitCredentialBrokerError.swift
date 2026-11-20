@@ -19,6 +19,6 @@ public enum GitCredentialBrokerError: LocalizedError, Sendable {
 	}
 
 	public var errorDescription: String? {
-		"Groves could not complete the local authentication request (\(diagnosticDescription)). Retry the Git operation while Groves is open."
+		"Pluminon could not complete the local authentication request (\(diagnosticDescription)). Retry the Git operation while Pluminon is open."
 	}
 }

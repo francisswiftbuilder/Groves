@@ -4,13 +4,13 @@ import Testing
 
 @testable import CoreGitCredential
 @testable import DataGit
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 struct GitCredentialBrokerIntegrationTests {
 	@Test
 	func theBundledHelperReadsCredentialsFromTheParentWithoutSharedKeychainAccess() async throws {
-		let helperURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		let helperURL = try #require(PluminonAskPassLocator.bundledHelperURL)
 		let store = makeStore()
 		let descriptor = GitCredentialDescriptor(
 			kind: .https, host: "github.com", account: "broker-fixture")
@@ -23,7 +23,8 @@ struct GitCredentialBrokerIntegrationTests {
 		let result = try await Self.run(
 			helperURL, arguments: ["credential", "get"],
 			environment: [
-				"GROVES_CREDENTIAL_SOCKET": broker.socketPath, "GROVES_OPERATION_IDENTIFIER": identifier,
+				"PLUMINON_CREDENTIAL_SOCKET": broker.socketPath,
+				"PLUMINON_OPERATION_IDENTIFIER": identifier,
 			],
 			input: "protocol=https\nhost=github.com\nusername=broker-fixture\n\n")
 
@@ -32,13 +33,13 @@ struct GitCredentialBrokerIntegrationTests {
 			String(decoding: result.output, as: UTF8.self)
 				== "password=exists-only-in-parent-memory\nusername=broker-fixture\n\n")
 		let diagnostic = String(decoding: result.error, as: UTF8.self)
-		#expect(!diagnostic.contains("Groves authentication helper failed"))
+		#expect(!diagnostic.contains("Pluminon authentication helper failed"))
 		#expect(!diagnostic.contains("exists-only-in-parent-memory"))
 	}
 
 	@Test(arguments: ["missing", "stopped", "wrong-operation"])
 	func anUnavailableBrokerNeverFallsBackToTheHelperKeychain(reason: String) async throws {
-		let helperURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		let helperURL = try #require(PluminonAskPassLocator.bundledHelperURL)
 		let identifier = UUID().uuidString
 		let broker = try GitCredentialBroker(
 			helperURL: helperURL, operationID: identifier, helper: GitCredentialHelper(store: makeStore())
@@ -49,8 +50,8 @@ struct GitCredentialBrokerIntegrationTests {
 			reason == "missing"
 			? [:]
 			: [
-				"GROVES_CREDENTIAL_SOCKET": broker.socketPath,
-				"GROVES_OPERATION_IDENTIFIER": reason == "wrong-operation" ? "stale" : identifier,
+				"PLUMINON_CREDENTIAL_SOCKET": broker.socketPath,
+				"PLUMINON_OPERATION_IDENTIFIER": reason == "wrong-operation" ? "stale" : identifier,
 			]
 
 		let result = try await Self.run(
@@ -64,7 +65,7 @@ struct GitCredentialBrokerIntegrationTests {
 
 	@Test
 	func aChildWithADifferentCodeSignatureCannotRequestCredentials() async throws {
-		let helperURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		let helperURL = try #require(PluminonAskPassLocator.bundledHelperURL)
 		let store = makeStore()
 		let descriptor = GitCredentialDescriptor(
 			kind: .https, host: "github.com", account: "broker-fixture")
@@ -90,17 +91,17 @@ struct GitCredentialBrokerIntegrationTests {
 
 	@Test(arguments: ["github.com", "GitHub.com", "github.com:443"])
 	func theGitRunnerUsesTheBundledHelperWithParentOwnedCredentials(host: String) async throws {
-		let helperURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		let helperURL = try #require(PluminonAskPassLocator.bundledHelperURL)
 		let store = makeStore()
 		let descriptor = GitCredentialDescriptor(
 			kind: .https, host: "github.com", account: "broker-fixture")
 		try store.save(secret: "parent-runner-secret", for: descriptor)
 		let directory = FileManager.default.temporaryDirectory.appending(
-			path: "GrovesBrokerRunner-\(UUID().uuidString)")
+			path: "PluminonBrokerRunner-\(UUID().uuidString)")
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let runtime = Bundle.main.bundleURL.appending(path: "Contents/Resources/Git")
-		let defaultsName = "Groves.Broker.Selection.\(UUID().uuidString)"
+		let defaultsName = "Pluminon.Broker.Selection.\(UUID().uuidString)"
 		let defaults = try #require(UserDefaults(suiteName: defaultsName))
 		defer { defaults.removePersistentDomain(forName: defaultsName) }
 		let selection = GitHubAccountSelection(defaults: defaults)
@@ -127,14 +128,14 @@ struct GitCredentialBrokerIntegrationTests {
 
 	@Test
 	func switchingAccountsDuringPreflightOnlyAffectsTheNextGitOperation() async throws {
-		let helperURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		let helperURL = try #require(PluminonAskPassLocator.bundledHelperURL)
 		let store = makeStore()
 		for account in ["alice", "zoe"] {
 			try store.save(
 				secret: "\(account)-token",
 				for: GitCredentialDescriptor(kind: .https, host: "github.com", account: account))
 		}
-		let identifier = "Groves.Broker.Switch.\(UUID().uuidString)"
+		let identifier = "Pluminon.Broker.Switch.\(UUID().uuidString)"
 		let directory = FileManager.default.temporaryDirectory.appending(path: identifier)
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 		defer { try? FileManager.default.removeItem(at: directory) }
@@ -193,7 +194,7 @@ struct GitCredentialBrokerIntegrationTests {
 
 	@Test
 	func gitStopsAfterABrokerFailureInsteadOfOpeningAnAskPassPrompt() async throws {
-		let helperURL = try #require(GrovesAskPassLocator.bundledHelperURL)
+		let helperURL = try #require(PluminonAskPassLocator.bundledHelperURL)
 		let runtime = Bundle.main.bundleURL.appending(path: "Contents/Resources/Git")
 		let escapedHelper = helperURL.path.replacingOccurrences(of: "'", with: "'\\''")
 
@@ -219,7 +220,7 @@ struct GitCredentialBrokerIntegrationTests {
 
 	private func makeStore() -> GitCredentialStore {
 		GitCredentialStore(
-			service: "Groves.Broker.Tests.\(UUID().uuidString)",
+			service: "Pluminon.Broker.Tests.\(UUID().uuidString)",
 			securityClient: GitAccountViewModelTests.SecurityClientStub(),
 			accessGroupResolver: { throw GitCredentialStoreError.missingAccessGroup })
 	}
@@ -233,7 +234,7 @@ struct GitCredentialBrokerIntegrationTests {
 			process.executableURL = executable
 			process.arguments = arguments
 			process.environment = ProcessInfo.processInfo.environment.filter {
-				!$0.key.hasPrefix("DYLD_") && !$0.key.hasPrefix("XCTest") && !$0.key.hasPrefix("GROVES_")
+				!$0.key.hasPrefix("DYLD_") && !$0.key.hasPrefix("XCTest") && !$0.key.hasPrefix("PLUMINON_")
 			}.merging(environment) { _, new in new }
 			let output = Pipe()
 			let error = Pipe()

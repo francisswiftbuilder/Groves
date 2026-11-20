@@ -3,7 +3,7 @@ import DomainGitInterface
 import SwiftUI
 import Testing
 
-@testable import Groves
+@testable import Pluminon
 
 @Suite(.serialized)
 @MainActor

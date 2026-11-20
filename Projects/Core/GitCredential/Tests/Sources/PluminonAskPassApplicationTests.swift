@@ -5,19 +5,19 @@ import Testing
 
 @MainActor
 @Suite(.serialized)
-struct GrovesAskPassApplicationTests {
+struct PluminonAskPassApplicationTests {
 	@Test
 	func acceptedPromptWritesTheAnswerToStandardOutput() throws {
 		let store = makeStore()
 		let context = try makeBroker(store: store)
 		defer { context.broker.stop() }
 		let presenter = GitCredentialPromptPresenterStub(
-			answer: GitCredentialPromptAnswer(value: "groves", shouldSave: false)
+			answer: GitCredentialPromptAnswer(value: "pluminon", shouldSave: false)
 		)
 		var standardOutput = Data()
 		var standardError = Data()
 		defer { try? store.deleteAll() }
-		let application = GrovesAskPassApplication(
+		let application = PluminonAskPassApplication(
 			brokerClient: context.client,
 			makePresenter: { _ in presenter },
 			writeStandardOutput: { standardOutput.append($0) },
@@ -30,7 +30,7 @@ struct GrovesAskPassApplicationTests {
 		)
 
 		#expect(status == EXIT_SUCCESS)
-		#expect(String(decoding: standardOutput, as: UTF8.self) == "groves\n")
+		#expect(String(decoding: standardOutput, as: UTF8.self) == "pluminon\n")
 		#expect(standardError.isEmpty)
 	}
 
@@ -42,7 +42,7 @@ struct GrovesAskPassApplicationTests {
 		var standardOutput = Data()
 		var standardError = Data()
 		defer { try? store.deleteAll() }
-		let application = GrovesAskPassApplication(
+		let application = PluminonAskPassApplication(
 			brokerClient: context.client,
 			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
 			writeStandardOutput: { standardOutput.append($0) },
@@ -51,12 +51,12 @@ struct GrovesAskPassApplicationTests {
 
 		let status = application.run(
 			arguments: ["Password for 'https://github.com':"],
-			environment: ["GROVES_OPERATION_IDENTIFIER": "operation"]
+			environment: ["PLUMINON_OPERATION_IDENTIFIER": "operation"]
 		)
 
 		#expect(status == EXIT_FAILURE)
 		#expect(standardOutput.isEmpty)
-		#expect(String(decoding: standardError, as: UTF8.self) == "GROVES_ASKPASS_CANCELLED\n")
+		#expect(String(decoding: standardError, as: UTF8.self) == "PLUMINON_ASKPASS_CANCELLED\n")
 		#expect(try store.descriptors().isEmpty)
 	}
 
@@ -66,14 +66,14 @@ struct GrovesAskPassApplicationTests {
 		let descriptor = GitCredentialDescriptor(
 			kind: .https,
 			host: "github.com",
-			account: "groves"
+			account: "pluminon"
 		)
 		var standardOutput = Data()
 		defer { try? store.deleteAll() }
 		try store.save(secret: "token", for: descriptor)
 		let context = try makeBroker(store: store)
 		defer { context.broker.stop() }
-		let application = GrovesAskPassApplication(
+		let application = PluminonAskPassApplication(
 			brokerClient: context.client,
 			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
 			readStandardInput: {
@@ -87,14 +87,14 @@ struct GrovesAskPassApplicationTests {
 		#expect(status == EXIT_SUCCESS)
 		#expect(
 			String(decoding: standardOutput, as: UTF8.self)
-				== "password=token\nusername=groves\n\n"
+				== "password=token\nusername=pluminon\n\n"
 		)
 	}
 
 	@Test
 	func keychainFailureWritesOnlySanitizedDiagnostic() throws {
 		let store = GitCredentialStore(
-			service: "Groves.Tests.private-account",
+			service: "Pluminon.Tests.private-account",
 			securityClient: GitCredentialSecurityClientStub(),
 			accessGroupResolver: {
 				throw GitCredentialStoreError(
@@ -106,7 +106,7 @@ struct GrovesAskPassApplicationTests {
 		var standardError = Data()
 		let context = try makeBroker(store: store)
 		defer { context.broker.stop() }
-		let application = GrovesAskPassApplication(
+		let application = PluminonAskPassApplication(
 			brokerClient: context.client,
 			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
 			readStandardInput: {
@@ -129,7 +129,7 @@ struct GrovesAskPassApplicationTests {
 	func aMissingBrokerDoesNotFallBackToHelperKeychainAccess() {
 		var output = Data()
 		var error = Data()
-		let application = GrovesAskPassApplication(
+		let application = PluminonAskPassApplication(
 			makePresenter: { _ in GitCredentialPromptPresenterStub(answer: nil) },
 			readStandardInput: { Data("protocol=https\nhost=github.com\n\n".utf8) },
 			writeStandardOutput: { output.append($0) },
@@ -152,7 +152,7 @@ struct GrovesAskPassApplicationTests {
 		let identifier = UUID().uuidString
 		let helper = GitCredentialHelper(
 			store: store,
-			decisionStore: GitCredentialSaveDecisionStore(suiteName: "Groves.Tests.\(identifier)"))
+			decisionStore: GitCredentialSaveDecisionStore(suiteName: "Pluminon.Tests.\(identifier)"))
 		let broker = try GitCredentialBroker(operationID: identifier, helper: helper) { peer in
 			peer.processIdentifier == getpid()
 		}

@@ -8,7 +8,8 @@ import Testing
 @testable import FeatureRepositoryChanges
 @testable import FeatureRepositoryHistory
 @testable import FeatureRepositoryStashes
-@testable import Groves
+@testable import FeatureRepositoryTree
+@testable import Pluminon
 
 @MainActor
 struct WorkspaceChildViewModelTests {
@@ -66,7 +67,7 @@ struct WorkspaceChildViewModelTests {
 			hash: "abcdef123456",
 			shortHash: "abcdef1",
 			parentHashes: [],
-			author: "Groves",
+			author: "Pluminon",
 			date: .distantPast,
 			references: ["HEAD"],
 			subject: "Initial",
@@ -108,7 +109,7 @@ struct WorkspaceChildViewModelTests {
 				hash: "111111111111",
 				shortHash: "1111111",
 				parentHashes: [],
-				author: "Groves",
+				author: "Pluminon",
 				date: .distantPast,
 				references: ["HEAD"],
 				subject: "First",
@@ -118,7 +119,7 @@ struct WorkspaceChildViewModelTests {
 				hash: "222222222222",
 				shortHash: "2222222",
 				parentHashes: [],
-				author: "Groves",
+				author: "Pluminon",
 				date: .distantPast,
 				references: [],
 				subject: "Second",
@@ -156,7 +157,7 @@ struct WorkspaceChildViewModelTests {
 				hash: String(format: "%040d", index),
 				shortHash: String(format: "%07d", index),
 				parentHashes: index == 0 ? [] : [String(format: "%040d", index - 1)],
-				author: "Groves",
+				author: "Pluminon",
 				date: .distantPast,
 				references: index == 999 ? ["HEAD"] : [],
 				subject: "Commit \(index)",
@@ -304,7 +305,7 @@ struct WorkspaceChildViewModelTests {
 	func holdingHistoryArrowKeysKeepsNativeScrollingInOneDirection(width: CGFloat) async throws {
 		let commit = GitCommit(
 			hash: String(repeating: "a", count: 40), shortHash: "aaaaaaa",
-			parentHashes: [String(repeating: "b", count: 40)], author: "Groves",
+			parentHashes: [String(repeating: "b", count: 40)], author: "Pluminon",
 			authorEmail: "developer@example.com", date: .distantPast,
 			committerEmail: "developer@example.com", references: ["origin/refactor/practice-test"],
 			subject: "wip: 실전문제풀이 리팩터링 및 SwiftUICore 대응", body: "")
@@ -336,7 +337,7 @@ struct WorkspaceChildViewModelTests {
 		let controller = NSHostingController(
 			rootView: HistoryView(
 				diffSearchViewModel: RepositorySearchViewModel(), historyViewModel: model,
-				diffPreferences: WorkspaceDiffPreferences(), repositoryName: "Groves",
+				diffPreferences: WorkspaceDiffPreferences(), repositoryName: "Pluminon",
 				currentBranchStatus: "main", operationState: .normal, isOperationLoading: false,
 				canCheckoutCommit: true, remoteNames: [],
 				commitActions: RepositoryCommitActions(
@@ -366,7 +367,7 @@ struct WorkspaceChildViewModelTests {
 		table.scrollRowToVisible(firstFileRow)
 		try await settleLayout(controller.view)
 		try #require(table.selectedRow == firstFileRow)
-		let trace = HistoryScrollTrace()
+		let trace = ScrollTrace()
 		let clip = scrollView.contentView
 		let postsBoundsChangedNotifications = clip.postsBoundsChangedNotifications
 		clip.postsBoundsChangedNotifications = true
@@ -399,8 +400,99 @@ struct WorkspaceChildViewModelTests {
 		}
 	}
 
+	@Test(arguments: [CGFloat(900), CGFloat(2_400)])
+	func holdingFilesArrowKeysKeepsNativeScrollingInOneDirection(width: CGFloat) async throws {
+		let files = (0..<112).map { index -> RepositoryTreeNode in
+			if index.isMultiple(of: 5) {
+				let name = "Feature\(index)"
+				let child = RepositoryTreeNode(
+					name: "Content.swift", path: "\(name)/Content.swift", children: [])
+				return RepositoryTreeNode(name: name, path: name, children: [child])
+			}
+			let name = "RepositoryContentAndPreviewProvider\(index).swift"
+			return RepositoryTreeNode(name: name, path: name, children: [])
+		}
+		let workspace = makeRepositoryWorkspace()
+		defer { workspace.onDisappear() }
+		let model = workspace.treeViewModel
+		let repositoryURL = URL(fileURLWithPath: "/repo")
+		func snapshot(_ nodes: [RepositoryTreeNode]) -> RepositorySnapshot {
+			RepositorySnapshot(
+				changes: [], amendChanges: [], commits: [], branches: [], remotes: [],
+				operationState: .normal, tags: [], stashes: [], fileTree: nodes)
+		}
+		model.apply(snapshot(files), repositoryURL: repositoryURL)
+		var refreshedFiles = files
+		let directory = files[0]
+		refreshedFiles[0] = RepositoryTreeNode(
+			name: directory.name, path: directory.path,
+			children: directory.children + [
+				RepositoryTreeNode(
+					name: "New.swift", path: "\(directory.path)/New.swift", children: [])
+			])
+		model.didSelectTreeNode(id: files[0].id)
+		let controller = NSHostingController(
+			rootView: RepositoryTreeView(viewModel: model).frame(width: width, height: 660))
+		let window = NSWindow(
+			contentRect: NSRect(x: 0, y: 0, width: width, height: 660), styleMask: [.titled],
+			backing: .buffered, defer: false)
+		window.isReleasedWhenClosed = false
+		window.contentViewController = controller
+		controller.viewWillAppear()
+		controller.viewDidAppear()
+		window.makeKeyAndOrderFront(nil)
+		defer {
+			controller.viewWillDisappear()
+			controller.viewDidDisappear()
+			window.close()
+		}
+		try await settleLayout(controller.view)
+		let table = try #require(fileTable(in: controller.view))
+		let scrollView = try #require(table.enclosingScrollView)
+		let clip = scrollView.contentView
+		try #require(window.makeFirstResponder(table))
+		try #require(table.selectedRow == 0)
+		let viewportHeight = fileViewport(in: table, headerHeight: 0).height
+
+		let trace = ScrollTrace()
+		let postsBoundsChangedNotifications = clip.postsBoundsChangedNotifications
+		clip.postsBoundsChangedNotifications = true
+		defer { clip.postsBoundsChangedNotifications = postsBoundsChangedNotifications }
+		let observer = NotificationCenter.default.addObserver(
+			forName: NSView.boundsDidChangeNotification, object: clip, queue: .main
+		) { _ in
+			MainActor.assumeIsolated { trace.offsets.append(clip.bounds.minY) }
+		}
+		defer { NotificationCenter.default.removeObserver(observer) }
+		for direction in [1, -1] {
+			trace.offsets = [clip.bounds.minY]
+			for index in 0..<140 {
+				if index == 65 {
+					model.apply(
+						snapshot(direction > 0 ? refreshedFiles : files), repositoryURL: repositoryURL)
+				}
+				try pressArrow(direction, in: table, isARepeat: index > 0)
+				try await Task.sleep(for: .milliseconds(16))
+			}
+			try await settleLayout(controller.view, passes: 30)
+			let expectedRow = direction > 0 ? files.count - 1 : 0
+			#expect(fileTable(in: controller.view) === table)
+			try #require(table.selectedRow == expectedRow)
+			#expect(model.selectedTreeNodeID == files[expectedRow].id)
+			try #require(trace.offsets.count > 2)
+			let reversed = zip(trace.offsets, trace.offsets.dropFirst()).filter {
+				($0.1 - $0.0) * CGFloat(direction) < -1
+			}
+			#expect(reversed.isEmpty, "direction \(direction), reversed scroll \(reversed.prefix(10))")
+			let selectedRow = table.rect(ofRow: table.selectedRow)
+			let viewport = fileViewport(in: table, headerHeight: 0)
+			#expect(abs(viewport.height - viewportHeight) < 1)
+			#expect(selectedRow.minY >= viewport.minY - 1 && selectedRow.maxY <= viewport.maxY + 1)
+		}
+	}
+
 	@MainActor
-	private final class HistoryScrollTrace {
+	private final class ScrollTrace {
 		var offsets: [CGFloat] = []
 	}
 

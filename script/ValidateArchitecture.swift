@@ -29,17 +29,17 @@ func register(_ target: ProjectTarget, at directory: String) {
 }
 
 register(
-	ProjectTarget(name: "App", layer: "App", module: "App", isInterface: false),
+	ProjectTarget(name: "Pluminon", layer: "App", module: "App", isInterface: false),
 	at: rootURL.appending(path: "App/Sources").path
 )
 register(
 	ProjectTarget(
-		name: "GrovesAskPass",
+		name: "PluminonAskPass",
 		layer: "App",
-		module: "GrovesAskPass",
+		module: "PluminonAskPass",
 		isInterface: false
 	),
-	at: rootURL.appending(path: "App/Helpers/GrovesAskPass/Sources").path
+	at: rootURL.appending(path: "App/Helpers/PluminonAskPass/Sources").path
 )
 
 for layer in layers {
