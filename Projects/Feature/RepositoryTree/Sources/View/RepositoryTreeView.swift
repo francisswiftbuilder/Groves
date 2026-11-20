@@ -26,11 +26,8 @@ public struct RepositoryTreeView: View {
 					treePane
 						.frame(minWidth: 220, idealWidth: 340, maxWidth: 520)
 
-					RepositoryFilePreviewPane(
-						node: viewModel.selectedTreeItem?.node,
-						preview: viewModel.filePreview
-					)
-					.frame(minWidth: 260, idealWidth: 620, maxWidth: .infinity)
+					RepositoryFilePreviewPane(viewModel: viewModel)
+						.frame(minWidth: 260, idealWidth: 620, maxWidth: .infinity)
 				}
 			}
 		}
@@ -46,10 +43,6 @@ public struct RepositoryTreeView: View {
 						item.id,
 						isExpanded: !viewModel.expandedTreeNodeIDs.contains(item.id)
 					)
-				},
-				onSelect: {
-					Task { await viewModel.didSelectTreeNode(id: item.id) }
-					isTreeFocused = true
 				}
 			)
 			.tag(item.id)
@@ -63,12 +56,10 @@ public struct RepositoryTreeView: View {
 		.onKeyPress(.rightArrow, action: expandSelectedNode)
 		.onKeyPress(.leftArrow, action: collapseSelectedNode)
 		.safeAreaInset(edge: .top, spacing: 0) {
-			RepositoryTreeHeader(statistics: statistics)
+			RepositoryTreeHeader(fileCount: viewModel.fileCount)
 		}
 		.safeAreaInset(edge: .bottom, spacing: 0) {
-			if let selectedTreeItem = viewModel.selectedTreeItem {
-				RepositoryTreeSelectionBar(node: selectedTreeItem.node)
-			}
+			RepositoryTreeSelectionBar(node: viewModel.selectedTreeItem?.node)
 		}
 		.task {
 			await Task.yield()
@@ -76,16 +67,10 @@ public struct RepositoryTreeView: View {
 		}
 	}
 
-	private var statistics: (directories: Int, files: Int) {
-		RepositoryTreeLayoutBuilder.statistics(in: viewModel.fileTree)
-	}
-
 	private var selectedTreeNodeBinding: Binding<String?> {
 		Binding(
 			get: { viewModel.selectedTreeNodeID },
-			set: { nodeID in
-				Task { await viewModel.didSelectTreeNode(id: nodeID) }
-			}
+			set: viewModel.didSelectTreeNode(id:)
 		)
 	}
 
