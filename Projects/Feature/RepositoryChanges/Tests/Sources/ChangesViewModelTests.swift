@@ -434,7 +434,7 @@ struct ChangesViewModelTests {
 			dependencies: ChangesViewModel.Dependencies(
 				contentUseCase: ChangesContentUseCaseStub(),
 				changesUseCase: changesUseCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 			),
 			actions: ChangesViewModel.Actions(
 				didProduceSnapshot: didProduceSnapshot,

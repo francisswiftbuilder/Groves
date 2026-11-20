@@ -1,17 +1,17 @@
 import Foundation
 
-public enum GrovesRuntimeConfiguration {
+public enum PluminonRuntimeConfiguration {
 	public static var displayName: String {
-		Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Groves"
+		Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Pluminon"
 	}
 
 	public static var dataNamespace: String {
-		Bundle.main.object(forInfoDictionaryKey: "GrovesDataNamespace") as? String ?? "Groves"
+		Bundle.main.object(forInfoDictionaryKey: "PluminonDataNamespace") as? String ?? "Pluminon"
 	}
 
 	public static var credentialNamespace: String {
-		Bundle.main.object(forInfoDictionaryKey: "GrovesCredentialNamespace") as? String
-			?? "io.github.francisswiftbuilder.Groves"
+		Bundle.main.object(forInfoDictionaryKey: "PluminonCredentialNamespace") as? String
+			?? "com.francisswiftbuilder.pluminon"
 	}
 
 	public static var applicationSupportURL: URL {

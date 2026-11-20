@@ -1,6 +1,6 @@
 import Foundation
 
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 final class RepositoryExternalEditorOpenerSpy: RepositoryExternalEditorOpening {

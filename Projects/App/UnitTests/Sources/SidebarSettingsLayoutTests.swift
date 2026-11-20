@@ -4,7 +4,7 @@ import SwiftUI
 import Testing
 
 @testable import CoreGitCredential
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 struct SidebarSettingsLayoutTests {
@@ -113,14 +113,14 @@ struct SidebarSettingsLayoutTests {
 	func settingsKeepEditableFieldsInsideTheWindow(scenario: String, colorScheme: ColorScheme)
 		async throws
 	{
-		let suite = "Groves.Settings.Layout.\(UUID())"
+		let suite = "Pluminon.Settings.Layout.\(UUID())"
 		let defaults = try #require(UserDefaults(suiteName: suite))
 		defer { defaults.removePersistentDomain(forName: suite) }
 		defaults.set("Developer", forKey: "isolatedGitAuthorName")
 		defaults.set("developer@example.com", forKey: "isolatedGitAuthorEmail")
 		let store = GitCredentialStore(
 			service: suite, securityClient: GitAccountViewModelTests.SecurityClientStub(),
-			accessGroupResolver: { "TESTTEAM.Groves.Settings.Layout" })
+			accessGroupResolver: { "TESTTEAM.Pluminon.Settings.Layout" })
 		if scenario != "emptyAccounts" && scenario != "onboarding" {
 			try store.save(
 				secret: "fixture", for: .init(kind: .https, host: "github.com", account: "developer"))
@@ -172,12 +172,12 @@ struct SidebarSettingsLayoutTests {
 	func newTabShowsTheRepositoryListAndFitsTheSearchField(
 		width: Double, colorScheme: ColorScheme
 	) async throws {
-		let suite = "Groves.NewTab.Layout.\(UUID())"
+		let suite = "Pluminon.NewTab.Layout.\(UUID())"
 		let defaults = try #require(UserDefaults(suiteName: suite))
 		defer { defaults.removePersistentDomain(forName: suite) }
 		let store = GitCredentialStore(
 			service: suite, securityClient: GitAccountViewModelTests.SecurityClientStub(),
-			accessGroupResolver: { "TESTTEAM.Groves.NewTab.Layout" })
+			accessGroupResolver: { "TESTTEAM.Pluminon.NewTab.Layout" })
 		try store.save(
 			secret: "valid-test-token", for: .init(kind: .https, host: "github.com", account: "octocat"))
 		let configuration = URLSessionConfiguration.ephemeral
@@ -256,7 +256,7 @@ struct SidebarSettingsLayoutTests {
 
 	@Test
 	func newTabCanSubmitAPublicCloneURLWithoutAGitHubAccount() async throws {
-		let suite = "Groves.CloneSearch.\(UUID())"
+		let suite = "Pluminon.CloneSearch.\(UUID())"
 		let defaults = try #require(UserDefaults(suiteName: suite))
 		defer { defaults.removePersistentDomain(forName: suite) }
 		let account = GitAccountViewModel(defaults: defaults)
@@ -317,7 +317,7 @@ struct SidebarSettingsLayoutTests {
 			} detail: {
 				Color(nsColor: .textBackgroundColor)
 			}
-			.navigationTitle("Groves")
+			.navigationTitle("Pluminon")
 			.toolbar {
 				RepositoryWorkspaceToolbar(
 					viewModel: workspace.viewModel, operationViewModel: workspace.operationViewModel,
@@ -389,7 +389,7 @@ struct SidebarSettingsLayoutTests {
 		let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
 		view.cacheDisplay(in: view.bounds, to: bitmap)
 		let png = try #require(bitmap.representation(using: .png, properties: [:]))
-		try png.write(to: URL(fileURLWithPath: "/tmp/groves-\(name).png"))
+		try png.write(to: URL(fileURLWithPath: "/tmp/pluminon-\(name).png"))
 	}
 
 	private func outline(in view: NSView) -> NSOutlineView? {

@@ -18,7 +18,7 @@ struct GitCredentialBrokerTests {
 			self.identifier = identifier
 			let helper = GitCredentialHelper(
 				store: store,
-				decisionStore: GitCredentialSaveDecisionStore(suiteName: "Groves.Tests.\(identifier)"))
+				decisionStore: GitCredentialSaveDecisionStore(suiteName: "Pluminon.Tests.\(identifier)"))
 			let broker = try GitCredentialBroker(operationID: identifier, helper: helper) { peer in
 				trustClient && peer.processIdentifier == getpid()
 			}
@@ -32,21 +32,21 @@ struct GitCredentialBrokerTests {
 		deinit {
 			broker.stop()
 			try? store.deleteAll()
-			UserDefaults(suiteName: "Groves.Tests.\(identifier)")?.removePersistentDomain(
-				forName: "Groves.Tests.\(identifier)")
+			UserDefaults(suiteName: "Pluminon.Tests.\(identifier)")?.removePersistentDomain(
+				forName: "Pluminon.Tests.\(identifier)")
 		}
 	}
 
 	@Test
 	func aSavedAccountCanBeReadThroughTheBroker() throws {
 		let context = try Context()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 		try context.store.save(secret: "parent-only-secret", for: descriptor)
 
 		let value = try context.client.credential(
 			operation: .get, input: "protocol=https\nhost=github.com\n\n")
 
-		#expect(value == "password=parent-only-secret\nusername=groves\n\n")
+		#expect(value == "password=parent-only-secret\nusername=pluminon\n\n")
 		#expect(!context.broker.socketPath.contains("parent-only-secret"))
 		let names = try FileManager.default.contentsOfDirectory(
 			atPath: URL(fileURLWithPath: context.broker.socketPath).deletingLastPathComponent().path)
@@ -56,15 +56,15 @@ struct GitCredentialBrokerTests {
 	@Test(arguments: [false, true])
 	func savingHonorsThePromptDecisionAndWaitsForGitSuccess(shouldSave: Bool) throws {
 		let context = try Context()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 		try context.client.setShouldSave(shouldSave)
 
 		_ = try context.client.credential(
 			operation: .store,
-			input: "protocol=https\nhost=github.com\nusername=groves\npassword=entered-secret\n\n")
+			input: "protocol=https\nhost=github.com\nusername=pluminon\npassword=entered-secret\n\n")
 		_ = try context.client.credential(
 			operation: .store,
-			input: "protocol=https\nhost=github.com\nusername=groves\npassword=entered-secret\n\n")
+			input: "protocol=https\nhost=github.com\nusername=pluminon\npassword=entered-secret\n\n")
 
 		#expect(try context.store.secret(for: descriptor) == nil)
 		context.broker.stop()
@@ -87,12 +87,12 @@ struct GitCredentialBrokerTests {
 	@Test(arguments: [false, true])
 	func untrustedPeersCannotReadOrStoreCredentials(rejectServer: Bool) throws {
 		let context = try Context(trustClient: rejectServer, trustServer: !rejectServer)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 
 		#expect(throws: GitCredentialBrokerError.self) {
 			try context.client.credential(
 				operation: .store,
-				input: "protocol=https\nhost=github.com\nusername=groves\npassword=not-authorized\n\n")
+				input: "protocol=https\nhost=github.com\nusername=pluminon\npassword=not-authorized\n\n")
 		}
 
 		context.broker.stop()
@@ -142,7 +142,7 @@ struct GitCredentialBrokerTests {
 	@Test
 	func simultaneousCredentialRequestsUseIndependentConnections() async throws {
 		let context = try Context()
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 		try context.store.save(secret: "shared-secret", for: descriptor)
 
 		let values = try await withThrowingTaskGroup(of: String?.self) { group in
@@ -165,7 +165,7 @@ struct GitCredentialBrokerTests {
 		}
 
 		#expect(values.count == 16)
-		#expect(values.allSatisfy { $0 == "password=shared-secret\nusername=groves\n\n" })
+		#expect(values.allSatisfy { $0 == "password=shared-secret\nusername=pluminon\n\n" })
 	}
 
 	@Test

@@ -54,7 +54,7 @@ struct OperationSheetLayoutTests {
 		let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
 		host.cacheDisplay(in: host.bounds, to: bitmap)
 		let png = try #require(bitmap.representation(using: .png, properties: [:]))
-		try png.write(to: URL(fileURLWithPath: "/tmp/groves-operation-\(kind)-\(colorScheme).png"))
+		try png.write(to: URL(fileURLWithPath: "/tmp/pluminon-operation-\(kind)-\(colorScheme).png"))
 	}
 
 	@Test(arguments: [ColorScheme.light, .dark])
@@ -67,7 +67,7 @@ struct OperationSheetLayoutTests {
 			dependencies: .init(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: OperationsReferencesUseCaseStub { _ in try await gate.load() },
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }),
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }),
 			actions: .init(didProduceSnapshot: { _ in }, didReceiveError: { _ in }))
 		defer {
 			model.onDisappear()
@@ -109,7 +109,7 @@ struct OperationSheetLayoutTests {
 		let bitmap = try #require(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
 		frame.cacheDisplay(in: frame.bounds, to: bitmap)
 		let png = try #require(bitmap.representation(using: .png, properties: [:]))
-		try png.write(to: URL(fileURLWithPath: "/tmp/groves-sync-progress-\(colorScheme).png"))
+		try png.write(to: URL(fileURLWithPath: "/tmp/pluminon-sync-progress-\(colorScheme).png"))
 	}
 
 	@ViewBuilder

@@ -3,13 +3,13 @@ import DomainGitInterface
 import Foundation
 import Testing
 
-@testable import Groves
+@testable import Pluminon
 
 struct RepositoryFileSystemMonitorTests {
 	@Test
 	func worktreeEventsIncludeItsPrivateIndexAndSharedReferences() async throws {
 		let directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
-			.appending(path: "GrovesWorktreeMonitor-\(UUID())", directoryHint: .isDirectory)
+			.appending(path: "PluminonWorktreeMonitor-\(UUID())", directoryHint: .isDirectory)
 		let worktree = directory.appending(path: "topic", directoryHint: .isDirectory)
 		let common = directory.appending(path: "main.git", directoryHint: .isDirectory)
 		let metadata = common.appending(path: "worktrees/topic", directoryHint: .isDirectory)
@@ -27,7 +27,7 @@ struct RepositoryFileSystemMonitorTests {
 			Set(RepositoryFileSystemMonitor.gitDirectories(at: worktree).map(\.path)) == [
 				metadata.path, common.path,
 			])
-		let queue = DispatchQueue(label: "dev.groves.worktree-monitor-tests")
+		let queue = DispatchQueue(label: "dev.pluminon.worktree-monitor-tests")
 		let events = RepositoryFileSystemMonitor.events(at: worktree, queue: queue)
 		let received = Task {
 			var seen: Set<String> = []
@@ -62,7 +62,7 @@ struct RepositoryFileSystemMonitorTests {
 	func systemRescanFlagsInvalidateTheWorkingTree(flag: Int) async {
 		let (events, continuation) = AsyncStream<[String]>.makeStream()
 		let monitor = RepositoryFileSystemMonitor(
-			continuation: continuation, queue: DispatchQueue(label: "dev.groves.rescan-tests"),
+			continuation: continuation, queue: DispatchQueue(label: "dev.pluminon.rescan-tests"),
 			repositoryURL: URL(fileURLWithPath: "/repo"))
 		monitor.didReceiveEvents(at: ["/repo/.git/objects"], flags: [FSEventStreamEventFlags(flag)])
 		var iterator = events.makeAsyncIterator()
@@ -76,7 +76,7 @@ struct RepositoryFileSystemMonitorTests {
 		let (events, continuation) = AsyncStream<[String]>.makeStream(
 			bufferingPolicy: .bufferingNewest(1))
 		let monitor = RepositoryFileSystemMonitor(
-			continuation: continuation, queue: DispatchQueue(label: "dev.groves.monitor-buffer-test"))
+			continuation: continuation, queue: DispatchQueue(label: "dev.pluminon.monitor-buffer-test"))
 		monitor.didReceiveEvents(at: ["/repo/Source.swift"])
 		monitor.didReceiveEvents(at: ["/repo/.git/index"])
 		monitor.didReceiveEvents(at: ["/repo/.git/FETCH_HEAD"])
@@ -90,7 +90,7 @@ struct RepositoryFileSystemMonitorTests {
 	@Test
 	func testEventsReturnsWhileStartupQueueIsSuspended() async throws {
 		let directoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: directoryURL,
 			withIntermediateDirectories: true
@@ -99,7 +99,7 @@ struct RepositoryFileSystemMonitorTests {
 			try? FileManager.default.removeItem(at: directoryURL)
 		}
 
-		let startupQueue = DispatchQueue(label: "dev.groves.repository-monitor-tests")
+		let startupQueue = DispatchQueue(label: "dev.pluminon.repository-monitor-tests")
 		startupQueue.suspend()
 		let start = ContinuousClock.now
 		let events = RepositoryFileSystemMonitor.events(
@@ -122,7 +122,7 @@ struct RepositoryFileSystemMonitorTests {
 	@Test
 	func testEventsEmitsWhenNestedFileChanges() async throws {
 		let directoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonMonitorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		let nestedDirectoryURL = directoryURL.appending(path: "Nested", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: nestedDirectoryURL,
@@ -132,7 +132,7 @@ struct RepositoryFileSystemMonitorTests {
 			try? FileManager.default.removeItem(at: directoryURL)
 		}
 
-		let monitorQueue = DispatchQueue(label: "dev.groves.repository-monitor-event-tests")
+		let monitorQueue = DispatchQueue(label: "dev.pluminon.repository-monitor-event-tests")
 		let events = RepositoryFileSystemMonitor.events(
 			at: directoryURL,
 			queue: monitorQueue

@@ -14,9 +14,9 @@ final class GitDiscardTransaction {
 		self.repositoryURL = repositoryURL
 		let identifier = UUID().uuidString
 		directoryURL = gitDirectory.appending(
-			path: "groves-discard-\(identifier)", directoryHint: .isDirectory)
+			path: "pluminon-discard-\(identifier)", directoryHint: .isDirectory)
 		originalsURL = directoryURL.appending(
-			path: "Groves Discard \(identifier)", directoryHint: .isDirectory)
+			path: "Pluminon Discard \(identifier)", directoryHint: .isDirectory)
 		replacementsURL = directoryURL.appending(path: "restore", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: directoryURL, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])

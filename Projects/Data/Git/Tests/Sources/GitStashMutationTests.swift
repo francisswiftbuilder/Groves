@@ -57,7 +57,7 @@ struct GitStashMutationTests {
 		try """
 		#!/bin/sh
 		case " $* " in
-		  *" update-ref refs/groves/stash-recovery/"*)
+		  *" update-ref refs/pluminon/stash-recovery/"*)
 		    if /usr/bin/git -C '\(context.url.path)' -c core.filesRefLockTimeout=0 stash store -m external '\(older.hash)' 2>'\(marker.path).stderr'; then
 		      exit 91
 		    fi
@@ -83,7 +83,7 @@ struct GitStashMutationTests {
 		#expect(FileManager.default.fileExists(atPath: marker.path))
 		#expect(try await repository.requestStashes(at: context.url).map(\.hash) == [older.hash])
 		#expect(
-			try await run(["rev-parse", "refs/groves/stash-recovery/\(selected.hash)"], in: context)
+			try await run(["rev-parse", "refs/pluminon/stash-recovery/\(selected.hash)"], in: context)
 				== selected.hash)
 		let file = context.url.appending(path: "tracked.txt")
 		#expect(try String(contentsOf: file, encoding: .utf8) == (pop ? "selected\n" : "base\n"))
@@ -321,7 +321,7 @@ struct GitStashMutationTests {
 		try """
 		#!/bin/sh
 		case " $* " in
-		  *" update-ref refs/groves/stash-recovery/"*)
+		  *" update-ref refs/pluminon/stash-recovery/"*)
 		    touch '\(marker.path)'
 		    exec /bin/sleep 30
 		    ;;
@@ -350,7 +350,7 @@ struct GitStashMutationTests {
 
 	private func makeContext(referenceFormat: String = "files") async throws -> Context {
 		let url = FileManager.default.temporaryDirectory.appending(
-			path: "GrovesStashMutation-\(UUID().uuidString)")
+			path: "PluminonStashMutation-\(UUID().uuidString)")
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 		let identity = url.appending(path: ".git/review.config")
 		let runner = GitProcessRunner(

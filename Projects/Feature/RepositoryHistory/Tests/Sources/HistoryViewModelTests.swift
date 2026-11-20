@@ -193,7 +193,7 @@ struct HistoryViewModelTests {
 			dependencies: HistoryViewModel.Dependencies(
 				changesUseCase: useCase,
 				preferences: WorkspaceDiffPreferences(),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 			),
 			actions: HistoryViewModel.Actions(
 				didReceiveError: didReceiveError,
@@ -209,7 +209,7 @@ struct HistoryViewModelTests {
 			hash: String(repeating: "\(index)", count: 12),
 			shortHash: String(repeating: "\(index)", count: 7),
 			parentHashes: [],
-			author: "Groves",
+			author: "Pluminon",
 			date: .distantPast,
 			references: [],
 			subject: subject,

@@ -5,7 +5,7 @@ public struct GitIdentityConfiguration: Codable, Equatable, Sendable {
 	public var email: String
 
 	public static var defaultURL: URL {
-		GrovesRuntimeConfiguration.applicationSupportURL.appending(path: "Git/config")
+		PluminonRuntimeConfiguration.applicationSupportURL.appending(path: "Git/config")
 	}
 
 	public init(name: String = "", email: String = "") {
@@ -27,7 +27,7 @@ public struct GitIdentityConfiguration: Codable, Equatable, Sendable {
 	public func save(to url: URL = Self.defaultURL) throws {
 		guard isValid else {
 			throw NSError(
-				domain: "Groves.GitIdentity",
+				domain: "Pluminon.GitIdentity",
 				code: 1,
 				userInfo: [
 					NSLocalizedDescriptionKey: "Enter a name and valid email address without line breaks."

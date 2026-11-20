@@ -104,7 +104,7 @@ struct GitSSHTrustScopeTests {
 			(try? FileManager.default.contentsOfDirectory(
 				atPath: directoryURL.path
 			)) ?? []
-		return contents.filter { $0.hasPrefix("GrovesKnownHosts-") }.count
+		return contents.filter { $0.hasPrefix("PluminonKnownHosts-") }.count
 	}
 
 	@Test

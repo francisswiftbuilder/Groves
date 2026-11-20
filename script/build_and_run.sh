@@ -4,13 +4,13 @@ set -euo pipefail
 MODE="${1:-run}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKSPACE="$ROOT_DIR/Groves.xcworkspace"
+WORKSPACE="$ROOT_DIR/Pluminon.xcworkspace"
 "$ROOT_DIR/script/build_bundled_git.sh"
 
 BUILD_SETTINGS="$(
 	xcodebuild \
 		-workspace "$WORKSPACE" \
-		-scheme App \
+		-scheme Pluminon \
 		-configuration Debug \
 		-destination "platform=macOS" \
 		-showBuildSettings
@@ -33,7 +33,7 @@ fi
 
 xcodebuild build \
 	-workspace "$WORKSPACE" \
-	-scheme App \
+	-scheme Pluminon \
 	-configuration Debug \
 	-destination "platform=macOS" \
 	"${SIGNING_ARGUMENTS[@]}"
@@ -56,7 +56,7 @@ BUNDLE_ID="$(
 )"
 APP_BUNDLE="$TARGET_BUILD_DIR/$FULL_PRODUCT_NAME"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/GrovesAskPass.app/Contents/MacOS/GrovesAskPass"
+HELPER_BINARY="$APP_BUNDLE/Contents/Helpers/PluminonAskPass.app/Contents/MacOS/PluminonAskPass"
 
 team_identifier() {
 	/usr/bin/codesign -dv "$1" 2>&1 \
@@ -64,7 +64,7 @@ team_identifier() {
 }
 
 if [[ "$USE_ADHOC_SIGNING" == true ]]; then
-	/usr/bin/codesign --force --sign - "$APP_BUNDLE/Contents/Helpers/GrovesAskPass.app"
+	/usr/bin/codesign --force --sign - "$APP_BUNDLE/Contents/Helpers/PluminonAskPass.app"
 	/usr/bin/codesign --force --sign - "$APP_BUNDLE"
 fi
 

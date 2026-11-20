@@ -9,9 +9,10 @@ struct GitCredentialStoreTests {
 	@Test
 	func isolatedServiceDoesNotReadMigrateOrDeleteEarlierCredentials() throws {
 		let client = GitCredentialSecurityClientStub()
-		let earlierStore = makeTestCredentialStore(service: "Groves.Earlier", securityClient: client)
-		let isolatedStore = makeTestCredentialStore(service: "Groves.Isolated", securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let earlierStore = makeTestCredentialStore(service: "Pluminon.Earlier", securityClient: client)
+		let isolatedStore = makeTestCredentialStore(
+			service: "Pluminon.Isolated", securityClient: client)
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 		try earlierStore.save(secret: "earlier-token", for: descriptor)
 
 		#expect(try isolatedStore.descriptors().isEmpty)
@@ -25,7 +26,7 @@ struct GitCredentialStoreTests {
 
 	@Test
 	func pendingCredentialCommitsOnlyAfterSuccess() throws {
-		let service = "Groves.Tests.\(UUID().uuidString)"
+		let service = "Pluminon.Tests.\(UUID().uuidString)"
 		let store = makeTestCredentialStore(service: service)
 		let descriptor = GitCredentialDescriptor(kind: .ssh, host: "SSH Key", account: "id_ed25519")
 
@@ -57,7 +58,7 @@ struct GitCredentialStoreTests {
 
 	@Test
 	func pendingCredentialIsDiscardedAfterFailure() throws {
-		let service = "Groves.Tests.\(UUID().uuidString)"
+		let service = "Pluminon.Tests.\(UUID().uuidString)"
 		let store = makeTestCredentialStore(service: service)
 		let descriptor = GitCredentialDescriptor(kind: .ssh, host: "SSH Key", account: "id_rsa")
 
@@ -85,7 +86,7 @@ struct GitCredentialStoreTests {
 	func currentQueriesUseSharedDataProtectionAccessGroup() throws {
 		let client = GitCredentialSecurityClientStub()
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 
 		try store.save(secret: "secret", for: descriptor)
 
@@ -109,7 +110,7 @@ struct GitCredentialStoreTests {
 	func secretFallsBackToLegacyWithoutCurrentStorageSelectors() throws {
 		let client = GitCredentialSecurityClientStub()
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 
 		#expect(try store.secret(for: descriptor) == nil)
 
@@ -129,11 +130,11 @@ struct GitCredentialStoreTests {
 	func missingAccessGroupUsesUnscopedKeychainStorage() throws {
 		let client = GitCredentialSecurityClientStub()
 		let store = GitCredentialStore(
-			service: "Groves.Tests.\(UUID().uuidString)",
+			service: "Pluminon.Tests.\(UUID().uuidString)",
 			securityClient: client,
 			accessGroupResolver: { throw GitCredentialStoreError.missingAccessGroup }
 		)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 
 		try store.save(secret: "secret", for: descriptor)
 
@@ -157,7 +158,7 @@ struct GitCredentialStoreTests {
 		let client = GitCredentialSecurityClientStub()
 		client.nextUpdateStatus = status
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 
 		assertKeychainError(operation: operation, status: status) {
 			try store.save(secret: "secret", for: descriptor)
@@ -170,7 +171,7 @@ struct GitCredentialStoreTests {
 		client.nextUpdateStatus = errSecItemNotFound
 		client.nextAddStatus = errSecAuthFailed
 		let store = makeTestCredentialStore(securityClient: client)
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 
 		assertKeychainError(operation: .add, status: errSecAuthFailed) {
 			try store.save(secret: "secret", for: descriptor)
@@ -179,7 +180,7 @@ struct GitCredentialStoreTests {
 
 	@Test
 	func copyAndDeleteErrorsPreserveStageAndStatus() {
-		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "groves")
+		let descriptor = GitCredentialDescriptor(kind: .https, host: "github.com", account: "pluminon")
 		let copyClient = GitCredentialSecurityClientStub()
 		copyClient.nextCopyStatus = errSecInteractionNotAllowed
 		let copyStore = makeTestCredentialStore(securityClient: copyClient)
@@ -197,7 +198,7 @@ struct GitCredentialStoreTests {
 
 	@Test
 	func saveDecisionDefaultsToEnabledAndIsConsumed() {
-		let suiteName = "Groves.Tests.\(UUID().uuidString)"
+		let suiteName = "Pluminon.Tests.\(UUID().uuidString)"
 		let store = GitCredentialSaveDecisionStore(suiteName: suiteName)
 
 		#expect(store.consumeShouldSave(operationID: "default"))
@@ -211,7 +212,7 @@ private func assertCurrentStorage(_ query: [String: Any]) {
 	#expect(query[kSecUseDataProtectionKeychain as String] as? Bool == true)
 	#expect(
 		query[kSecAttrAccessGroup as String] as? String
-			== "TESTTEAM.io.github.francisswiftbuilder.Groves.GitCredential"
+			== "TESTTEAM.com.francisswiftbuilder.pluminon.GitCredential"
 	)
 }
 

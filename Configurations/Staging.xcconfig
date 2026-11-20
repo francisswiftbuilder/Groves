@@ -1,4 +1,4 @@
-GROVES_APP_NAME = Groves Staging
-GROVES_BUNDLE_IDENTIFIER = io.github.francisswiftbuilder.Groves.staging
-GROVES_DATA_NAMESPACE = Groves Staging
-
+PLUMINON_DISPLAY_NAME = Pluminon Staging
+PLUMINON_PRODUCT_NAME = Pluminon Staging
+PLUMINON_BUNDLE_IDENTIFIER = com.francisswiftbuilder.pluminon.staging
+PLUMINON_DATA_NAMESPACE = Pluminon Staging

@@ -97,7 +97,7 @@ struct RepositoryStashesUseCaseTests {
 
 	private func makeContext() throws -> Context {
 		let url = FileManager.default.temporaryDirectory.appending(
-			path: "GrovesStashesUseCase-\(UUID().uuidString)")
+			path: "PluminonStashesUseCase-\(UUID().uuidString)")
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 		let configuration = url.appending(path: ".git/app.config")
 		let context = Context(

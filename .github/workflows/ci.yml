@@ -37,7 +37,7 @@ jobs:
         run: |
           make bundled-git
           ./script/test_bundled_git.sh .build/bundled-git/runtime
-          WORKSPACE=Groves.xcworkspace
+          WORKSPACE=Pluminon.xcworkspace
           for SCHEME in AppTests CoreGitCredential CoreRepositoryDiff DataGit \
             FeatureRepositoryChanges FeatureRepositoryHistory FeatureRepositoryOperations \
             FeatureRepositoryStashes FeatureRepositoryTree; do

@@ -9,7 +9,7 @@ struct GitCloneCleanupTests {
 	func testCancelledCloneLeavesNoDestinationBehind() async throws {
 		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
-		let sourceURL = try makeTemporaryRepository(name: "GrovesCloneSource")
+		let sourceURL = try makeTemporaryRepository(name: "PluminonCloneSource")
 		defer { try? FileManager.default.removeItem(at: sourceURL) }
 		let repository = LocalGitRepository(
 			configuration: GitProcessConfiguration(terminationGracePeriod: 0.01)
@@ -63,7 +63,7 @@ struct GitCloneCleanupTests {
 	func successfulCloneMovesIntoTheFinalDestination() async throws {
 		let directory = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directory) }
-		let source = try makeTemporaryRepository(name: "GrovesCloneSource")
+		let source = try makeTemporaryRepository(name: "PluminonCloneSource")
 		defer { try? FileManager.default.removeItem(at: source) }
 		let repository = LocalGitRepository()
 
@@ -87,7 +87,7 @@ struct GitCloneCleanupTests {
 
 		#expect(!FileManager.default.fileExists(atPath: directory.appending(path: "missing").path))
 		let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-		#expect(!files.contains { $0.hasPrefix(".groves-clone-") })
+		#expect(!files.contains { $0.hasPrefix(".pluminon-clone-") })
 	}
 
 	@Test(arguments: [false, true])
@@ -157,7 +157,7 @@ struct GitCloneCleanupTests {
 			try String(contentsOf: destination.appending(path: "keep.txt"), encoding: .utf8)
 				== "external work")
 		let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-		#expect(!files.contains { $0.hasPrefix(".groves-clone-") })
+		#expect(!files.contains { $0.hasPrefix(".pluminon-clone-") })
 	}
 
 	@Test
@@ -189,7 +189,7 @@ struct GitCloneCleanupTests {
 		do {
 			try await repository.requestAddRemote(
 				named: "origin",
-				fetchURL: "https://groves:token@github.com/owner/repo.git",
+				fetchURL: "https://pluminon:token@github.com/owner/repo.git",
 				pushURL: nil,
 				at: repositoryURL
 			)
@@ -218,7 +218,7 @@ struct GitCloneCleanupTests {
 		do {
 			try await repository.requestUpdateRemote(
 				named: "origin",
-				fetchURL: "https://groves@github.com/owner/repo.git",
+				fetchURL: "https://pluminon@github.com/owner/repo.git",
 				pushURL: nil,
 				at: repositoryURL
 			)

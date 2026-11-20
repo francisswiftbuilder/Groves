@@ -20,16 +20,16 @@ extension Array: TargetScripts where Element == TargetScript {
 			.post(
 				script: """
 						set -eu
-						SOURCE="$BUILT_PRODUCTS_DIR/\(GrovesProduct.askPassTargetName).app"
-						DESTINATION="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/\(GrovesProduct.askPassTargetName).app"
+						SOURCE="$BUILT_PRODUCTS_DIR/\(PluminonProduct.askPassTargetName).app"
+						DESTINATION="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/\(PluminonProduct.askPassTargetName).app"
 					mkdir -p "$(dirname "$DESTINATION")"
-					BACKUP="$(/usr/bin/mktemp -d -t groves-askpass-previous)"
+					BACKUP="$(/usr/bin/mktemp -d -t pluminon-askpass-previous)"
 					if [ -e "$DESTINATION" ]; then
-						/bin/mv "$DESTINATION" "$BACKUP/\(GrovesProduct.askPassTargetName).app"
+						/bin/mv "$DESTINATION" "$BACKUP/\(PluminonProduct.askPassTargetName).app"
 					fi
-					LEGACY="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/\(GrovesProduct.askPassTargetName)"
+					LEGACY="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/\(PluminonProduct.askPassTargetName)"
 					if [ -f "$LEGACY" ]; then
-						/bin/mv "$LEGACY" "$BACKUP/\(GrovesProduct.askPassTargetName)"
+						/bin/mv "$LEGACY" "$BACKUP/\(PluminonProduct.askPassTargetName)"
 					fi
 					/usr/bin/ditto "$SOURCE" "$DESTINATION"
 
@@ -38,7 +38,7 @@ extension Array: TargetScripts where Element == TargetScript {
 					fi
 
 					if [ ! -f "$DESTINATION/Contents/embedded.provisionprofile" ]; then
-						printf 'GrovesAskPass requires an embedded provisioning profile for shared Keychain access.\n' >&2
+						printf 'PluminonAskPass requires an embedded provisioning profile for shared Keychain access.\n' >&2
 						exit 1
 					fi
 
@@ -46,12 +46,12 @@ extension Array: TargetScripts where Element == TargetScript {
 					HELPER_TEAM="$(/usr/bin/codesign -dv "$DESTINATION" 2>&1 \
 						| /usr/bin/awk -F= '/^TeamIdentifier=/ { print $2; exit }')"
 					if [ -z "$HELPER_TEAM" ] || [ "$HELPER_TEAM" != "$DEVELOPMENT_TEAM" ]; then
-						printf 'GrovesAskPass TeamIdentifier mismatch: expected %s, found %s\n' \
+						printf 'PluminonAskPass TeamIdentifier mismatch: expected %s, found %s\n' \
 							"$DEVELOPMENT_TEAM" "${HELPER_TEAM:-missing}" >&2
 						exit 1
 					fi
 
-					ENTITLEMENTS="$(/usr/bin/mktemp -t groves-askpass-entitlements)"
+					ENTITLEMENTS="$(/usr/bin/mktemp -t pluminon-askpass-entitlements)"
 					trap '/bin/rm -f "$ENTITLEMENTS"' EXIT
 					/usr/bin/codesign -d --entitlements :- "$DESTINATION" > "$ENTITLEMENTS" 2>/dev/null
 					HELPER_GROUP="$(/usr/libexec/PlistBuddy \
@@ -59,16 +59,16 @@ extension Array: TargetScripts where Element == TargetScript {
 					case "$HELPER_GROUP" in
 						*.\(Permissions.gitCredentialAccessGroupSuffix)) ;;
 						*)
-							printf 'GrovesAskPass Keychain access group is missing or invalid: %s\n' \
+							printf 'PluminonAskPass Keychain access group is missing or invalid: %s\n' \
 								"${HELPER_GROUP:-missing}" >&2
 							exit 1
 							;;
 					esac
 					""",
-				name: "Embed GrovesAskPass",
-				inputPaths: ["$(BUILT_PRODUCTS_DIR)/\(GrovesProduct.askPassTargetName).app/"],
+				name: "Embed PluminonAskPass",
+				inputPaths: ["$(BUILT_PRODUCTS_DIR)/\(PluminonProduct.askPassTargetName).app/"],
 				outputPaths: [
-					"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/\(GrovesProduct.askPassTargetName).app/"
+					"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/\(PluminonProduct.askPassTargetName).app/"
 				],
 				basedOnDependencyAnalysis: false
 			),

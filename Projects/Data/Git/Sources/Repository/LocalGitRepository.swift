@@ -71,7 +71,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 			throw GitRepositoryError.repositoryAlreadyExists
 		}
 		let stagingURL = directoryURL.appending(
-			path: ".groves-clone-\(UUID().uuidString)", directoryHint: .isDirectory)
+			path: ".pluminon-clone-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: false)
 		defer { try? FileManager.default.removeItem(at: stagingURL) }
 		_ = try await runner.requestRun(
@@ -1728,7 +1728,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		let editor = try GitStashReflogTransaction(gitDirectory: directory)
 		let current = try await requestCurrentStash(stash, at: repositoryURL)
 		_ = try await runner.requestRun(
-			arguments: ["update-ref", "refs/groves/stash-recovery/\(stash.hash)", stash.hash],
+			arguments: ["update-ref", "refs/pluminon/stash-recovery/\(stash.hash)", stash.hash],
 			at: repositoryURL)
 		try Task.checkCancellation()
 		try editor.drop(current)
@@ -2096,7 +2096,7 @@ public struct LocalGitRepository: GitCommitPlanningRepository, GitRepository {
 		else {
 			throw GitRepositoryError.commandFailed("The push destination changed. Review it again.")
 		}
-		let alias = "groves-push-\(UUID().uuidString)"
+		let alias = "pluminon-push-\(UUID().uuidString)"
 		let mappings = try await runner.requestRun(
 			arguments: ["config", "-z", "--get-all", "remote.\(remote).fetch"], at: repositoryURL,
 			acceptedTerminationStatuses: [0, 1]

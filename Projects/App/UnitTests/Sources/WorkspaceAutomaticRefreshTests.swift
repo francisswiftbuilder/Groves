@@ -3,7 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 struct WorkspaceAutomaticRefreshTests {

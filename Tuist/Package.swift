@@ -14,7 +14,7 @@ import PackageDescription
 #endif
 
 let package = Package(
-	name: "Groves",
+	name: "Pluminon",
 	platforms: [.macOS("26.0")],
 	products: [],
 	dependencies: [],

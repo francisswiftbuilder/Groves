@@ -339,7 +339,7 @@ struct GitReferenceMutationTests {
 			!FileManager.default.fileExists(atPath: config.appendingPathExtension("lock.lock").path))
 		let files = try FileManager.default.contentsOfDirectory(
 			atPath: config.deletingLastPathComponent().path)
-		#expect(!files.contains { $0.hasPrefix("groves-config-") })
+		#expect(!files.contains { $0.hasPrefix("pluminon-config-") })
 	}
 
 	@Test
@@ -443,14 +443,14 @@ struct GitReferenceMutationTests {
 	@Test
 	func readsConfiguredRemoteURLsAndTrackingBranches() async throws {
 		let context = try await makeContext()
-		_ = try await run(["remote", "add", "origin", "https://example.com/Groves.git"], in: context)
+		_ = try await run(["remote", "add", "origin", "https://example.com/Pluminon.git"], in: context)
 		let head = try await run(["rev-parse", "HEAD"], in: context)
 		_ = try await run(["update-ref", "refs/remotes/origin/main", head], in: context)
 
 		let remote = try #require(try await context.repository.requestRemotes(at: context.url).first)
 
 		#expect(remote.name == "origin")
-		#expect(remote.fetchURL == "https://example.com/Groves.git")
+		#expect(remote.fetchURL == "https://example.com/Pluminon.git")
 		#expect(remote.pushURL == nil)
 		#expect(remote.branches.map(\.fullName) == ["origin/main"])
 	}
@@ -886,7 +886,7 @@ struct GitReferenceMutationTests {
 		try """
 		#!/bin/sh
 		case " $* " in
-		  *" hash-object "*"/groves-discard-"*) printf 'new edit' > '\(escapedPath)' ;;
+		  *" hash-object "*"/pluminon-discard-"*) printf 'new edit' > '\(escapedPath)' ;;
 		esac
 		exec /usr/bin/git "$@"
 		""".write(to: executable, atomically: true, encoding: .utf8)
@@ -903,7 +903,7 @@ struct GitReferenceMutationTests {
 		let transactions = try FileManager.default.contentsOfDirectory(
 			at: context.url.appending(path: ".git"), includingPropertiesForKeys: nil)
 		let transaction = try #require(
-			transactions.first { $0.lastPathComponent.hasPrefix("groves-discard-") })
+			transactions.first { $0.lastPathComponent.hasPrefix("pluminon-discard-") })
 		let originals = try FileManager.default.contentsOfDirectory(
 			at: transaction, includingPropertiesForKeys: nil)
 		let archive = try #require(originals.first)
@@ -1277,7 +1277,7 @@ struct GitReferenceMutationTests {
 
 	private func makeContext() async throws -> Context {
 		let url = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesReferenceMutations-\(UUID().uuidString)")
+			.appending(path: "PluminonReferenceMutations-\(UUID().uuidString)")
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 		let identityURL = url.appending(path: ".git/app.config")
 		let runner = GitProcessRunner(

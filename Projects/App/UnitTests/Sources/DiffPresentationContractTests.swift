@@ -4,7 +4,7 @@ import Testing
 
 @testable import CoreRepositoryDiff
 @testable import FeatureRepositoryChanges
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 struct DiffPresentationContractTests {
@@ -26,7 +26,7 @@ struct DiffPresentationContractTests {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { await gate.callCount(of: label) == 1 }
 		let searchModel = workspace.changesDiffSearchViewModel
 		searchModel.update(
@@ -147,7 +147,7 @@ struct DiffPresentationContractTests {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { await gate.callCount(of: label) == 1 }
 		await gate.resumeCall(0)
 		try await waitUntil { workspace.changesDiffViewModel.diff == diff }
@@ -274,7 +274,7 @@ struct DiffPresentationContractTests {
 		)
 		let label = GitDiffGateLabel.workingTree(options: GitDiffOptions())
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil(timeout: .seconds(10)) {
 			workspace.changesDiffViewModel.diff == diff
 		}

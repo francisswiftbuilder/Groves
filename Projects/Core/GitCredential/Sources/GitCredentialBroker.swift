@@ -30,7 +30,7 @@ public final class GitCredentialBroker: @unchecked Sendable {
 	) throws {
 		guard !operationID.isEmpty else { throw GitCredentialBrokerError.invalidMessage }
 		let directory = URL(
-			fileURLWithPath: "/tmp/GrovesCredential-\(UUID().uuidString)", isDirectory: true)
+			fileURLWithPath: "/tmp/PluminonCredential-\(UUID().uuidString)", isDirectory: true)
 		guard mkdir(directory.path, 0o700) == 0 else {
 			throw GitCredentialBrokerError.systemCall("directory", errno)
 		}
@@ -58,7 +58,7 @@ public final class GitCredentialBroker: @unchecked Sendable {
 		self.helper = helper
 		self.isTrustedHelper = isTrustedHelper
 		listener = DispatchSource.makeReadSource(
-			fileDescriptor: descriptor, queue: DispatchQueue(label: "Groves.CredentialBroker.Accept"))
+			fileDescriptor: descriptor, queue: DispatchQueue(label: "Pluminon.CredentialBroker.Accept"))
 		listener.setEventHandler { [weak self] in self?.acceptClients(on: descriptor) }
 		listener.setCancelHandler { close(descriptor) }
 		listener.resume()

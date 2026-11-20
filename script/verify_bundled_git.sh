@@ -18,6 +18,6 @@ while IFS= read -r -d '' binary; do
 		done < <(otool -L "$binary" | awk '/compatibility version/ {print $1}')
 	fi
 done < <(find "$RUNTIME/bin" "$RUNTIME/libexec" -type f -print0)
-[[ -f "$RUNTIME/share/groves-source/Git-COPYING" ]]
-[[ -f "$RUNTIME/share/groves-source/git-2.55.0.tar.xz" ]]
+[[ -f "$RUNTIME/share/pluminon-source/Git-COPYING" ]]
+[[ -f "$RUNTIME/share/pluminon-source/git-2.55.0.tar.xz" ]]
 "$RUNTIME/bin/git" --version

@@ -21,12 +21,12 @@ if [[ ! -f "$ARCHIVE" ]]; then
 	mv "$ARCHIVE.partial" "$ARCHIVE"
 fi
 printf '%s  %s\n' "$SHA256" "$ARCHIVE" | shasum -a 256 -c -
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/groves-git-build.XXXXXX")"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pluminon-git-build.XXXXXX")"
 trap 'printf "Build workspace: %s\n" "$WORK_DIR"' EXIT
 tar -xf "$ARCHIVE" -C "$WORK_DIR"
 
 BUILD_OPTIONS=(
-	"prefix=/groves-git"
+	"prefix=/pluminon-git"
 	"CC=$(xcrun --find clang)"
 	"CFLAGS=-O2 -arch arm64 -arch x86_64 -isysroot $SDK -mmacosx-version-min=26.0"
 	"LDFLAGS=-arch arm64 -arch x86_64 -isysroot $SDK -mmacosx-version-min=26.0"
@@ -50,14 +50,14 @@ env -u CPATH -u LIBRARY_PATH -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH \
 	PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/make -C "$WORK_DIR/git-$VERSION" \
 	"${BUILD_OPTIONS[@]}" "DESTDIR=$WORK_DIR/stage" install
 
-STAGED_RUNTIME="$WORK_DIR/stage/groves-git"
-mkdir -p "$STAGED_RUNTIME/share/groves-source"
-cp "$ARCHIVE" "$STAGED_RUNTIME/share/groves-source/"
-cp "$0" "$STAGED_RUNTIME/share/groves-source/build_bundled_git.sh"
-cp "$ROOT_DIR/script/verify_bundled_git.sh" "$STAGED_RUNTIME/share/groves-source/"
-cp "$ROOT_DIR/script/embed_bundled_git.sh" "$STAGED_RUNTIME/share/groves-source/"
-cp "$WORK_DIR/git-$VERSION/COPYING" "$STAGED_RUNTIME/share/groves-source/Git-COPYING"
-cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$STAGED_RUNTIME/share/groves-source/"
+STAGED_RUNTIME="$WORK_DIR/stage/pluminon-git"
+mkdir -p "$STAGED_RUNTIME/share/pluminon-source"
+cp "$ARCHIVE" "$STAGED_RUNTIME/share/pluminon-source/"
+cp "$0" "$STAGED_RUNTIME/share/pluminon-source/build_bundled_git.sh"
+cp "$ROOT_DIR/script/verify_bundled_git.sh" "$STAGED_RUNTIME/share/pluminon-source/"
+cp "$ROOT_DIR/script/embed_bundled_git.sh" "$STAGED_RUNTIME/share/pluminon-source/"
+cp "$WORK_DIR/git-$VERSION/COPYING" "$STAGED_RUNTIME/share/pluminon-source/Git-COPYING"
+cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$STAGED_RUNTIME/share/pluminon-source/"
 "$ROOT_DIR/script/verify_bundled_git.sh" "$STAGED_RUNTIME"
 printf '%s\n' "$BUILD_KEY" > "$STAGED_RUNTIME/build-key"
 if [[ -e "$RUNTIME" ]]; then

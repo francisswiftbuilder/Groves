@@ -147,7 +147,7 @@ struct GitCredentialNoticeTests {
 	func testCredentialPersistenceFailureKeepsTheClonedRepository() async throws {
 		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
-		let sourceURL = try makeTemporaryRepository(name: "GrovesNoticeSource")
+		let sourceURL = try makeTemporaryRepository(name: "PluminonNoticeSource")
 		defer { try? FileManager.default.removeItem(at: sourceURL) }
 		let recorder = GitProcessNoticeRecorder()
 		let commitError = GitCredentialStoreError(operation: .copySecret, status: -25308)

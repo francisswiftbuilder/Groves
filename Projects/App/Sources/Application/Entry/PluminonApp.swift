@@ -3,15 +3,15 @@ import CoreGitCredential
 import SwiftUI
 
 @main
-struct GrovesApp: App {
-	@NSApplicationDelegateAdaptor(GrovesAppDelegate.self) private var appDelegate
+struct PluminonApp: App {
+	@NSApplicationDelegateAdaptor(PluminonAppDelegate.self) private var appDelegate
 
 	init() {
 		NSWindow.allowsAutomaticWindowTabbing = true
 	}
 
 	var body: some Scene {
-		WindowGroup(GrovesRuntimeConfiguration.displayName, id: "repository", for: UUID.self) {
+		WindowGroup(PluminonRuntimeConfiguration.displayName, id: "repository", for: UUID.self) {
 			$repositoryID in
 			AppDIContainer.shared.makeRepositoryRootView(repositoryID: $repositoryID)
 				.frame(minWidth: 760, minHeight: 520)
@@ -32,7 +32,7 @@ struct GrovesApp: App {
 		}
 
 		Settings {
-			GrovesSettingsView(accountViewModel: AppDIContainer.shared.accountViewModel)
+			PluminonSettingsView(accountViewModel: AppDIContainer.shared.accountViewModel)
 		}
 		.windowResizability(.contentSize)
 	}

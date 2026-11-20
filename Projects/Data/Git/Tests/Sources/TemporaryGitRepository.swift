@@ -1,7 +1,7 @@
 import DomainGitInterface
 import Foundation
 
-func makeTemporaryRepository(name: String = "GrovesProcessTests") throws -> URL {
+func makeTemporaryRepository(name: String = "PluminonProcessTests") throws -> URL {
 	let url = FileManager.default.temporaryDirectory
 		.appending(path: "\(name)-\(UUID().uuidString)", directoryHint: .isDirectory)
 	try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -9,7 +9,7 @@ func makeTemporaryRepository(name: String = "GrovesProcessTests") throws -> URL 
 	return url
 }
 
-func makeTemporaryDirectory(name: String = "GrovesProcessTestsDirectory") throws -> URL {
+func makeTemporaryDirectory(name: String = "PluminonProcessTestsDirectory") throws -> URL {
 	let url = FileManager.default.temporaryDirectory
 		.appending(path: "\(name)-\(UUID().uuidString)", directoryHint: .isDirectory)
 	try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

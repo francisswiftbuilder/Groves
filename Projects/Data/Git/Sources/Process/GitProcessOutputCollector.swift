@@ -12,7 +12,7 @@ final class GitProcessOutputCollector: @unchecked Sendable {
 		guard fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0 else {
 			throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
 		}
-		queue = DispatchQueue(label: "io.github.francisswiftbuilder.Groves.\(label)")
+		queue = DispatchQueue(label: "com.francisswiftbuilder.pluminon.\(label)")
 		source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
 		source.setEventHandler { [weak self] in
 			guard let self else { return }

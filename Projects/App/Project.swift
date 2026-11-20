@@ -2,6 +2,13 @@ import ConfigurationPlugin
 import ProjectDescription
 import ProjectDescriptionHelpers
 
+let appTarget: Target = {
+	var target: Target = .app
+	target.name = environment.name
+	return target
+}()
+let appReference = TargetReference.target(appTarget.name)
+
 let project = Project(
 	name: environment.name,
 	options: .options(
@@ -17,20 +24,20 @@ let project = Project(
 		configurations: ConfigurationType.configurations()
 	),
 	targets: [
-		.app,
+		appTarget,
 		.target(
-			name: GrovesProduct.askPassTargetName,
+			name: PluminonProduct.askPassTargetName,
 			destinations: environment.destinations,
 			product: .app,
-			productName: GrovesProduct.askPassTargetName,
+			productName: PluminonProduct.askPassTargetName,
 			bundleId: environment.organizationName + ".AskPass",
 			deploymentTargets: environment.deploymentTargets,
 			infoPlist: .extendingDefault(with: [
 				"LSUIElement": .boolean(true),
-				"GrovesDataNamespace": "$(GROVES_DATA_NAMESPACE)",
-				"GrovesCredentialNamespace": "$(GROVES_BUNDLE_IDENTIFIER)",
+				"PluminonDataNamespace": "$(PLUMINON_DATA_NAMESPACE)",
+				"PluminonCredentialNamespace": "$(PLUMINON_BUNDLE_IDENTIFIER)",
 			]),
-			sources: GrovesProduct.askPassSources,
+			sources: PluminonProduct.askPassSources,
 			entitlements: Permissions.appEntitlements,
 			dependencies: [
 				.core(implements: .gitCredential)
@@ -38,26 +45,32 @@ let project = Project(
 			settings: askPassSettings
 		),
 		.target(
-			name: GrovesProduct.appTestsTargetName,
+			name: PluminonProduct.appTestsTargetName,
 			destinations: environment.destinations,
 			product: .unitTests,
-			productName: GrovesProduct.appTestsTargetName,
+			productName: PluminonProduct.appTestsTargetName,
 			bundleId: environment.organizationName + ".AppTests",
 			deploymentTargets: environment.deploymentTargets,
 			infoPlist: .default,
-			sources: GrovesProduct.appTestsSources,
+			sources: PluminonProduct.appTestsSources,
 			dependencies: .appTestsDependencies,
 			settings: appTestsSettings
 		),
 	],
 	schemes: [
-		.appScheme,
 		.scheme(
-			name: GrovesProduct.appTestsTargetName,
+			name: environment.name,
 			shared: true,
-			buildAction: .buildAction(targets: [.target(GrovesProduct.appTestsTargetName)]),
+			buildAction: .buildAction(targets: [appReference]),
+			runAction: .runAction(configuration: .debug, executable: appReference),
+			archiveAction: .appArchiveAction
+		),
+		.scheme(
+			name: PluminonProduct.appTestsTargetName,
+			shared: true,
+			buildAction: .buildAction(targets: [.target(PluminonProduct.appTestsTargetName)]),
 			testAction: .targets(
-				[.testableTarget(target: .target(GrovesProduct.appTestsTargetName))],
+				[.testableTarget(target: .target(PluminonProduct.appTestsTargetName))],
 				configuration: .debug,
 				options: .options(coverage: true)
 			)

@@ -14,7 +14,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 			.domain(interface: .git),
 			.domain(implements: .git),
 			.data(implements: .git),
-			.target(name: GrovesProduct.askPassTargetName),
+			.target(name: PluminonProduct.askPassTargetName),
 		]
 	}
 
@@ -22,7 +22,7 @@ extension Array: TargetDependencies where Element == TargetDependency {
 	// leaves those symbols out. Declare every module the tests import.
 	public static var appTestsDependencies: [TargetDependency] {
 		[
-			.target(name: Module.App.name),
+			.target(name: environment.name),
 			.core(implements: .repositoryDiff),
 			.feature(implements: .repositoryChanges),
 			.feature(implements: .repositoryHistory),

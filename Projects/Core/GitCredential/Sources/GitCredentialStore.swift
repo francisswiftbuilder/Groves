@@ -14,7 +14,7 @@ public final class GitCredentialStore: GitCredentialPersisting, Sendable {
 		let updatedAt: Date?
 	}
 
-	private static let accessGroupSuffix = "io.github.francisswiftbuilder.Groves.GitCredential"
+	private static let accessGroupSuffix = "com.francisswiftbuilder.pluminon.GitCredential"
 	private static let stalePendingAge: TimeInterval = 24 * 60 * 60
 
 	private let service: String
@@ -25,7 +25,7 @@ public final class GitCredentialStore: GitCredentialPersisting, Sendable {
 	private let diagnosticHandler: @Sendable (GitCredentialStoreError) -> Void
 
 	public convenience init(
-		service: String = GrovesRuntimeConfiguration.credentialNamespace + ".GitCredential.Isolated"
+		service: String = PluminonRuntimeConfiguration.credentialNamespace + ".GitCredential.Isolated"
 	) {
 		self.init(
 			service: service,

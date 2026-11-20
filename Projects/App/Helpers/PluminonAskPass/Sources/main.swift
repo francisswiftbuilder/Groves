@@ -2,7 +2,7 @@ import CoreGitCredential
 import Foundation
 
 let status = MainActor.assumeIsolated {
-	GrovesAskPassApplication(
+	PluminonAskPassApplication(
 		makePresenter: { AppKitAskPassPromptPresenter(parentProcessIdentifier: $0) }
 	).run(
 		arguments: Array(CommandLine.arguments.dropFirst()),

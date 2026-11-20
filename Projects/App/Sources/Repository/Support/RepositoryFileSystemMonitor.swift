@@ -23,7 +23,7 @@ final class RepositoryFileSystemMonitor: @unchecked Sendable {
 	static func events(
 		at repositoryURL: URL,
 		queue: DispatchQueue = DispatchQueue(
-			label: "dev.groves.repository-file-system-monitor",
+			label: "dev.pluminon.repository-file-system-monitor",
 			qos: .utility
 		)
 	) -> AsyncStream<[String]> {
