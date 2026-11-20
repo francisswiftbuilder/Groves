@@ -261,7 +261,7 @@ public struct DefaultRepositoryReferencesUseCase: RepositoryReferencesUseCase {
 			throw CancellationError()
 		} catch {
 			throw GitRepositoryError.commandFailed(
-				"Push succeeded, but Groves couldn’t refresh this repository.\n\n\(error.localizedDescription)"
+				"Push succeeded, but Pluminon couldn’t refresh this repository.\n\n\(error.localizedDescription)"
 			)
 		}
 	}

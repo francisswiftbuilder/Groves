@@ -16,12 +16,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${2:-$ROOT_DIR/dist}"
 BUILD_NUMBER="${3:-1}"
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/groves-release.XXXXXX")"
-ARCHIVE_PATH="$WORK_DIR/Groves.xcarchive"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pluminon-release.XXXXXX")"
+ARCHIVE_PATH="$WORK_DIR/Pluminon.xcarchive"
 STAGING_DIR="$WORK_DIR/staging"
-APP_BUNDLE="$STAGING_DIR/Groves.app"
-HELPER_BUNDLE="$APP_BUNDLE/Contents/Helpers/GrovesAskPass.app"
-DMG_NAME="Groves-$VERSION.dmg"
+APP_BUNDLE="$STAGING_DIR/Pluminon.app"
+HELPER_BUNDLE="$APP_BUNDLE/Contents/Helpers/PluminonAskPass.app"
+DMG_NAME="Pluminon-$VERSION.dmg"
 DMG_PATH="$OUTPUT_DIR/$DMG_NAME"
 CHECKSUM_PATH="$DMG_PATH.sha256"
 
@@ -36,8 +36,8 @@ mkdir -p "$OUTPUT_DIR" "$STAGING_DIR"
 "$ROOT_DIR/script/build_bundled_git.sh"
 
 xcodebuild archive \
-	-workspace "$ROOT_DIR/Groves.xcworkspace" \
-	-scheme App \
+	-workspace "$ROOT_DIR/Pluminon.xcworkspace" \
+	-scheme Pluminon \
 	-configuration Release \
 	-destination 'generic/platform=macOS' \
 	-archivePath "$ARCHIVE_PATH" \
@@ -45,7 +45,7 @@ xcodebuild archive \
 	ENABLE_USER_SCRIPT_SANDBOXING=NO \
 	COMPILER_INDEX_STORE_ENABLE=NO
 
-/usr/bin/ditto "$ARCHIVE_PATH/Products/Applications/Groves.app" "$APP_BUNDLE"
+/usr/bin/ditto "$ARCHIVE_PATH/Products/Applications/Pluminon.app" "$APP_BUNDLE"
 /usr/bin/plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP_BUNDLE/Contents/Info.plist"
 /usr/bin/plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$APP_BUNDLE/Contents/Info.plist"
 "$ROOT_DIR/script/verify_bundled_git.sh" "$APP_BUNDLE/Contents/Resources/Git"
@@ -56,7 +56,7 @@ xcodebuild archive \
 
 /bin/ln -s /Applications "$STAGING_DIR/Applications"
 /usr/bin/hdiutil create \
-	-volname Groves \
+	-volname Pluminon \
 	-srcfolder "$STAGING_DIR" \
 	-format UDZO \
 	-ov \

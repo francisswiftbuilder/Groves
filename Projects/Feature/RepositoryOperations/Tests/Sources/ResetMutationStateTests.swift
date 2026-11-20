@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct ResetMutationStateTests {
 	private final class Location {
-		var url = URL(fileURLWithPath: "/tmp/GrovesOriginal")
+		var url = URL(fileURLWithPath: "/tmp/PluminonOriginal")
 	}
 
 	private actor Recorder {
@@ -34,7 +34,7 @@ struct ResetMutationStateTests {
 		model.resetMode = mode
 		if mode == .hard { model.didConfirmReset() }
 		model.reset()
-		location.url = URL(fileURLWithPath: "/tmp/GrovesReplacement")
+		location.url = URL(fileURLWithPath: "/tmp/PluminonReplacement")
 		model.apply(snapshot())
 		model.didConfirmReset()
 		model.didConfirmPendingConfirmation()
@@ -63,7 +63,7 @@ struct ResetMutationStateTests {
 		model.resetMode = .hard
 		model.didConfirmReset()
 		if change == "repository" {
-			location.url = URL(fileURLWithPath: "/tmp/GrovesReplacement")
+			location.url = URL(fileURLWithPath: "/tmp/PluminonReplacement")
 		} else {
 			model.apply(
 				snapshot(
@@ -165,7 +165,7 @@ struct ResetMutationStateTests {
 		model.didConfirmReset()
 		try await gate.waitForRequests(1)
 		model.reset()
-		location.url = URL(fileURLWithPath: "/tmp/GrovesReplacement")
+		location.url = URL(fileURLWithPath: "/tmp/PluminonReplacement")
 		await gate.resume(0, with: .success(snapshot()))
 		try await Task.sleep(for: .milliseconds(30))
 

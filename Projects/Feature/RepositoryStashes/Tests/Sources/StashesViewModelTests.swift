@@ -187,7 +187,7 @@ struct StashesViewModelTests {
 			dependencies: StashesViewModel.Dependencies(
 				useCase: useCase,
 				preferences: WorkspaceDiffPreferences(),
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 			),
 			actions: StashesViewModel.Actions(
 				didProduceSnapshot: { _ in },

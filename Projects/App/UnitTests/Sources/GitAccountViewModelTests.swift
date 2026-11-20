@@ -4,7 +4,7 @@ import Synchronization
 import Testing
 
 @testable import CoreGitCredential
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 struct GitAccountViewModelTests {
@@ -533,14 +533,14 @@ struct GitAccountViewModelTests {
 	}
 
 	private func makeContext() throws -> Context {
-		let identifier = "Groves.Account.Tests.\(UUID().uuidString)"
+		let identifier = "Pluminon.Account.Tests.\(UUID().uuidString)"
 		let directoryURL = FileManager.default.temporaryDirectory.appending(path: identifier)
 		let configurationURL = directoryURL.appending(path: "config")
 		let defaults = try #require(UserDefaults(suiteName: identifier))
 		let store = GitCredentialStore(
 			service: identifier,
 			securityClient: SecurityClientStub(),
-			accessGroupResolver: { "TESTTEAM.Groves.Account.Tests" }
+			accessGroupResolver: { "TESTTEAM.Pluminon.Account.Tests" }
 		)
 		let sessionConfiguration = URLSessionConfiguration.ephemeral
 		sessionConfiguration.protocolClasses = [AuthenticationURLProtocol.self]

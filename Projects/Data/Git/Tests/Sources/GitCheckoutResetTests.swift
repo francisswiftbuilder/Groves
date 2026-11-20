@@ -398,7 +398,7 @@ struct GitCheckoutResetTests {
 
 	private func makeContext() async throws -> Context {
 		let url = FileManager.default.temporaryDirectory.appending(
-			path: "GrovesCheckoutReset-\(UUID().uuidString)")
+			path: "PluminonCheckoutReset-\(UUID().uuidString)")
 		try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 		let identity = url.appending(path: ".git/app.config")
 		let runner = GitProcessRunner(

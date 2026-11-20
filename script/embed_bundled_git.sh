@@ -10,7 +10,7 @@ if [[ "$APP_BUNDLE" != *.app || ! -d "$APP_BUNDLE/Contents" ]]; then
 	exit 1
 fi
 if [[ ! -x "$RUNTIME/bin/git" ]]; then
-	printf 'Bundled Git is missing. Run make bundled-git before building Groves.\n' >&2
+	printf 'Bundled Git is missing. Run make bundled-git before building Pluminon.\n' >&2
 	exit 1
 fi
 for previous in "$DESTINATION" "$APP_BUNDLE/Contents/Helpers/Git"; do

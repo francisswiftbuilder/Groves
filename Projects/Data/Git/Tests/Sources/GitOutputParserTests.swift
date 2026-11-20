@@ -9,7 +9,7 @@ struct GitOutputParserTests {
 	func testCloneRepositoryCreatesRepositoryInSelectedDirectory() async throws {
 		let sourceRepositoryURL = try makeRepository()
 		let destinationDirectoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesCloneTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonCloneTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: destinationDirectoryURL,
 			withIntermediateDirectories: true
@@ -774,7 +774,7 @@ struct GitOutputParserTests {
 			try? FileManager.default.removeItem(at: repositoryURL)
 		}
 		try requestRunGit(
-			["remote", "add", "origin", "https://example.com/Groves.git"],
+			["remote", "add", "origin", "https://example.com/Pluminon.git"],
 			at: repositoryURL
 		)
 		let head = try requestGitOutput(["rev-parse", "HEAD"], at: repositoryURL)
@@ -837,9 +837,9 @@ struct GitOutputParserTests {
 	func testSetUpstreamPushAndFetchReportAheadAndBehindCounts() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesRemoteTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(path: "PluminonRemoteTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		let peerURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesPeerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonPeerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -856,7 +856,7 @@ struct GitOutputParserTests {
 			at: repositoryURL
 		)
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Groves Peer"], at: peerURL)
+		try requestRunGit(["config", "user.name", "Pluminon Peer"], at: peerURL)
 		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
 		try Data("remote".utf8).write(to: peerURL.appending(path: "remote.txt"))
 		try requestRunGit(["add", "remote.txt"], at: peerURL)
@@ -879,9 +879,9 @@ struct GitOutputParserTests {
 	func testPreparePullHandlesUpToDateAheadFastForwardAndDivergence() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesPullTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(path: "PluminonPullTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		let peerURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesPullPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonPullPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -912,7 +912,7 @@ struct GitOutputParserTests {
 		try await repository.requestPush(.upstream(), at: repositoryURL)
 
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Groves Peer"], at: peerURL)
+		try requestRunGit(["config", "user.name", "Pluminon Peer"], at: peerURL)
 		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
 		try Data("remote-behind".utf8).write(to: peerURL.appending(path: "remote-behind.txt"))
 		try requestRunGit(["add", "remote-behind.txt"], at: peerURL)
@@ -974,7 +974,8 @@ struct GitOutputParserTests {
 	func testForcePushWithLeaseReplacesKnownRemoteHistory() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesForcePushTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(
+				path: "PluminonForcePushTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -1017,7 +1018,8 @@ struct GitOutputParserTests {
 	func testPushTagsPublishesLocalTagsToRemote() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesPushTagsTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(
+				path: "PluminonPushTagsTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -1041,9 +1043,10 @@ struct GitOutputParserTests {
 	func testFetchAllUpdatesRemoteTrackingReferences() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesFetchAllTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
+			.appending(
+				path: "PluminonFetchAllTests-\(UUID().uuidString).git", directoryHint: .isDirectory)
 		let peerURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesFetchAllPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonFetchAllPeer-\(UUID().uuidString)", directoryHint: .isDirectory)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -1059,7 +1062,7 @@ struct GitOutputParserTests {
 			at: repositoryURL
 		)
 		try requestRunGit(["clone", "--quiet", remoteURL.path, peerURL.path], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Groves Peer"], at: peerURL)
+		try requestRunGit(["config", "user.name", "Pluminon Peer"], at: peerURL)
 		try requestRunGit(["config", "user.email", "peer@example.com"], at: peerURL)
 		try Data("remote".utf8).write(to: peerURL.appending(path: "remote.txt"))
 		try requestRunGit(["add", "remote.txt"], at: peerURL)
@@ -1395,7 +1398,7 @@ struct GitOutputParserTests {
 	func testRemoteBranchDeleteRemovesBranchFromRemote() async throws {
 		let repositoryURL = try makeRepository()
 		let remoteURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesRemoteDelete-\(UUID().uuidString).git")
+			.appending(path: "PluminonRemoteDelete-\(UUID().uuidString).git")
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
 			try? FileManager.default.removeItem(at: remoteURL)
@@ -1726,14 +1729,14 @@ struct GitOutputParserTests {
 
 	private func makeRepository() throws -> URL {
 		let repositoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesDiscardTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonDiscardTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: repositoryURL,
 			withIntermediateDirectories: true
 		)
 		try requestRunGit(["init", "--quiet"], at: repositoryURL)
-		try requestRunGit(["config", "user.name", "Groves Tests"], at: repositoryURL)
-		try requestRunGit(["config", "user.email", "groves@example.com"], at: repositoryURL)
+		try requestRunGit(["config", "user.name", "Pluminon Tests"], at: repositoryURL)
+		try requestRunGit(["config", "user.email", "pluminon@example.com"], at: repositoryURL)
 		try Data("original".utf8).write(to: repositoryURL.appending(path: "tracked.txt"))
 		try requestRunGit(["add", "tracked.txt"], at: repositoryURL)
 		try requestRunGit(["commit", "--quiet", "-m", "Initial commit"], at: repositoryURL)

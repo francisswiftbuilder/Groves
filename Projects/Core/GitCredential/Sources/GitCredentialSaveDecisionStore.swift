@@ -4,7 +4,7 @@ public final class GitCredentialSaveDecisionStore: @unchecked Sendable {
 	private let defaults: UserDefaults
 
 	public init(
-		suiteName: String = GrovesRuntimeConfiguration.credentialNamespace + ".GitCredential"
+		suiteName: String = PluminonRuntimeConfiguration.credentialNamespace + ".GitCredential"
 	) {
 		defaults = UserDefaults(suiteName: suiteName) ?? .standard
 	}

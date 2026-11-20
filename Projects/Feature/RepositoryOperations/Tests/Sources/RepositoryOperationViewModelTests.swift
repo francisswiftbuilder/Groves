@@ -116,7 +116,7 @@ struct RepositoryOperationViewModelTests {
 					dependencies: .init(
 						contentUseCase: OperationsContentUseCaseStub(snapshotOperation: { _ in snapshot }),
 						referencesUseCase: referencesUseCase,
-						repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+						repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 					),
 					actions: .init(
 						didProduceSnapshot: { _ in
@@ -264,7 +264,7 @@ struct RepositoryOperationViewModelTests {
 					dependencies: RepositorySyncViewModel.Dependencies(
 						contentUseCase: OperationsContentUseCaseStub(),
 						referencesUseCase: referencesUseCase,
-						repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+						repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 					),
 					actions: RepositorySyncViewModel.Actions(
 						didProduceSnapshot: { _ in },
@@ -317,7 +317,7 @@ struct RepositoryOperationViewModelTests {
 					dependencies: RepositorySyncViewModel.Dependencies(
 						contentUseCase: OperationsContentUseCaseStub(),
 						referencesUseCase: referencesUseCase,
-						repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+						repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 					),
 					actions: RepositorySyncViewModel.Actions(
 						didProduceSnapshot: { _ in },
@@ -367,7 +367,7 @@ struct RepositoryOperationViewModelTests {
 				dependencies: RepositorySyncViewModel.Dependencies(
 					contentUseCase: OperationsContentUseCaseStub(),
 					referencesUseCase: referencesUseCase,
-					repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+					repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 				),
 				actions: RepositorySyncViewModel.Actions(
 					didProduceSnapshot: { _ in completed() },
@@ -410,7 +410,7 @@ struct RepositoryOperationViewModelTests {
 			dependencies: RepositorySyncViewModel.Dependencies(
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: useCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 			),
 			actions: RepositorySyncViewModel.Actions(
 				didProduceSnapshot: { _ in },
@@ -609,7 +609,7 @@ struct RepositoryOperationViewModelTests {
 				contentUseCase: OperationsContentUseCaseStub(),
 				referencesUseCase: OperationsReferencesUseCaseStub(),
 				operationsUseCase: nil,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") }
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") }
 			),
 			actions: RepositoryOperationViewModel.Actions(
 				didProduceSnapshot: { _ in },
@@ -632,7 +632,7 @@ struct RepositoryOperationViewModelTests {
 			dependencies: .init(
 				contentUseCase: contentUseCase,
 				referencesUseCase: referencesUseCase,
-				repositoryURL: { URL(fileURLWithPath: "/tmp/Groves") },
+				repositoryURL: { URL(fileURLWithPath: "/tmp/Pluminon") },
 				canAutomaticallyFetch: canAutomaticallyFetch,
 				automaticFetchInterval: automaticFetchInterval
 			),
@@ -689,7 +689,7 @@ struct RepositoryOperationViewModelTests {
 			hash: "abc123456789",
 			shortHash: "abc1234",
 			parentHashes: [],
-			author: "Groves",
+			author: "Pluminon",
 			date: .distantPast,
 			references: [],
 			subject: "Commit",

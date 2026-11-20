@@ -35,7 +35,7 @@ struct ConflictViewModelTests {
 		let conflict = makeConflict()
 		let displayed = GitConflictContent(
 			base: "base", current: "current", incoming: "incoming", workingTree: "reviewed", hunks: [])
-		let repository = URL(fileURLWithPath: "/tmp/GrovesConflict")
+		let repository = URL(fileURLWithPath: "/tmp/PluminonConflict")
 		let snapshot = RepositorySnapshot(
 			changes: [], amendChanges: [], commits: [], branches: [], remotes: [],
 			operationState: .normal, tags: [], stashes: [], fileTree: [])
@@ -116,7 +116,7 @@ struct ConflictViewModelTests {
 
 	private func makeRepositoryDirectory() throws -> URL {
 		let repositoryURL = FileManager.default.temporaryDirectory.appending(
-			path: "GrovesConflictEditor-\(UUID().uuidString)",
+			path: "PluminonConflictEditor-\(UUID().uuidString)",
 			directoryHint: .isDirectory
 		)
 		try FileManager.default.createDirectory(
@@ -150,7 +150,7 @@ struct ConflictViewModelTests {
 
 	private func makeViewModel(
 		operationsUseCase: ConflictOperationsUseCaseStub = ConflictOperationsUseCaseStub(),
-		repositoryURL: URL = URL(fileURLWithPath: "/tmp/Groves"),
+		repositoryURL: URL = URL(fileURLWithPath: "/tmp/Pluminon"),
 		openExternalEditor: (@MainActor (URL, String?) throws -> Void)? = nil,
 		externalEditorBundleIdentifier: @escaping @MainActor () -> String? = { nil },
 		didReceiveError: @escaping @MainActor (String) -> Void = { _ in },

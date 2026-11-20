@@ -1,3 +1,4 @@
-GROVES_APP_NAME = Groves Dev
-GROVES_BUNDLE_IDENTIFIER = io.github.francisswiftbuilder.Groves.dev
-GROVES_DATA_NAMESPACE = Groves Dev
+PLUMINON_DISPLAY_NAME = Pluminon Dev
+PLUMINON_PRODUCT_NAME = Pluminon Dev
+PLUMINON_BUNDLE_IDENTIFIER = com.francisswiftbuilder.pluminon.dev
+PLUMINON_DATA_NAMESPACE = Pluminon Dev

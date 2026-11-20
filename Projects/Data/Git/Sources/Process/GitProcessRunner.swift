@@ -34,11 +34,11 @@ actor GitProcessRunner {
 		try Task.checkCancellation()
 		guard FileManager.default.isExecutableFile(atPath: configuration.executableURL.path) else {
 			throw GitRepositoryError.commandFailed(
-				"Groves Git runtime is missing. Reinstall Groves or rebuild its bundled Git runtime.")
+				"Pluminon Git runtime is missing. Reinstall Pluminon or rebuild its bundled Git runtime.")
 		}
 		if configuration.globalConfigurationURL != nil, requiresSSHTrustScope {
 			throw GitRepositoryError.authentication(
-				"Groves uses separate HTTPS credentials. Change this remote to its HTTPS URL, then connect your account in Settings."
+				"Pluminon uses separate HTTPS credentials. Change this remote to its HTTPS URL, then connect your account in Settings."
 			)
 		}
 		let operationID = UUID().uuidString
@@ -123,8 +123,8 @@ actor GitProcessRunner {
 		process.arguments =
 			[
 				"-c",
-				"export GROVES_PARENT_PROCESS_IDENTIFIER=$$; exec /usr/bin/env \"$@\"",
-				"GrovesGit",
+				"export PLUMINON_PARENT_PROCESS_IDENTIFIER=$$; exec /usr/bin/env \"$@\"",
+				"PluminonGit",
 			]
 			+ gitArguments(
 				arguments,
@@ -168,7 +168,7 @@ actor GitProcessRunner {
 		try Task.checkCancellation()
 
 		guard acceptedTerminationStatuses.contains(output.terminationStatus) else {
-			if standardError.contains("GROVES_ASKPASS_CANCELLED") {
+			if standardError.contains("PLUMINON_ASKPASS_CANCELLED") {
 				throw CancellationError()
 			}
 			throw repositoryError(for: standardError)
@@ -216,13 +216,13 @@ actor GitProcessRunner {
 				let context = String(key[key.index(after: firstDot)..<lastDot])
 				guard !GitRemoteURLValidator.containsEmbeddedCredential(context) else {
 					throw GitRepositoryError.authentication(
-						"Repository authentication settings contain embedded credentials. Use your Groves account with an HTTPS remote URL."
+						"Repository authentication settings contain embedded credentials. Use your Pluminon account with an HTTPS remote URL."
 					)
 				}
 			}
 			if baseKey == "http.sslcert" || baseKey == "http.sslkey" {
 				throw GitRepositoryError.authentication(
-					"Repository-configured TLS client certificates cannot be used with Groves account isolation. Use an HTTPS remote with your Groves account."
+					"Repository-configured TLS client certificates cannot be used with Pluminon account isolation. Use an HTTPS remote with your Pluminon account."
 				)
 			}
 			if let value = overrides[baseKey] {
@@ -278,10 +278,10 @@ actor GitProcessRunner {
 		allowsUserInteraction: Bool
 	) -> [String: String] {
 		var result = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
-		result["GROVES_CREDENTIAL_SOCKET"] = nil
+		result["PLUMINON_CREDENTIAL_SOCKET"] = nil
 		if let configurationURL = configuration.globalConfigurationURL {
 			result = result.filter { key, _ in
-				!key.hasPrefix("GIT_") && !key.hasPrefix("GROVES_") && !key.hasPrefix("SSH_")
+				!key.hasPrefix("GIT_") && !key.hasPrefix("PLUMINON_") && !key.hasPrefix("SSH_")
 					&& !key.hasPrefix("DYLD_")
 			}
 			for (key, value) in environment
@@ -318,11 +318,11 @@ actor GitProcessRunner {
 			result["GIT_HTTP_LOW_SPEED_TIME"] = String(Int(policy.lowSpeedTime))
 			result["GIT_TERMINAL_PROMPT"] = "0"
 			if let helperURL = configuration.askPassHelperURL {
-				result["GROVES_CREDENTIAL_SOCKET"] = credentialSocketPath
+				result["PLUMINON_CREDENTIAL_SOCKET"] = credentialSocketPath
 				result["GIT_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS"] = helperURL.path
 				result["SSH_ASKPASS_REQUIRE"] = "force"
-				result["GROVES_OPERATION_IDENTIFIER"] = operationID
+				result["PLUMINON_OPERATION_IDENTIFIER"] = operationID
 			}
 			if !allowsUserInteraction {
 				result["GIT_ASKPASS"] = "/usr/bin/false"
@@ -482,13 +482,13 @@ actor GitProcessRunner {
 				|| lowercasedMessage.contains("unable to auto-detect email")
 			{
 				return .commandFailed(
-					"Set your commit name and email in Groves Settings → Accounts, then retry.")
+					"Set your commit name and email in Pluminon Settings → Accounts, then retry.")
 			}
 			if lowercasedMessage.contains("transport")
 				&& lowercasedMessage.contains("not allowed")
 			{
 				return .authentication(
-					"This remote transport is not available in Groves. Use an HTTPS remote URL and connect your account in Settings."
+					"This remote transport is not available in Pluminon. Use an HTTPS remote URL and connect your account in Settings."
 				)
 			}
 		}
@@ -504,26 +504,26 @@ actor GitProcessRunner {
 		{
 			return .timeout
 		}
-		if lowercasedMessage.contains("grovesaskpass")
+		if lowercasedMessage.contains("pluminonaskpass")
 			&& lowercasedMessage.contains("died of signal")
 		{
 			return .commandFailed(
-				"The Groves authentication helper was terminated before authentication could complete. Rebuild or reinstall Groves and verify the helper's code signing and provisioning profile.\n\n\(message)"
+				"The Pluminon authentication helper was terminated before authentication could complete. Rebuild or reinstall Pluminon and verify the helper's code signing and provisioning profile.\n\n\(message)"
 			)
 		}
 		if lowercasedMessage.contains("stage=account-selection") {
 			return .authentication(
-				"Groves could not use the active GitHub account. Choose or reconnect an account in Settings → Accounts, then retry.\n\n\(message)"
+				"Pluminon could not use the active GitHub account. Choose or reconnect an account in Settings → Accounts, then retry.\n\n\(message)"
 			)
 		}
 		if lowercasedMessage.contains("stage=credential-broker") {
 			return .authentication(
-				"The local authentication helper could not connect securely to Groves. Keep Groves open and retry the Git operation.\n\n\(message)"
+				"The local authentication helper could not connect securely to Pluminon. Keep Pluminon open and retry the Git operation.\n\n\(message)"
 			)
 		}
-		if lowercasedMessage.contains("groves authentication helper failed") {
+		if lowercasedMessage.contains("pluminon authentication helper failed") {
 			return .authentication(
-				"Groves could not read the saved account from Keychain. Check whether macOS is asking to allow Groves access to its saved credential, then retry.\n\n\(message)"
+				"Pluminon could not read the saved account from Keychain. Check whether macOS is asking to allow Pluminon access to its saved credential, then retry.\n\n\(message)"
 			)
 		}
 		if configuration.globalConfigurationURL != nil {

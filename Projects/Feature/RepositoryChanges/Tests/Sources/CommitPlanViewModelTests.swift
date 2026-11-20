@@ -419,7 +419,7 @@ struct CommitPlanViewModelTests {
 	private func makeViewModel(
 		useCase: UseCase,
 		repositoryURL: @escaping @MainActor () -> URL? = {
-			URL(fileURLWithPath: "/tmp/GrovesCommitPlanTests")
+			URL(fileURLWithPath: "/tmp/PluminonCommitPlanTests")
 		}
 	) -> CommitPlanViewModel {
 		let snapshot = snapshot()

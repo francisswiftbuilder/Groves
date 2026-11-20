@@ -75,7 +75,7 @@ struct ResetCommitSheet: View {
 			hash: String(repeating: "a", count: 40),
 			shortHash: "a1b2c3d",
 			parentHashes: [],
-			author: "Groves Developer",
+			author: "Pluminon Developer",
 			date: .now,
 			references: ["HEAD -> main"],
 			subject: "Improve repository operations",

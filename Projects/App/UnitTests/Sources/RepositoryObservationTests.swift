@@ -6,7 +6,7 @@ import SwiftUI
 import Testing
 
 @testable import FeatureRepositoryHistory
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 struct RepositoryObservationTests {
@@ -16,7 +16,7 @@ struct RepositoryObservationTests {
 		defer { workspace.onDisappear() }
 		let model = workspace.historyViewModel
 		let commit = GitCommit(
-			hash: "1234567890abcdef", shortHash: "1234567", parentHashes: [], author: "Groves",
+			hash: "1234567890abcdef", shortHash: "1234567", parentHashes: [], author: "Pluminon",
 			date: .distantPast, references: [], subject: "Preview selection", body: "")
 		model.apply(makeSnapshot(commits: [commit]))
 		for _ in 0..<200 {
@@ -39,7 +39,7 @@ struct RepositoryObservationTests {
 		let search = RepositorySearchViewModel()
 		let history = HistoryView(
 			diffSearchViewModel: search, historyViewModel: model,
-			diffPreferences: workspace.diffPreferences, repositoryName: "Groves",
+			diffPreferences: workspace.diffPreferences, repositoryName: "Pluminon",
 			currentBranchStatus: "main", operationState: .normal, isOperationLoading: false,
 			canCheckoutCommit: true, remoteNames: [],
 			commitActions: RepositoryCommitActions(
@@ -144,7 +144,7 @@ struct RepositoryObservationTests {
 	@Test
 	func testFocusedActionsObserveCommitSelection() async throws {
 		let commit = GitCommit(
-			hash: "1234567890abcdef", shortHash: "1234567", parentHashes: [], author: "Groves",
+			hash: "1234567890abcdef", shortHash: "1234567", parentHashes: [], author: "Pluminon",
 			date: .distantPast, references: [], subject: "Observe commit selection", body: ""
 		)
 		let workspace = makeRepositoryWorkspace()

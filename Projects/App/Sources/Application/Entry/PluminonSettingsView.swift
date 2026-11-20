@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct GrovesSettingsView: View {
-	@State private var selectedTab = GrovesSettingsTab.general
+struct PluminonSettingsView: View {
+	@State private var selectedTab = PluminonSettingsTab.general
 	private let accountViewModel: GitAccountViewModel
 
 	init(accountViewModel: GitAccountViewModel) {
@@ -10,10 +10,10 @@ struct GrovesSettingsView: View {
 
 	var body: some View {
 		TabView(selection: $selectedTab) {
-			Tab("General", systemImage: "gearshape", value: GrovesSettingsTab.general) {
+			Tab("General", systemImage: "gearshape", value: PluminonSettingsTab.general) {
 				GeneralSettingsView(accountViewModel: accountViewModel)
 			}
-			Tab("Accounts", systemImage: "person.crop.circle", value: GrovesSettingsTab.accounts) {
+			Tab("Accounts", systemImage: "person.crop.circle", value: PluminonSettingsTab.accounts) {
 				GitAccountSetupView(viewModel: accountViewModel, isOnboarding: false)
 			}
 		}
@@ -23,5 +23,5 @@ struct GrovesSettingsView: View {
 }
 
 #Preview {
-	GrovesSettingsView(accountViewModel: GitAccountViewModel())
+	PluminonSettingsView(accountViewModel: GitAccountViewModel())
 }

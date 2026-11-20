@@ -1,12 +1,12 @@
 import ProjectDescription
 
-public enum GrovesProduct {
-	public static let askPassTargetName = "GrovesAskPass"
+public enum PluminonProduct {
+	public static let askPassTargetName = "PluminonAskPass"
 	public static let askPassSources: SourceFilesList = .paths([
-		.relativeToRoot("Projects/App/Helpers/GrovesAskPass/Sources/**")
+		.relativeToRoot("Projects/App/Helpers/PluminonAskPass/Sources/**")
 	])
 	public static let askPassExecutableRelativePath =
-		"Contents/Helpers/GrovesAskPass.app/Contents/MacOS/GrovesAskPass"
+		"Contents/Helpers/PluminonAskPass.app/Contents/MacOS/PluminonAskPass"
 	// The App layer owns no generated Tests target: the module generator would name it after the
 	// app itself, so the unit tests live in a directory it does not scan and are declared by hand.
 	public static let appTestsTargetName = "AppTests"

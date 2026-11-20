@@ -282,7 +282,7 @@ struct CommitViewModelTests {
 	private func makeViewModel(
 		contentUseCase: ChangesContentUseCaseStub = ChangesContentUseCaseStub(),
 		changesUseCase: ChangesUseCaseStub = ChangesUseCaseStub(),
-		repositoryURL: @escaping @MainActor () -> URL? = { URL(fileURLWithPath: "/tmp/Groves") },
+		repositoryURL: @escaping @MainActor () -> URL? = { URL(fileURLWithPath: "/tmp/Pluminon") },
 		didProduceSnapshot: @escaping @MainActor (RepositorySnapshot) -> Void = { _ in },
 		didReceiveError: @escaping @MainActor (String) -> Void = { _ in }
 	) -> CommitViewModel {
@@ -323,7 +323,7 @@ struct CommitViewModelTests {
 			hash: "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
 			shortHash: "abcdefa",
 			parentHashes: [],
-			author: "Groves",
+			author: "Pluminon",
 			date: .distantPast,
 			references: ["HEAD"],
 			subject: "Current commit",

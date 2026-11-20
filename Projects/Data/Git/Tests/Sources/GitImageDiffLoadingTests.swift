@@ -8,7 +8,7 @@ struct GitImageDiffLoadingTests {
 	@Test
 	func testRequestImageDiffRejectsOversizedWorkingTreeAndIndexData() async throws {
 		let repositoryURL = try makeTemporaryRepository(
-			name: "GrovesImageDiffLoadingTests"
+			name: "PluminonImageDiffLoadingTests"
 		)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)

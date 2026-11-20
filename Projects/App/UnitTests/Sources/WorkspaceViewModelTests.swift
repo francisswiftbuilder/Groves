@@ -10,7 +10,7 @@ import Testing
 @testable import FeatureRepositoryOperations
 @testable import FeatureRepositoryStashes
 @testable import FeatureRepositoryTree
-@testable import Groves
+@testable import Pluminon
 
 @MainActor
 @Suite(.serialized)
@@ -18,7 +18,7 @@ struct WorkspaceViewModelTests {
 	@Test
 	func testRefreshKeepsLoadedWorkspaceContentVisible() async throws {
 		let workspace = makeRepositoryWorkspace()
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { !workspace.viewModel.isLoading }
 
 		workspace.viewModel.didRequestRefresh()
@@ -31,7 +31,7 @@ struct WorkspaceViewModelTests {
 	@Test
 	func testRepositoryMonitorDoesNotRetainWorkspaceViewModel() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory.appending(
-			path: "GrovesMonitorLifetime-\(UUID().uuidString)",
+			path: "PluminonMonitorLifetime-\(UUID().uuidString)",
 			directoryHint: .isDirectory
 		)
 		try FileManager.default.createDirectory(
@@ -57,7 +57,7 @@ struct WorkspaceViewModelTests {
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(contentGate: contentGate)
 		)
-		let repositoryURL = URL(fileURLWithPath: "/tmp/GrovesMonitorResume")
+		let repositoryURL = URL(fileURLWithPath: "/tmp/PluminonMonitorResume")
 		workspace.viewModel.didChooseRepository(repositoryURL)
 		try await waitUntilCallCount(
 			1,
@@ -80,7 +80,7 @@ struct WorkspaceViewModelTests {
 	@Test
 	func nativeTabRefreshesAfterAnExternalSaveWithoutAnActiveSwiftUIScene() async throws {
 		let directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
-			.appending(path: "GrovesHostedRefresh-\(UUID())", directoryHint: .isDirectory)
+			.appending(path: "PluminonHostedRefresh-\(UUID())", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let contentGate = GitDiffGate()
@@ -122,7 +122,7 @@ struct WorkspaceViewModelTests {
 	func testQueuedAutomaticRefreshRevalidatesSelectedContentOnNextRefresh() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
 			.resolvingSymlinksInPath()
-			.appending(path: "GrovesAutomaticRefresh-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonAutomaticRefresh-\(UUID().uuidString)", directoryHint: .isDirectory)
 		let gitDirectoryURL = repositoryURL.appending(path: ".git", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(
 			at: gitDirectoryURL,
@@ -162,7 +162,7 @@ struct WorkspaceViewModelTests {
 
 		try Data("working tree".utf8).write(to: repositoryURL.appending(path: "File.txt"))
 		try await waitUntilCallCount(2, of: snapshotLabel, in: contentGate, timeout: .seconds(5))
-		try Data("metadata".utf8).write(to: gitDirectoryURL.appending(path: "GROVES_EVENT"))
+		try Data("metadata".utf8).write(to: gitDirectoryURL.appending(path: "PLUMINON_EVENT"))
 		await contentGate.resumeCall(1)
 		try await waitUntilCallCount(3, of: snapshotLabel, in: contentGate, timeout: .seconds(5))
 		await contentGate.resumeCall(2)
@@ -174,7 +174,7 @@ struct WorkspaceViewModelTests {
 	@Test
 	func automaticRefreshWaitsForStashMutationToFinish() async throws {
 		let directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
-			.appending(path: "GrovesStashRefresh-\(UUID())", directoryHint: .isDirectory)
+			.appending(path: "PluminonStashRefresh-\(UUID())", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let mutationGate = GitDiffGate(suspendsRequests: true)
@@ -218,7 +218,7 @@ struct WorkspaceViewModelTests {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 
 		workspace.changesViewModel.selectedChangeIDs = [.staged(change.id)]
@@ -306,7 +306,7 @@ struct WorkspaceViewModelTests {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.referencesViewModel.currentBranch == branch }
 		workspace.syncViewModel.didPresentForcePushConfirmation(remoteName: "upstream")
 
@@ -335,7 +335,7 @@ struct WorkspaceViewModelTests {
 			repository: GitRepositoryStub(recorder: recorder, remotes: [origin])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.remotesViewModel.remotes == [origin] }
 		workspace.syncViewModel.didRequestPushTags(remoteName: origin.name)
 
@@ -399,7 +399,7 @@ struct WorkspaceViewModelTests {
 		let previousEditor = UserDefaults.standard.object(
 			forKey: ExternalEditorPreferenceKey.bundleIdentifier)
 		let repositoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesExternalEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonExternalEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
 		defer {
 			try? FileManager.default.removeItem(at: repositoryURL)
@@ -434,7 +434,7 @@ struct WorkspaceViewModelTests {
 	@Test
 	func testUnavailableExternalEditorShowsSettingsRecovery() async throws {
 		let repositoryURL = FileManager.default.temporaryDirectory
-			.appending(path: "GrovesMissingEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
+			.appending(path: "PluminonMissingEditor-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let conflict = GitConflict(
@@ -480,7 +480,7 @@ struct WorkspaceViewModelTests {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.referencesViewModel.currentBranch == currentBranch }
 		#expect(workspace.operationViewModel.canMergeBranch(mergeBranch))
 		#expect(!(workspace.operationViewModel.canMergeBranch(currentBranch)))
@@ -499,7 +499,7 @@ struct WorkspaceViewModelTests {
 			hash: "selected-commit-hash",
 			shortHash: "selected",
 			parentHashes: [],
-			author: "Groves Tests",
+			author: "Pluminon Tests",
 			date: Date(timeIntervalSince1970: 1),
 			references: [],
 			subject: "Selected commit",
@@ -509,7 +509,7 @@ struct WorkspaceViewModelTests {
 			hash: "context-commit-hash",
 			shortHash: "context",
 			parentHashes: [],
-			author: "Groves Tests",
+			author: "Pluminon Tests",
 			date: Date(timeIntervalSince1970: 0),
 			references: [],
 			subject: "Context commit",
@@ -522,7 +522,7 @@ struct WorkspaceViewModelTests {
 			)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == 2 }
 		workspace.historyViewModel.selectedCommitID = selectedCommit.id
 		workspace.referencesViewModel.didPresentNewTag(for: contextCommit)
@@ -558,7 +558,7 @@ struct WorkspaceViewModelTests {
 			repository: GitRepositoryStub(recorder: recorder, tags: [tag])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.referencesViewModel.tags == [tag] }
 		workspace.referencesViewModel.didPresentTagDeletion(tag)
 
@@ -583,7 +583,7 @@ struct WorkspaceViewModelTests {
 				hash: "commit-\(index)",
 				shortHash: "short-\(index)",
 				parentHashes: index < 10 ? ["commit-\(index + 1)"] : [],
-				author: "Groves Tests",
+				author: "Pluminon Tests",
 				date: Date(timeIntervalSince1970: TimeInterval(10 - index)),
 				references: [],
 				subject: "Commit \(index)",
@@ -600,7 +600,7 @@ struct WorkspaceViewModelTests {
 			repository: GitRepositoryStub(commits: commits)
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == commits.count }
 
 		workspace.historyViewModel.didOpenBranch(branch)
@@ -617,7 +617,7 @@ struct WorkspaceViewModelTests {
 			hash: "remote-commit",
 			shortHash: "remote",
 			parentHashes: [],
-			author: "Groves Tests",
+			author: "Pluminon Tests",
 			date: Date(timeIntervalSince1970: 0),
 			references: [],
 			subject: "Remote commit",
@@ -632,15 +632,15 @@ struct WorkspaceViewModelTests {
 		)
 		let remote = GitRemote(
 			name: "origin",
-			fetchURL: "https://example.com/Groves.git",
-			pushURL: "https://example.com/Groves.git",
+			fetchURL: "https://example.com/Pluminon.git",
+			pushURL: "https://example.com/Pluminon.git",
 			branches: [branch]
 		)
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(commits: [commit], remotes: [remote])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == 1 }
 
 		workspace.historyViewModel.didOpenRemoteBranch(branch)
@@ -658,7 +658,7 @@ struct WorkspaceViewModelTests {
 				hash: "commit-\(index)",
 				shortHash: "short-\(index)",
 				parentHashes: index < lastIndex ? ["commit-\(index + 1)"] : [],
-				author: "Groves Tests",
+				author: "Pluminon Tests",
 				date: Date(timeIntervalSince1970: TimeInterval(lastIndex - index)),
 				references: [],
 				subject: "Commit \(index)",
@@ -676,7 +676,7 @@ struct WorkspaceViewModelTests {
 			repository: GitRepositoryStub(commits: commits, tags: [tag])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.historyViewModel.commitGraphItems.count == commits.count }
 
 		workspace.historyViewModel.didOpenTag(tag)
@@ -705,7 +705,7 @@ struct WorkspaceViewModelTests {
 			repository: GitRepositoryStub(changes: [swiftChange, markdownChange])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.changesViewModel.changes.count == 2 }
 		workspace.changesViewModel.filterText = "gallery"
 
@@ -784,7 +784,7 @@ struct WorkspaceViewModelTests {
 			repository: GitRepositoryStub(changes: [change])
 		)
 
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 		await workspace.changesViewModel.didSelectChanges([.unstaged(change.id)])
 
@@ -802,7 +802,7 @@ struct WorkspaceViewModelTests {
 		let workspace = makeRepositoryWorkspace(
 			repository: GitRepositoryStub(changes: [change], unstagedDiff: "diff")
 		)
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.changesViewModel.changes == [change] }
 		workspace.changesViewModel.selectedChangeIDs = [.unstaged(change.id)]
 
@@ -833,7 +833,7 @@ struct WorkspaceViewModelTests {
 				unstagedDiff: "diff"
 			)
 		)
-		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Groves"))
+		workspace.viewModel.didChooseRepository(URL(fileURLWithPath: "/tmp/Pluminon"))
 		try await waitUntil { workspace.changesDiffViewModel.diff == "diff" }
 
 		workspace.changesDiffViewModel.didRequestApplyDiffLine(
@@ -899,7 +899,7 @@ struct WorkspaceViewModelTests {
 			hash: "1234567890abcdef1234567890abcdef12345678",
 			shortHash: "1234567",
 			parentHashes: [],
-			author: "Groves",
+			author: "Pluminon",
 			date: Date(),
 			references: [],
 			subject: "Historical commit",
@@ -937,7 +937,7 @@ struct WorkspaceViewModelTests {
 			hash: "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
 			shortHash: "abcdefa",
 			parentHashes: [],
-			author: "Groves",
+			author: "Pluminon",
 			date: Date(),
 			references: ["HEAD"],
 			subject: "Detached",

@@ -1,4 +1,6 @@
-# Groves
+# Pluminon (플루미논)
+
+<img src="Projects/App/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-256.png" alt="Pluminon app icon" width="112">
 
 [![Platform](https://img.shields.io/badge/platform-macOS-black.svg)](https://www.apple.com/macos/)
 [![Swift](https://img.shields.io/badge/language-Swift-orange.svg)](https://www.swift.org/)
@@ -6,27 +8,33 @@
 [![Tuist](https://img.shields.io/badge/project-Tuist-5c4ee5.svg)](https://tuist.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**A native Git client, built for macOS.**
+**A native Git client for macOS.**
 
-Groves is a Git client designed to feel at home on the Mac. Built with Swift, SwiftUI, and AppKit, it brings repository management, commit history, diffs, branches, stashes, and everyday Git operations into a focused native interface.
+Pluminon is a Git client designed to feel at home on the Mac. Built with Swift, SwiftUI, and AppKit, it brings repository management, commit history, diffs, branches, stashes, and everyday Git operations into a focused native interface.
 
-> Groves is currently under active development.
+The name comes from *Plus One, Minus One*, the `+1 −1` in the app icon.
+
+> Pluminon is currently under active development.
 
 ## Installation
 
-Install Groves from the Homebrew tap:
+Install Pluminon from the Homebrew tap:
 
 ```bash
-brew install --cask francisswiftbuilder/tap/groves
+brew install --cask francisswiftbuilder/tap/pluminon
 ```
 
-Groves is currently distributed with an ad-hoc signature. On first launch, macOS blocks the app because it cannot verify the developer. After attempting to open Groves, go to **System Settings → Privacy & Security** and choose **Open Anyway**.
+Download options are also available on the [GitHub releases page](https://github.com/francisswiftbuilder/pluminon/releases).
+
+Starting with version 2.0.0, the disk image is named `Pluminon-<version>.dmg` and contains `Pluminon.app`.
+
+Pluminon is currently distributed with an ad-hoc signature. On first launch, macOS blocks the app because it cannot verify the developer. After attempting to open Pluminon, go to **System Settings → Privacy & Security** and choose **Open Anyway**.
 
 ## Features
 
 ### Native macOS Experience
 
-Groves is built as a native Mac application rather than a cross-platform wrapper.
+Pluminon is built as a native Mac application rather than a cross-platform wrapper.
 
 - Native window tabbing with `⌘T`
 - Multiple repositories across macOS tabs
@@ -66,7 +74,7 @@ Explore repository history through an interactive commit graph.
 
 ### Branches & Git Operations
 
-Perform common Git operations directly from Groves.
+Perform common Git operations directly from Pluminon.
 
 - Create and switch branches
 - Delete a local branch and optionally its tracked remote branch, or delete a remote branch and optionally its tracking local branches
@@ -91,7 +99,7 @@ Manage temporary work without dropping into the terminal.
 
 ### Repository Browser
 
-Browse the contents of your repository from inside Groves.
+Browse the contents of your repository from inside Pluminon.
 
 - Hierarchical file tree
 - File preview
@@ -101,12 +109,12 @@ Browse the contents of your repository from inside Groves.
 
 On first launch, connect a GitHub account using a personal access token and choose your commit name and email. You can also continue locally and configure an account later in **Settings → Accounts**.
 
-- Tokens are verified with GitHub and stored by the main app in a separate Groves Keychain service. The Git helper requests credentials from the running app over an operation-specific local socket instead of reading Keychain itself. Both sides verify the peer’s code identity and process ancestry; credentials are not passed in command arguments, environment variables, or temporary files. This handoff does not require shared Keychain entitlements or a paid signing certificate.
-- Settings supports adding multiple GitHub accounts, choosing the app-wide active account, replacing its token, and signing out of that account. Token entry is shown only when connecting an account or explicitly replacing a token. Each Git operation keeps the account it started with; switching accounts affects new operations and does not change commit identity. Earlier Groves credentials are not imported or deleted.
-- Git uses the bundled Git runtime, an app-specific global configuration at `~/Library/Application Support/Groves/Git/config`, and the `GrovesAskPass` helper. A missing runtime produces an error instead of falling back to system Git.
+- Tokens are verified with GitHub and stored by the main app in a separate Pluminon Keychain service. The Git helper requests credentials from the running app over an operation-specific local socket instead of reading Keychain itself. Both sides verify the peer’s code identity and process ancestry; credentials are not passed in command arguments, environment variables, or temporary files. This handoff does not require shared Keychain entitlements or a paid signing certificate.
+- Settings supports adding multiple GitHub accounts, choosing the app-wide active account, replacing its token, and signing out of that account. Token entry is shown only when connecting an account or explicitly replacing a token. Each Git operation keeps the account it started with; switching accounts affects new operations and does not change commit identity. Each build configuration has its own credential namespace.
+- Git uses the bundled Git runtime, an app-specific global configuration at `~/Library/Application Support/Pluminon/Git/config`, and the `PluminonAskPass` helper. A missing runtime produces an error instead of falling back to system Git.
 - System/global Git configuration and inherited Git environment overrides are excluded. Network operations use a private home directory so personal `.netrc` files and curl home configuration are not used.
 - Repository-local author identity and normal repository settings still apply. HTTP extra headers, saved cookies, credential usernames, and credential helpers are overridden per command without modifying `.git/config`. Existing remotes and URL rewrites containing embedded credentials are rejected. Repository TLS client-certificate authentication is not supported in isolated mode.
-- GitHub HTTPS URLs and standard GitHub SSH URLs work with the connected account. Groves connects GitHub SSH addresses over HTTPS without changing the repository’s saved remote URLs. Other hosts require HTTPS; personal SSH keys and the SSH agent are not used.
+- GitHub HTTPS URLs and standard GitHub SSH URLs work with the connected account. Pluminon connects GitHub SSH addresses over HTTPS without changing the repository’s saved remote URLs. Other hosts require HTTPS; personal SSH keys and the SSH agent are not used.
 
 This separates Git configuration and authentication; it does not enable macOS App Sandbox. System Git and Homebrew are not required by the bundled runtime. Repository-local hooks, filters, and optional external tools may still need software installed separately. Network hooks inherit the private Git home directory. A verified GitHub account does not guarantee access to every repository: token permissions and organization approval still apply. Fine-grained tokens need Contents read access to fetch and write access to push, with additional permissions where required.
 
@@ -121,23 +129,23 @@ This separates Git configuration and authentication; it does not enable macOS Ap
 
 Run `make bundled-git` before the first Xcode build. This downloads checksum-pinned Git source and builds an arm64/x86_64 runtime for macOS 26 with Apple's command-line tools. Subsequent builds reuse the local runtime. The build/run and release scripts perform this step automatically. Run `./script/test_bundled_git.sh .build/bundled-git/runtime` for an isolated local clone/commit/push/pull smoke test.
 
-Git source, build scripts, and license notices are included inside `Groves.app/Contents/Resources/Git/share/groves-source`. See [third-party notices](THIRD_PARTY_NOTICES.md). Git GUI, Perl/Python tools, translations, and legacy WebDAV push are excluded.
+Git source, build scripts, and license notices are included inside `Pluminon.app/Contents/Resources/Git/share/pluminon-source`. See [third-party notices](THIRD_PARTY_NOTICES.md). Git GUI, Perl/Python tools, translations, and legacy WebDAV push are excluded.
 
-Groves uses Tuist to manage its modular project structure.
+Pluminon uses Tuist to manage its modular project structure.
 
 Generate the workspace with `make generate`, which loads `TUIST_CODE_SIGN_IDENTITY` and `TUIST_DEVELOPMENT_TEAM` from `.env.local`. Both values must be configured for development signing of the app and AskPass helper, whose shared Keychain access requires matching team signatures and provisioning profiles. Running `tuist generate` directly does not load this local configuration and can replace development signing with ad hoc signing.
 
-Use `make generate TUIST_GENERATE_ARGS=--no-open` to regenerate the workspace without opening Xcode.
+Open `Pluminon.xcworkspace` and select the `Pluminon` scheme. Use `make generate TUIST_GENERATE_ARGS=--no-open` to regenerate the workspace without opening Xcode.
 
 App identity and data isolation are configured in `Configurations/*.xcconfig`:
 
-| Configuration file | App | Bundle ID | Application Support |
+| Configuration file | Display name | Bundle ID | Application Support |
 | --- | --- | --- | --- |
-| `Debug.xcconfig` | Groves Dev | `io.github.francisswiftbuilder.Groves.dev` | `Groves Dev` |
-| `Staging.xcconfig` | Groves Staging | `io.github.francisswiftbuilder.Groves.staging` | `Groves Staging` |
-| `Production.xcconfig` | Groves | `io.github.francisswiftbuilder.Groves` | `Groves` |
+| `Debug.xcconfig` | Pluminon Dev | `com.francisswiftbuilder.pluminon.dev` | `Pluminon Dev` |
+| `Staging.xcconfig` | Pluminon Staging | `com.francisswiftbuilder.pluminon.staging` | `Pluminon Staging` |
+| `Production.xcconfig` | Pluminon | `com.francisswiftbuilder.pluminon` | `Pluminon` |
 
-Development and staging builds keep their own saved repositories, preferences, Git identity, and credential services. `./script/build_and_run.sh --verify` builds and opens Groves Dev without quitting an installed Groves. Opening the same repository directory in both apps still shares that repository’s Git state; use a separate clone or worktree when testing Git mutations.
+Development and staging builds keep their own saved repositories, preferences, Git identity, and credential services. `./script/build_and_run.sh --verify` builds and opens Pluminon Dev without quitting an installed Pluminon. Opening the same repository directory in both apps still shares that repository’s Git state; use a separate clone or worktree when testing Git mutations.
 
 ### Commands
 
@@ -150,14 +158,14 @@ make lint
 
 | Command | Description |
 | --- | --- |
-| `make generate` | Install dependencies and generate `Groves.xcworkspace` |
+| `make generate` | Install dependencies and generate `Pluminon.xcworkspace` |
 | `make clean` | Remove generated projects, workspaces, and Tuist caches |
 | `make format` | Format Swift sources using `swift-format` |
 | `make lint` | Run formatting, structural, and architectural checks |
 
 ## Architecture
 
-Groves follows a modular architecture with dependencies separated across application, feature, domain, data, and shared infrastructure layers.
+Pluminon follows a modular architecture with dependencies separated across application, feature, domain, data, and shared infrastructure layers.
 
 ```text
 Projects
@@ -220,7 +228,7 @@ Shared infrastructure and reusable UI components.
 
 ## Persistence
 
-Groves uses SwiftData for local application state.
+Pluminon uses SwiftData for local application state.
 
 Repository access is restored between launches using macOS security-scoped bookmarks, allowing previously opened repositories to remain accessible without requesting the directory again.
 
@@ -239,7 +247,7 @@ for SCHEME in AppTests CoreGitCredential CoreRepositoryDiff DataGit \
   FeatureRepositoryChanges FeatureRepositoryHistory FeatureRepositoryOperations \
   FeatureRepositoryStashes FeatureRepositoryTree; do
   xcodebuild test \
-    -workspace Groves.xcworkspace \
+    -workspace Pluminon.xcworkspace \
     -scheme "$SCHEME" \
     -destination 'platform=macOS' \
     CODE_SIGNING_ALLOWED=NO || break
@@ -248,7 +256,7 @@ done
 
 ## Roadmap
 
-Groves is still evolving. Planned areas include:
+Pluminon is still evolving. Planned areas include:
 
 - Signed and notarized distribution
 - Automatic application updates
@@ -257,6 +265,6 @@ Groves is still evolving. Planned areas include:
 
 ## License
 
-Groves is available under the [MIT License](LICENSE).
+Pluminon is available under the [MIT License](LICENSE).
 
 Bundled Git retains its own license; see [third-party notices](THIRD_PARTY_NOTICES.md).

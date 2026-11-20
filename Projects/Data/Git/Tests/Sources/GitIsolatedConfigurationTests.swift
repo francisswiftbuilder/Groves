@@ -167,7 +167,7 @@ struct GitIsolatedConfigurationTests {
 		let directoryURL = try makeTemporaryDirectory()
 		defer { try? FileManager.default.removeItem(at: directoryURL) }
 		let configURL = directoryURL.appending(path: "app.config")
-		try GitIdentityConfiguration(name: "Groves Author", email: "groves@example.com").save(
+		try GitIdentityConfiguration(name: "Pluminon Author", email: "pluminon@example.com").save(
 			to: configURL)
 		let runner = GitProcessRunner(
 			configuration: GitProcessConfiguration(globalConfigurationURL: configURL),
@@ -194,7 +194,7 @@ struct GitIsolatedConfigurationTests {
 			arguments: ["log", "-1", "--format=%an%n%ae%n%B"], at: remoteURL)
 		#expect(
 			author.standardOutput.trimmingCharacters(in: .newlines)
-				== "Groves Author\ngroves@example.com\nFirst commit\n\nCommit description")
+				== "Pluminon Author\npluminon@example.com\nFirst commit\n\nCommit description")
 		let branch = try await repository.requestBranches(at: repositoryURL).first(where: \.isCurrent)
 		#expect(branch?.upstream == "origin/main")
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
@@ -225,7 +225,7 @@ struct GitIsolatedConfigurationTests {
 		}
 		let changes = try await repository.requestWorkingTreeChanges(at: repositoryURL)
 		#expect(changes.filter(\.isStaged).map(\.path) == ["README.md"])
-		try GitIdentityConfiguration(name: "Groves Author", email: "groves@example.com").save(
+		try GitIdentityConfiguration(name: "Pluminon Author", email: "pluminon@example.com").save(
 			to: configURL)
 		try await repository.requestCommit(
 			subject: "First commit", body: "", amend: false, at: repositoryURL)
@@ -246,7 +246,7 @@ struct GitIsolatedConfigurationTests {
 			_ = try await runner.requestRun(
 				arguments: [
 					"-c",
-					"alias.fail=!printf '%s\\n' 'error: GrovesAskPass credential get died of signal 9' 'fatal: could not read Username: terminal prompts disabled' >&2; exit 1",
+					"alias.fail=!printf '%s\\n' 'error: PluminonAskPass credential get died of signal 9' 'fatal: could not read Username: terminal prompts disabled' >&2; exit 1",
 					"fail",
 				],
 				at: repositoryURL
@@ -368,7 +368,7 @@ struct GitIsolatedConfigurationTests {
 		let repositoryURL = try makeTemporaryRepository()
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let configURL = repositoryURL.appending(path: "app.config")
-		try GitIdentityConfiguration(name: "Groves Author", email: "groves@example.com").save(
+		try GitIdentityConfiguration(name: "Pluminon Author", email: "pluminon@example.com").save(
 			to: configURL)
 		let foreignConfigURL = repositoryURL.appending(path: "foreign.config")
 		try "[user]\nname = External Author\n".write(
@@ -388,7 +388,7 @@ struct GitIsolatedConfigurationTests {
 			]
 		)
 		#expect(
-			result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines) == "Groves Author")
+			result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines) == "Pluminon Author")
 	}
 
 	@Test
@@ -413,7 +413,7 @@ struct GitIsolatedConfigurationTests {
 		defer { try? FileManager.default.removeItem(at: repositoryURL) }
 		let markerURL = repositoryURL.appending(path: "external-helper-ran")
 		let helperURL = repositoryURL.appending(path: "app-helper")
-		try "#!/bin/sh\nprintf 'username=groves\\npassword=test-secret\\n\\n'\n".write(
+		try "#!/bin/sh\nprintf 'username=pluminon\\npassword=test-secret\\n\\n'\n".write(
 			to: helperURL, atomically: true, encoding: .utf8)
 		try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperURL.path)
 		let runner = GitProcessRunner(
@@ -433,7 +433,7 @@ struct GitIsolatedConfigurationTests {
 			standardInput: "protocol=https\nhost=github.com\n\n",
 			isNetworkOperation: true
 		)
-		#expect(result.standardOutput.contains("username=groves"))
+		#expect(result.standardOutput.contains("username=pluminon"))
 		#expect(!(FileManager.default.fileExists(atPath: markerURL.path)))
 	}
 
